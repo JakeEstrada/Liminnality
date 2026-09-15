@@ -146,6 +146,9 @@ CREATE TABLE customer_addresses (
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
 );
 
+-- jobs.is_archived: soft-hide from the board; row and all related data stay intact.
+-- Active board: WHERE is_archived = 0. Archive page: WHERE is_archived = 1.
+-- Toggle back to 0 to restore the card to the board (same stage, unchanged).
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     job_number INTEGER UNIQUE,
@@ -161,6 +164,7 @@ CREATE TABLE jobs (
     job_site_zip TEXT,
     color TEXT NOT NULL DEFAULT '#1976D2',
     custom_fields TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(custom_fields)),
+    is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
     assigned_to_id TEXT,
     created_by_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -262,7 +266,7 @@ CREATE TABLE appointments (
 
 CREATE TABLE activities (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-    activity_type TEXT NOT NULL CHECK (activity_type IN ('note','stage_changed','job_created','job_updated','schedule_added','schedule_updated','schedule_removed','task_created','task_completed','appointment_created','appointment_completed','file_uploaded','customer_updated')),
+    activity_type TEXT NOT NULL CHECK (activity_type IN ('note','stage_changed','job_created','job_updated','job_archived','job_unarchived','schedule_added','schedule_updated','schedule_removed','task_created','task_completed','appointment_created','appointment_completed','file_uploaded','customer_updated','payment_schedule_created','payment_schedule_updated','installment_paid','change_order_created','change_order_approved','change_order_rejected')),
     note TEXT,
     metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),
     job_id TEXT,
@@ -312,6 +316,70 @@ CREATE TABLE job_tags (
     FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
 
+-- change_orders: adjustments to a job's contract total.
+-- amount is signed — positive increases the job total, negative decreases it.
+-- Effective job total = jobs.amount + SUM(change_orders.amount WHERE status = 'approved').
+-- Compute this in a query/view rather than storing it, so it can't go stale.
+CREATE TABLE change_orders (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    job_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+    created_by_id TEXT,
+    approved_by_id TEXT,
+    approved_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (approved_by_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- payment_schedules: one payment plan per job (single payment, split into
+-- 2/3 payments, or milestone-based). The actual line items live in
+-- payment_installments below.
+CREATE TABLE payment_schedules (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    job_id TEXT NOT NULL UNIQUE,
+    schedule_type TEXT NOT NULL CHECK (schedule_type IN ('single','two_payment','three_payment','milestone')),
+    notes TEXT NOT NULL DEFAULT '',
+    created_by_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- payment_installments: individual line items within a job's payment
+-- schedule. Each is either a fixed dollar amount or a percentage of the
+-- job total (never both). due_at is optional so milestones that trigger
+-- off an event ("due on rough-in complete") rather than a date work fine.
+-- Optionally tied back to a change_order when the line item was generated
+-- by one (e.g. "50% due on change order approval").
+CREATE TABLE payment_installments (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    schedule_id TEXT NOT NULL,
+    change_order_id TEXT,
+    label TEXT NOT NULL,
+    amount_type TEXT NOT NULL CHECK (amount_type IN ('fixed','percentage')),
+    amount REAL,
+    percentage REAL,
+    due_at TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','invoiced','paid','waived')),
+    paid_at TEXT,
+    paid_amount REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (amount_type = 'fixed' AND amount IS NOT NULL AND percentage IS NULL) OR
+        (amount_type = 'percentage' AND percentage IS NOT NULL AND amount IS NULL)
+    ),
+    FOREIGN KEY (schedule_id) REFERENCES payment_schedules(id) ON DELETE CASCADE,
+    FOREIGN KEY (change_order_id) REFERENCES change_orders(id) ON DELETE CASCADE
+);
+
 -- Indexes
 CREATE INDEX users_role_idx ON users(role);
 CREATE INDEX calendars_sort_idx ON calendars(sort_order);
@@ -337,6 +405,7 @@ CREATE INDEX jobs_board_idx ON jobs(board_id);
 CREATE INDEX jobs_stage_idx ON jobs(stage_id);
 CREATE INDEX jobs_board_stage_idx ON jobs(board_id, stage_id);
 CREATE INDEX jobs_assigned_idx ON jobs(assigned_to_id);
+CREATE INDEX jobs_archived_idx ON jobs(is_archived);
 CREATE INDEX job_notes_job_id_created_at_idx ON job_notes(job_id, created_at);
 CREATE INDEX installer_lanes_calendar_sort_idx ON installer_lanes(calendar_id, sort_order);
 CREATE INDEX job_schedule_entries_job_id_idx ON job_schedule_entries(job_id);
@@ -359,6 +428,12 @@ CREATE INDEX idx_files_job_id ON files(job_id);
 CREATE INDEX files_customer_idx ON files(customer_id);
 CREATE INDEX files_task_idx ON files(task_id);
 CREATE INDEX job_tags_tag_idx ON job_tags(tag_id);
+CREATE INDEX change_orders_job_idx ON change_orders(job_id);
+CREATE INDEX change_orders_status_idx ON change_orders(status);
+CREATE INDEX payment_schedules_job_idx ON payment_schedules(job_id);
+CREATE INDEX payment_installments_schedule_idx ON payment_installments(schedule_id, sort_order);
+CREATE INDEX payment_installments_status_idx ON payment_installments(status);
+CREATE INDEX payment_installments_change_order_idx ON payment_installments(change_order_id);
 
 -- Optional JSON indexes. These only work when SQLite is compiled with JSON1, which most modern builds are.
 -- Create expression indexes later for specific JSON keys you actually query, for example:
@@ -460,6 +535,30 @@ FOR EACH ROW
 WHEN NEW.updated_at = OLD.updated_at
 BEGIN
     UPDATE appointments SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER change_orders_updated_at
+AFTER UPDATE ON change_orders
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE change_orders SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER payment_schedules_updated_at
+AFTER UPDATE ON payment_schedules
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE payment_schedules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER payment_installments_updated_at
+AFTER UPDATE ON payment_installments
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE payment_installments SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
 -- Seed singleton app settings row.
