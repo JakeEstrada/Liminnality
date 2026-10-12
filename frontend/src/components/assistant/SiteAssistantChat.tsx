@@ -16,6 +16,7 @@ import { Chat as ChatIcon, Close as CloseIcon, Send as SendIcon } from '@mui/ico
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../utils/axios';
+import { applyJobOverlayActions, parseJobOverlayPath } from '../../voice/jobOverlayBus';
 import { applyMapShow, parseMapShowAction, startMapTour } from '../../voice/mapCommandBus';
 
 export default function SiteAssistantChat() {
@@ -55,8 +56,9 @@ export default function SiteAssistantChat() {
           window.setTimeout(stopTour, duration);
         }
       }
+      applyJobOverlayActions(actions);
       for (const a of actions) {
-        if (a?.type === 'navigate' && typeof a.path === 'string') {
+        if (a?.type === 'navigate' && typeof a.path === 'string' && !parseJobOverlayPath(a.path)) {
           navigate(a.path);
         }
       }

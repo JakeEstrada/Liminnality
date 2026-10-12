@@ -7,6 +7,7 @@ const EmployeeContact = require('../models/EmployeeContact');
 const DepositAllocation = require('../models/DepositAllocation');
 const PlaidRegisterCache = require('../models/PlaidRegisterCache');
 const { formatJobLocation, inOrangeCounty } = require('./geocodeService');
+const { lookupCityCenter, milesBetween } = require('./ocCityCenters');
 
 const SHOP_TIMEZONE = 'America/Los_Angeles';
 
@@ -67,75 +68,201 @@ async function fetchRecentPayments({ limit: limitArg = 5 } = {}) {
   };
 }
 
-/**
- * Recent deposits from CRM activity, linked bank rows, and uncategorized bank register inflows.
- */
-async function fetchRecentDeposits({ tenantId, limit: limitArg = 5 } = {}) {
-  const limit = clampLimit(limitArg, 5, 15);
+function dateMs(value) {
+  if (!value) return 0;
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
 
-  const [crmDeposits, allocations, cache] = await Promise.all([
-    Activity.find({ type: 'deposit_received' })
+function looksLikeDepositActivity(activity) {
+  if (activity?.type === 'deposit_received') return true;
+  const blob = `${activity?.paymentType || ''} ${activity?.note || ''} ${activity?.paymentMethod || ''}`.toLowerCase();
+  return /\bdeposit\b/.test(blob);
+}
+
+function depositMatchesName(row, nameQ) {
+  if (!nameQ) return true;
+  return nameMatches(row.customerName, nameQ) || nameMatches(row.jobTitle, nameQ);
+}
+
+function depositDedupeKey(row) {
+  return `${row.jobId || row.id}|${row.amount || 0}|${row.date || ''}`;
+}
+
+function isPaidDepositScheduleItem(item) {
+  if (!item || item.status !== 'paid') return false;
+  const label = String(item.label || '');
+  return item.dueType === 'deposit' || /\bdeposit\b/i.test(label);
+}
+
+function scheduleDepositRow(job, item) {
+  return {
+    id: `schedule:${job._id}:${item.sortOrder || item.label || 'deposit'}`,
+    source: 'job_schedule_deposit',
+    amount: formatMoney(item.paidAmount || item.amount),
+    date: formatDate(item.paidAt),
+    sortMs: dateMs(item.paidAt),
+    customerName: job.customerId?.name || null,
+    jobId: String(job._id),
+    jobTitle: job.title || null,
+    note: item.label || 'Deposit',
+  };
+}
+
+async function loadScheduleDeposits({ nameQ, limit = 40 } = {}) {
+  const query = {
+    'paymentSchedule.items': {
+      $elemMatch: {
+        status: 'paid',
+        $or: [{ dueType: 'deposit' }, { label: /deposit/i }],
+      },
+    },
+  };
+  if (nameQ) {
+    const regex = new RegExp(escapeRegex(nameQ), 'i');
+    const customers = await Customer.find({ name: regex }).select('_id').limit(25).lean();
+    query.$or = [{ title: regex }, { customerId: { $in: customers.map((c) => c._id) } }];
+  }
+
+  const jobs = await Job.find(query)
+    .populate('customerId', 'name')
+    .select('title customerId paymentSchedule')
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .lean();
+
+  const rows = [];
+  for (const job of jobs) {
+    for (const item of job.paymentSchedule?.items || []) {
+      if (isPaidDepositScheduleItem(item)) rows.push(scheduleDepositRow(job, item));
+    }
+  }
+  return rows;
+}
+
+/**
+ * Recent customer/job deposits. Shop deposits are usually a paid deposit line
+ * on the job schedule (payment_received), not only deposit_received CRM rows.
+ */
+async function fetchRecentDeposits({ tenantId, limit: limitArg = 5, customerQuery } = {}) {
+  const limit = clampLimit(limitArg, 5, 15);
+  const nameQ = String(customerQuery || '').trim();
+  const scan = nameQ ? 200 : 80;
+
+  const [activities, allocations, cache, scheduleDeposits] = await Promise.all([
+    Activity.find({
+      $or: [
+        { type: 'deposit_received' },
+        { type: 'payment_received', paymentType: /deposit/i },
+        { type: 'payment_received', note: /deposit/i },
+      ],
+    })
       .populate('customerId', 'name')
-      .populate('jobId', 'title')
-      .sort({ createdAt: -1 })
-      .limit(limit)
+      .populate({
+        path: 'jobId',
+        select: 'title customerId',
+        populate: { path: 'customerId', select: 'name' },
+      })
+      .sort({ paymentPaidAt: -1, createdAt: -1 })
+      .limit(scan)
       .lean(),
     DepositAllocation.find()
-      .populate('jobId', 'title')
+      .populate({
+        path: 'jobId',
+        select: 'title customerId',
+        populate: { path: 'customerId', select: 'name' },
+      })
       .sort({ linkedAt: -1, transactionDate: -1 })
-      .limit(limit)
+      .limit(scan)
       .lean(),
     tenantId ? PlaidRegisterCache.findOne({ tenantId }).lean() : Promise.resolve(null),
+    loadScheduleDeposits({ nameQ, limit: nameQ ? 40 : 40 }),
   ]);
 
-  const crmResults = crmDeposits.map((a) => ({
-    id: String(a._id),
-    source: 'crm_activity',
-    amount: formatMoney(a.amount),
-    date: formatDate(a.createdAt),
-    customerName: a.customerId?.name || null,
-    jobId: a.jobId?._id ? String(a.jobId._id) : null,
-    jobTitle: a.jobId?.title || null,
-    note: a.note ? String(a.note).slice(0, 200) : null,
-  }));
+  const shopDeposits = [];
 
-  const allocationResults = allocations.map((d) => ({
-    id: String(d._id),
-    source: 'bank_linked_to_job',
-    amount: formatMoney(d.depositAmount),
-    date: d.transactionDate || formatDate(d.linkedAt),
-    bankDescription: d.transactionName || null,
-    paymentLabel: d.paymentLabel || null,
-    jobId: d.jobId?._id ? String(d.jobId._id) : String(d.jobId),
-    jobTitle: d.jobId?.title || null,
-    markPaidApplied: Boolean(d.markPaidApplied),
-  }));
+  for (const activity of activities) {
+    if (activity.type === 'payment_received' && !looksLikeDepositActivity(activity)) continue;
+    const customerName = activity.customerId?.name || activity.jobId?.customerId?.name || null;
+    const jobTitle = activity.jobId?.title || null;
+    const row = {
+      id: String(activity._id),
+      source: activity.type === 'deposit_received' ? 'crm_deposit' : 'job_deposit',
+      amount: formatMoney(activity.amount),
+      date: formatDate(activity.paymentPaidAt || activity.createdAt),
+      sortMs: dateMs(activity.paymentPaidAt || activity.createdAt),
+      customerName,
+      jobId: activity.jobId?._id ? String(activity.jobId._id) : null,
+      jobTitle,
+      note: activity.note ? String(activity.note).slice(0, 200) : null,
+    };
+    if (depositMatchesName(row, nameQ)) shopDeposits.push(row);
+  }
+
+  for (const allocation of allocations) {
+    const isDepositLine =
+      allocation.paymentDueType === 'deposit' || /\bdeposit\b/i.test(String(allocation.paymentLabel || ''));
+    if (!isDepositLine && nameQ === '') {
+      // Keep linked bank rows that are clearly deposits; skip milestone links for "most recent deposit".
+      if (allocation.paymentDueType && allocation.paymentDueType !== 'deposit') continue;
+    }
+    const row = {
+      id: String(allocation._id),
+      source: 'bank_linked_to_job',
+      amount: formatMoney(allocation.depositAmount),
+      date: allocation.transactionDate || formatDate(allocation.linkedAt),
+      sortMs: dateMs(allocation.transactionDate || allocation.linkedAt),
+      bankDescription: allocation.transactionName || null,
+      paymentLabel: allocation.paymentLabel || null,
+      customerName: allocation.jobId?.customerId?.name || null,
+      jobId: allocation.jobId?._id ? String(allocation.jobId._id) : String(allocation.jobId || ''),
+      jobTitle: allocation.jobId?.title || null,
+      markPaidApplied: Boolean(allocation.markPaidApplied),
+    };
+    if (depositMatchesName(row, nameQ)) shopDeposits.push(row);
+  }
+
+  for (const row of scheduleDeposits) {
+    if (depositMatchesName(row, nameQ)) shopDeposits.push(row);
+  }
+
+  const seen = new Set();
+  const unique = [];
+  for (const row of shopDeposits.sort((a, b) => (b.sortMs || 0) - (a.sortMs || 0))) {
+    const key = depositDedupeKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const { sortMs, ...rest } = row;
+    unique.push(rest);
+  }
 
   const linkedTxnIds = new Set(allocations.map((d) => String(d.plaidTransactionId)));
   const txs = Array.isArray(cache?.transactions) ? cache.transactions : [];
-  const bankResults = txs
-    .filter((t) => isPlaidDepositTransaction(t))
-    .filter((t) => !linkedTxnIds.has(String(t.transaction_id || '')))
-    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-    .slice(0, limit)
-    .map((t) => ({
-      id: String(t.transaction_id || ''),
-      source: 'bank_register_unlinked',
-      amount: formatMoney(Math.abs(Number(t.amount))),
-      date: t.date || null,
-      bankDescription: t.name || t.merchant_name || null,
-    }));
+  const unlinkedBankInflows = nameQ
+    ? []
+    : txs
+        .filter((t) => isPlaidDepositTransaction(t))
+        .filter((t) => !linkedTxnIds.has(String(t.transaction_id || '')))
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, 3)
+        .map((t) => ({
+          id: String(t.transaction_id || ''),
+          source: 'bank_register_unlinked',
+          amount: formatMoney(Math.abs(Number(t.amount))),
+          date: t.date || null,
+          bankDescription: t.name || t.merchant_name || null,
+        }));
 
-  const merged = [...crmResults, ...allocationResults, ...bankResults]
-    .map((item) => ({ ...item, sortDate: item.date || '' }))
-    .sort((a, b) => String(b.sortDate).localeCompare(String(a.sortDate)))
-    .slice(0, limit)
-    .map(({ sortDate, ...rest }) => rest);
-
+  const deposits = unique.slice(0, limit);
   return {
-    deposits: merged,
-    hint:
-      'Deposits may come from CRM logs (deposit_received), bank deposits linked to a job payment, or uncategorized bank register inflows. Compare dates to answer "most recent deposit".',
+    deposits,
+    mostRecent: deposits[0] || null,
+    matchedCustomer: nameQ || undefined,
+    found: deposits.length > 0,
+    unlinkedBankInflows,
+    hint: nameQ
+      ? `Customer/job deposits matching "${nameQ}". found=false means no deposit for that name.`
+      : 'mostRecent is the latest customer/job deposit (paid deposit line, CRM deposit, or bank linked to a job). Do not treat unlinkedBankInflows as a customer deposit.',
   };
 }
 
@@ -601,8 +728,25 @@ function mapPagePath(pagePath) {
   return '/dashboard';
 }
 
+function parseNearPlace({ city, near, radiusMiles }) {
+  const nearRaw = String(near || '').trim();
+  const cityRaw = String(city || '').trim();
+  const nearFromCity = /^(near|around|close to)\s+/i.test(cityRaw);
+  const nearPlace = nearRaw || (nearFromCity ? cityRaw.replace(/^(near|around|close to)\s+/i, '').trim() : '');
+  const exactCity = nearPlace ? '' : cityRaw.replace(/^(in|at)\s+/i, '').trim();
+  const radius = Number(radiusMiles);
+  return {
+    city: exactCity,
+    near: nearPlace,
+    radiusMiles: Number.isFinite(radius) && radius > 0 ? Math.min(Math.max(radius, 1), 50) : 25,
+    center: nearPlace ? lookupCityCenter(nearPlace) : null,
+  };
+}
+
 async function showJobsOnMap({
   city,
+  near,
+  radiusMiles,
   query,
   stage,
   scheduled,
@@ -613,7 +757,12 @@ async function showJobsOnMap({
   limit: limitArg = 8,
 } = {}) {
   const limit = clampLimit(limitArg, 8, 12);
-  const cityQ = String(city || '').trim();
+  const place = parseNearPlace({ city, near, radiusMiles });
+  let cityQ = place.city;
+  const nearQ = place.near;
+  const radiusQ = place.radiusMiles;
+  const center = place.center;
+  if (nearQ && !center) cityQ = nearQ;
   const textQ = String(query || '').trim();
   const stageQ = resolveMapStage(stage);
   const scheduledQ = String(scheduled || 'any').toLowerCase();
@@ -650,7 +799,7 @@ async function showJobsOnMap({
     .populate('customerId', 'name address')
     .select('title stage jobAddress geo schedule customerId valueContracted valueEstimated isArchived isCompletedClosedOut')
     .sort({ updatedAt: -1 })
-    .limit(80)
+    .limit(center ? 400 : 80)
     .lean();
 
   const filtered = jobs.filter((job) => {
@@ -667,17 +816,24 @@ async function showJobsOnMap({
     const amount = mapJobAmount(job);
     if (Number.isFinite(min) && min > 0 && amount < min) return false;
     if (Number.isFinite(max) && max > 0 && amount > max) return false;
+    if (center) {
+      const lat = Number(job.geo?.lat);
+      const lng = Number(job.geo?.lng);
+      const hasCoords = job.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng);
+      if (hasCoords) return milesBetween(center.lat, center.lng, lat, lng) <= radiusQ;
+      return placeMatch(`${jobCity} ${address}`, nearQ);
+    }
     return true;
   });
 
   const mapped = [];
   const unmapped = [];
-  for (const job of filtered.slice(0, limit)) {
+  for (const job of filtered) {
     const address = formatJobLocation(job);
     const lat = Number(job.geo?.lat);
     const lng = Number(job.geo?.lng);
-    const onMap =
-      job.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng) && inOrangeCounty(lat, lng);
+    const hasCoords = job.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng);
+    const onMap = hasCoords && (center || inOrangeCounty(lat, lng));
     const row = {
       id: String(job._id),
       title: job.title || 'Untitled',
@@ -690,15 +846,24 @@ async function showJobsOnMap({
       mapped: onMap,
       lat: onMap ? lat : null,
       lng: onMap ? lng : null,
+      distanceMiles: onMap && center ? Number(milesBetween(center.lat, center.lng, lat, lng).toFixed(1)) : null,
     };
     if (onMap) mapped.push(row);
     else unmapped.push(row);
   }
 
+  if (center) {
+    mapped.sort((a, b) => (a.distanceMiles || 0) - (b.distanceMiles || 0));
+  }
+  const limitedMapped = mapped.slice(0, limit);
+  const limitedUnmapped = unmapped.slice(0, Math.max(0, limit - limitedMapped.length));
+
   return {
     filters: {
       query: textQ || undefined,
       city: cityQ || undefined,
+      near: center ? nearQ : undefined,
+      radiusMiles: center ? radiusQ : undefined,
       stage: stageQ || undefined,
       scheduled: scheduledQ === 'yes' || scheduledQ === 'no' ? scheduledQ : 'any',
       minAmount: Number.isFinite(min) && min > 0 ? min : undefined,
@@ -706,10 +871,10 @@ async function showJobsOnMap({
       view: viewQ,
     },
     path: mapPagePath(pagePath),
-    count: mapped.length + unmapped.length,
-    mappedCount: mapped.length,
-    unmappedCount: unmapped.length,
-    jobs: [...mapped, ...unmapped],
+    count: limitedMapped.length + limitedUnmapped.length,
+    mappedCount: limitedMapped.length,
+    unmappedCount: limitedUnmapped.length,
+    jobs: [...limitedMapped, ...limitedUnmapped],
   };
 }
 

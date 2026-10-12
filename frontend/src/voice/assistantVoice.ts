@@ -1,10 +1,12 @@
 import api from '../utils/axios';
+import { parseJobOverlayPath, parseOpenJobAction, type JobOverlayCommand } from './jobOverlayBus';
 import { parseMapShowAction, type MapShowCommand } from './mapCommandBus';
 
 export type AssistantVoiceResult = {
   reply: string;
   path?: string;
   mapShow?: MapShowCommand;
+  openJob?: JobOverlayCommand;
 };
 
 export function spokenAssistantReply(raw: string) {
@@ -31,9 +33,14 @@ export async function askLiminalityAssistant(
   const actions = Array.isArray(data?.actions) ? data.actions : [];
   const path = actions.find((row: { type?: string; path?: string }) => row?.type === 'navigate' && row.path)?.path;
   const mapShow = parseMapShowAction(actions.find((row: { type?: string }) => row?.type === 'map_show'));
+  const openJob =
+    parseOpenJobAction(actions.find((row: { type?: string }) => row?.type === 'open_job')) ||
+    parseJobOverlayPath(typeof path === 'string' ? path : undefined);
+  const nextPath = mapShow?.path || (typeof path === 'string' ? path : undefined);
   return {
     reply,
-    path: mapShow?.path || (typeof path === 'string' ? path : undefined),
+    path: openJob ? undefined : nextPath,
     mapShow,
+    openJob: openJob || undefined,
   };
 }

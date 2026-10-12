@@ -9,6 +9,7 @@ import {
 } from '../voice/browserSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, spokenAssistantReply } from '../voice/assistantVoice';
+import { openJobOverlay } from '../voice/jobOverlayBus';
 import { applyMapShow, estimateSpeechMs, startMapTour } from '../voice/mapCommandBus';
 import {
   COMMAND_ENDPOINT_MS,
@@ -305,6 +306,11 @@ export function useLiminalityVoice({
             { role: 'user', content: assistantSpoken },
             { role: 'assistant', content: result.reply },
           ].slice(-8);
+          if (result.openJob) {
+            setPhase('executing');
+            setStatusLabel('Opening job');
+            openJobOverlay(result.openJob);
+          }
           if (result.mapShow) {
             setPhase('executing');
             setStatusLabel('Opening the map');

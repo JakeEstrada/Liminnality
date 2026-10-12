@@ -20,6 +20,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../utils/axios';
+import { lookupCityCenter, milesBetween } from '../../voice/ocCityCenters';
 import { subscribeMapCommands, type MapShowCommand, type MapViewId } from '../../voice/mapCommandBus';
 import JobDetailModal from '../jobs/JobDetailModal';
 import { chartPanelSx } from './dashboardChartPrimitives';
@@ -44,6 +45,8 @@ type MapPin = {
 type MapFilters = {
   query: string;
   city: string;
+  near: string;
+  radiusMiles: number;
   stage: string;
   scheduled: 'any' | 'yes' | 'no';
   minAmount: string;
@@ -54,6 +57,8 @@ type MapFilters = {
 const EMPTY_FILTERS: MapFilters = {
   query: '',
   city: '',
+  near: '',
+  radiusMiles: 25,
   stage: '',
   scheduled: 'any',
   minAmount: '',
@@ -158,7 +163,16 @@ function pinMatches(pin: MapPin, filters: MapFilters) {
     const hay = `${pin.title} ${pin.customerName} ${pin.city} ${pin.address}`.toLowerCase();
     if (!hay.includes(query)) return false;
   }
-  if (filters.city && !placeMatch(`${pin.city || ''} ${pin.address || ''}`, filters.city)) {
+  if (filters.near) {
+    const center = lookupCityCenter(filters.near);
+    const radius = filters.radiusMiles > 0 ? filters.radiusMiles : 25;
+    if (center) {
+      const miles = milesBetween(pin.lat, pin.lng, center.lat, center.lng);
+      if (miles > radius) return false;
+    } else if (!placeMatch(`${pin.city || ''} ${pin.address || ''}`, filters.near)) {
+      return false;
+    }
+  } else if (filters.city && !placeMatch(`${pin.city || ''} ${pin.address || ''}`, filters.city)) {
     return false;
   }
   if (filters.stage && pin.stage !== filters.stage) return false;
@@ -315,6 +329,7 @@ export default function OrangeCountyJobMap({
   const filtersActive =
     Boolean(filters.query.trim()) ||
     Boolean(filters.city) ||
+    Boolean(filters.near) ||
     Boolean(filters.stage) ||
     filters.scheduled !== 'any' ||
     filters.minAmount !== '' ||
@@ -329,7 +344,9 @@ export default function OrangeCountyJobMap({
         setView(command.view && command.view !== 'all' ? command.view : 'pipeline');
         setFilters({
           query: command.query || '',
-          city: command.city || '',
+          city: command.near ? '' : command.city || '',
+          near: command.near || '',
+          radiusMiles: command.radiusMiles && command.radiusMiles > 0 ? command.radiusMiles : 25,
           stage: command.stage || '',
           scheduled: command.scheduled || 'any',
           minAmount: command.minAmount != null ? String(command.minAmount) : '',
@@ -506,7 +523,7 @@ export default function OrangeCountyJobMap({
               onChange={(event) => {
                 const city = String(event.target.value);
                 if (!city) setView('pipeline');
-                setFilters((current) => ({ ...current, city, jobIds: [] }));
+                setFilters((current) => ({ ...current, city, near: '', jobIds: [] }));
               }}
             >
               <MenuItem value="">All cities</MenuItem>

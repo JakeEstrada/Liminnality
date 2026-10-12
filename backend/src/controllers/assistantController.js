@@ -52,11 +52,15 @@ const TOOLS = [
     function: {
       name: 'get_recent_deposits',
       description:
-        'Get recent deposits: CRM deposit logs, bank deposits linked to jobs, and uncategorized bank register inflows. Use for "most recent deposit" or bank deposit questions.',
+        'Get customer/job deposits (paid deposit lines on jobs, CRM deposits, bank deposits linked to a job). Use for "most recent deposit" or "did [name] make a deposit". Pass customerQuery when they name a person. Do not treat unlinked bank inflows as a customer deposit.',
       parameters: {
         type: 'object',
         properties: {
           limit: { type: 'integer', description: 'How many to return (1–15)', default: 5 },
+          customerQuery: {
+            type: 'string',
+            description: 'Customer or job name when asking if a specific person deposited',
+          },
         },
       },
     },
@@ -85,7 +89,7 @@ const TOOLS = [
     function: {
       name: 'get_job_details',
       description:
-        'Get full notes, payment schedule, and recent activity for one job. Use after global_search when the user asks about a specific job.',
+        'Get full notes, payment schedule, and recent activity for one job. Use after global_search when the user asks about a specific job. In voice mode this also opens the job card on the Files tab.',
       parameters: {
         type: 'object',
         properties: {
@@ -107,9 +111,29 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'open_job_card',
+      description:
+        'Open the job card as an overlay on the current screen. Do not navigate to pipeline. Opens the Files tab so photos are visible. Use when they ask to open a job or see its photos.',
+      parameters: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: 'Mongo job id from search results' },
+          tab: {
+            type: 'string',
+            enum: ['overview', 'schedule', 'payments', 'files', 'notes'],
+            description: 'Modal tab. Default files.',
+          },
+        },
+        required: ['jobId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'navigate_user',
       description:
-        'Ask the app to open a screen for the user. Only whitelisted paths are accepted; use exact pathnames from the site map.',
+        'Ask the app to open a screen for the user. Only whitelisted paths are accepted; use exact pathnames from the site map. Do not use this to open a job card — use open_job_card instead.',
       parameters: {
         type: 'object',
         properties: {
@@ -143,11 +167,20 @@ const TOOLS = [
     function: {
       name: 'show_jobs_on_map',
       description:
-        'Open the Orange County jobs map, filter pins, zoom to the matches, and highlight them. Use for "jobs in Dana Point", "show scheduled jobs", "jobs over 20 thousand", or any request to see jobs on the map. Then describe the mapped jobs in the same order returned.',
+        'Open the Orange County jobs map, filter pins, zoom to the matches, and highlight them. Use city for jobs IN a city. Use near + radiusMiles 25 for jobs NEAR / around a city. Then describe the mapped jobs in the same order returned.',
       parameters: {
         type: 'object',
         properties: {
-          city: { type: 'string', description: 'City such as Dana Point or San Clemente' },
+          city: { type: 'string', description: 'Exact city such as Dana Point. Use this for "jobs in [city]".' },
+          near: {
+            type: 'string',
+            description: 'City to search around. Use for "jobs near Fullerton" or "around Fullerton".',
+          },
+          radiusMiles: {
+            type: 'number',
+            description: 'Radius in miles when near is set. Default 25.',
+            default: 25,
+          },
           query: { type: 'string', description: 'Customer or job name fragment' },
           stage: {
             type: 'string',
@@ -241,11 +274,13 @@ function buildSystemPrompt(voice = false) {
     'Never ask the user for passwords or API keys. Never fabricate customer or financial data.',
     'Use tools when the user needs live data from their organization or when they want to jump to a page.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
+    'To open a job, call open_job_card. Do not navigate_user to /pipeline?jobId= or /customers?jobId=. The card opens on the current page, Files tab.',
     '',
     ...voiceLines,
     'Data tools — use these for operational questions:',
     '- get_recent_payments: customer payments marked received (job payment schedule)',
-    '- get_recent_deposits: CRM deposits, linked bank deposits, and bank register inflows',
+    '- get_recent_deposits: customer/job deposits. Pass customerQuery for "did [name] deposit". Answer from mostRecent / deposits, not unlinkedBankInflows',
+    '- open_job_card: open the job overlay here (Files tab). Do not switch to pipeline',
     '- search_job_notes: job modal notes and crew notes (materials to order, supplies, reminders)',
     '- get_job_details: one job\'s notes, payment schedule, and timeline (use jobId from search)',
     '- global_search: find a customer or job by name before get_job_details',
@@ -257,10 +292,14 @@ function buildSystemPrompt(voice = false) {
     '',
     'For "send [customer] to [employee]", call send_customer_info_text. Do not invent a phone number. Do not send custom message bodies — only the customer card.',
     'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
-    'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from the results only.',
-    'For "jobs in [city]", "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
+    'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
+    'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
+    'For "jobs in [city]", call show_jobs_on_map with city set to that city (exact city only).',
+    'For "jobs near [city]", "around [city]", or "close to [city]", call show_jobs_on_map with near set to that city and radiusMiles 25. Do not use city= for near.',
+    'For "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
+    'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
-    'When deposit sources differ (CRM vs bank), say which is most recent by date.',
+    'When deposit sources differ, prefer mostRecent (customer/job deposit). Ignore unlinkedBankInflows unless they asked about the bank register.',
     '',
     'Site map:',
     ROUTES_MARKDOWN,
@@ -307,6 +346,17 @@ async function openaiChat(payload) {
     throw err;
   }
   return JSON.parse(text);
+}
+
+function parseJobOpenFromPath(path) {
+  if (!path || typeof path !== 'string') return null;
+  try {
+    const url = new URL(path, 'http://local');
+    const jobId = url.searchParams.get('jobId');
+    return jobId ? { jobId } : null;
+  } catch {
+    return null;
+  }
 }
 
 async function runAssistantChat(req, res) {
@@ -380,7 +430,11 @@ async function runAssistantChat(req, res) {
               if (!tenantId) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
-                toolContent = await fetchRecentDeposits({ tenantId, limit: args.limit });
+                toolContent = await fetchRecentDeposits({
+                  tenantId,
+                  limit: args.limit,
+                  customerQuery: args.customerQuery,
+                });
               }
             } else if (fn.name === 'search_job_notes') {
               if (!tenantId) {
@@ -393,6 +447,9 @@ async function runAssistantChat(req, res) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
                 toolContent = await fetchJobDetails({ jobId: args.jobId });
+                if (voice && args.jobId && !toolContent?.error) {
+                  clientActions.push({ type: 'open_job', jobId: String(args.jobId), tab: 'files' });
+                }
               }
             } else if (fn.name === 'get_current_user_context') {
               const role = req.user?.role || 'unknown';
@@ -402,9 +459,24 @@ async function runAssistantChat(req, res) {
                 isAdmin: role === 'super_admin' || role === 'admin',
                 isSuperAdmin: role === 'super_admin',
               };
+            } else if (fn.name === 'open_job_card') {
+              const jobId = String(args.jobId || '').trim();
+              if (!jobId) {
+                toolContent = { ok: false, error: 'jobId is required' };
+              } else {
+                const tab = args.tab && ['overview', 'schedule', 'payments', 'files', 'notes'].includes(args.tab)
+                  ? args.tab
+                  : 'files';
+                clientActions.push({ type: 'open_job', jobId, tab });
+                toolContent = { ok: true, jobId, tab };
+              }
             } else if (fn.name === 'navigate_user') {
               const safe = sanitizeNavigatePath(args.path, req.user?.role);
-              if (safe) {
+              const jobOpen = parseJobOpenFromPath(safe);
+              if (jobOpen) {
+                clientActions.push({ type: 'open_job', jobId: jobOpen.jobId, tab: 'files' });
+                toolContent = { ok: true, openedJob: jobOpen.jobId, tab: 'files' };
+              } else if (safe) {
                 clientActions.push({ type: 'navigate', path: safe });
                 toolContent = { ok: true, path: safe };
               } else {
@@ -422,6 +494,8 @@ async function runAssistantChat(req, res) {
               } else {
                 const mapResult = await showJobsOnMap({
                   city: args.city,
+                  near: args.near,
+                  radiusMiles: args.radiusMiles,
                   query: args.query,
                   stage: args.stage,
                   scheduled: args.scheduled,

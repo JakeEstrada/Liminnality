@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SiteAssistantChat from '../assistant/SiteAssistantChat';
+import JobOverlayHost from '../voice/JobOverlayHost';
 import LiminalityRuntime from '../voice/LiminalityRuntime';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
@@ -44,6 +45,7 @@ function MainLayout({ children }) {
       </Box>
       {/* Voice + help stay off the phone layout. */}
       {!isMobile && <LiminalityRuntime />}
+      {!isMobile && <JobOverlayHost />}
       {!isMobile && <SiteAssistantChat />}
     </Box>
   );

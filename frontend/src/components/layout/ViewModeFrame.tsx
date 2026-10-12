@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import JobOverlayHost from '../voice/JobOverlayHost';
 import LiminalityRuntime from '../voice/LiminalityRuntime';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import {
@@ -113,6 +114,7 @@ function ViewModeFrame({ currentView, children }) {
       </Dialog>
       {children}
       {!isMobile ? <LiminalityRuntime /> : null}
+      {!isMobile ? <JobOverlayHost /> : null}
     </Box>
   );
 }

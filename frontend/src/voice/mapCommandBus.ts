@@ -3,6 +3,8 @@ export type MapViewId = 'all' | 'pipeline' | 'current' | 'week' | 'completed' | 
 export type MapShowCommand = {
   query?: string;
   city?: string;
+  near?: string;
+  radiusMiles?: number;
   stage?: string;
   scheduled?: 'any' | 'yes' | 'no';
   minAmount?: number | null;
@@ -100,22 +102,23 @@ export function parseMapShowAction(action: unknown): MapShowCommand | undefined 
     openFilters?: boolean;
   };
   if (row.type !== 'map_show') return undefined;
-  const filters = row.filters || {};
+  const filters: Partial<MapShowCommand> = row.filters || {};
   const jobIds =
     Array.isArray(row.jobIds) && row.jobIds.length
       ? row.jobIds.filter(Boolean)
       : (row.jobs || []).filter((job) => job?.mapped && job.id).map((job) => String(job.id));
   return {
     query: filters.query,
-    city: filters.city,
+    city: filters.near ? undefined : filters.city,
+    near: filters.near,
+    radiusMiles: Number(filters.radiusMiles) > 0 ? Number(filters.radiusMiles) : undefined,
     stage: filters.stage,
     scheduled: filters.scheduled,
     minAmount: filters.minAmount,
     maxAmount: filters.maxAmount,
-    view: filters.view,
+    view: filters.view && filters.view !== 'all' ? filters.view : 'pipeline',
     jobIds,
     openFilters: row.openFilters !== false,
     path: typeof row.path === 'string' ? row.path : undefined,
-    view: filters.view && filters.view !== 'all' ? filters.view : 'pipeline',
   };
 }

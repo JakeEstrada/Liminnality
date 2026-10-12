@@ -113,14 +113,17 @@ export default function LiminalityCommandsGuide() {
         body="Anything that sounds like a question goes to Paarth Help with live tenant data. Keep it to one ask at a time. She answers out loud in a couple of short sentences."
         examples={[
           { say: 'What’s the most recent payment?', does: 'Last customer payments marked received.' },
-          { say: 'What’s the most recent deposit?', does: 'CRM deposits, linked bank deposits, and bank register inflows.' },
+          { say: 'What’s the most recent deposit?', does: 'Latest customer/job deposit (paid deposit line on a job). Unlinked bank inflows are ignored.' },
+          { say: 'Did Hammer make a deposit?', does: 'Looks up that customer or job by name and says yes/no from their deposit record.' },
           { say: 'Who’s coming up?', does: 'Upcoming calendar appointments and jobs.' },
           { say: 'What’s on the calendar this week?', does: 'Same schedule lookup, next several days.' },
-          { say: 'What jobs do we have in Dana Point?', does: 'Opens the dashboard map, filters to that city, zooms in, and highlights each job as she names it.' },
+          { say: 'What jobs do we have in Dana Point?', does: 'Opens the dashboard map, filters to that city only, zooms in, and highlights each job as she names it.' },
+          { say: 'What jobs do we have near Fullerton?', does: 'Same map, but a 25-mile radius around that city — not only jobs inside Fullerton.' },
           { say: 'Show scheduled jobs over twenty thousand', does: 'Same map, filtered by scheduled + amount.' },
           { say: 'Jobs in Dana Point', does: 'Same map tour. You can also filter the map yourself by name, city, stage, scheduled, and amount.' },
+          { say: 'Open the Hammer job', does: 'Opens the job card here (does not switch to pipeline) on the Files tab so photos are visible.' },
           { say: 'Materials to order', does: 'Searches job notes and crew notes for supplies / hardware / cabinets.' },
-          { say: 'Tell me about the Hammer job', does: 'Looks up that job’s notes, payments, and recent activity.' },
+          { say: 'Tell me about the Hammer job', does: 'Looks up that job and opens the card on Files.' },
           { say: 'Find Skoczulek', does: 'Same search as the top-bar search: customers and jobs.' },
           { say: 'Open finance', does: 'Jumps to an in-app page (pipeline, customers, bills, payroll, and the rest of the allowed screens).' },
         ]}
