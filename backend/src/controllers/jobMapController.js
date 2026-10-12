@@ -128,20 +128,11 @@ function pinGroup(job) {
   return 'unscheduled';
 }
 
-function jobCity(job, address) {
+function jobCity(job) {
   const fromJob = String(job.jobAddress?.city || '').trim();
   if (fromJob) return fromJob;
   const customer = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
-  const fromCustomer = String(customer?.address?.city || customer?.addresses?.[0]?.city || '').trim();
-  if (fromCustomer) return fromCustomer;
-  const parts = String(address || '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length >= 3) {
-    return parts[parts.length - 2].replace(/\s+[A-Z]{2}(\s+\d{5}.*)?$/i, '').trim();
-  }
-  return '';
+  return String(customer?.address?.city || customer?.addresses?.[0]?.city || '').trim();
 }
 
 function jobAmount(job) {
@@ -160,7 +151,7 @@ function pinPayload(job, address, lat, lng) {
     title: String(job.title || 'Untitled job'),
     stage: String(job.stage || ''),
     customerName: String(customer?.name || '').trim(),
-    city: jobCity(job, address),
+    city: jobCity(job),
     amount: jobAmount(job),
     address,
     lat,

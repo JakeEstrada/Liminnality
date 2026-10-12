@@ -2,6 +2,7 @@ import {
   Box,
   Button,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -9,12 +10,16 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import {
+  Close as CloseIcon,
+  Fullscreen as FullscreenIcon,
+  FullscreenExit as FullscreenExitIcon,
+} from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../utils/axios';
-import { formatMoney } from '../../utils/paymentSchedule';
 import { subscribeMapCommands, type MapShowCommand, type MapViewId } from '../../voice/mapCommandBus';
 import JobDetailModal from '../jobs/JobDetailModal';
 import { chartPanelSx } from './dashboardChartPrimitives';
@@ -56,7 +61,6 @@ const EMPTY_FILTERS: MapFilters = {
 };
 
 const VIEWS: { id: MapViewId; label: string }[] = [
-  { id: 'all', label: 'All jobs' },
   { id: 'pipeline', label: 'Pipeline' },
   { id: 'current', label: 'On site now' },
   { id: 'week', label: 'This week' },
@@ -105,7 +109,7 @@ function placeMatch(hay: string, needle: string) {
   const a = normalizePlace(hay);
   const b = normalizePlace(needle);
   if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  return a === b || (` ${a} `).includes(` ${b} `);
 }
 
 function pinIcon(group = 'active', featured = false) {
@@ -127,11 +131,10 @@ function escapeHtml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-function pinLabel(pin: MapPin, hideSensitive: boolean) {
+function pinLabel(pin: MapPin) {
   const name = pin.customerName || pin.title || 'Job';
   const city = pin.city ? ` · ${pin.city}` : '';
-  const amount = !hideSensitive && pin.amount ? ` · ${formatMoney(pin.amount)}` : '';
-  return `${name}${city}${amount}`;
+  return `${name}${city}`;
 }
 
 function pinsForView(pins: Record<MapViewId, MapPin[]>, view: MapViewId) {
@@ -164,7 +167,22 @@ function pinMatches(pin: MapPin, filters: MapFilters) {
 }
 
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
-const OC_BOUNDS = L.latLngBounds([33.34, -118.18], [33.98, -117.4]);
+const OC_BOUNDS = L.latLngBounds([33.28, -118.26], [34.04, -117.32]);
+
+function fitPins(map: L.Map, pins: MapPin[]) {
+  const bounds = L.latLngBounds([]);
+  pins.forEach((pin) => bounds.extend([pin.lat, pin.lng]));
+  if (!bounds.isValid()) {
+    map.setView(OC_CENTER, 10);
+    return;
+  }
+  const maxZoom = pins.length <= 2 ? 13 : pins.length <= 6 ? 12 : 11;
+  map.fitBounds(bounds, {
+    padding: [90, 90],
+    maxZoom,
+    animate: true,
+  });
+}
 
 function addBasemap(map: L.Map) {
   const mapbox = String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '').trim();
@@ -206,6 +224,7 @@ export default function OrangeCountyJobMap({
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [filters, setFilters] = useState<MapFilters>(EMPTY_FILTERS);
   const [featuredJobId, setFeaturedJobId] = useState<string | null>(null);
+  const [fullScreen, setFullScreen] = useState(false);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [pins, setPins] = useState<Record<MapViewId, MapPin[]>>({
     all: [],
@@ -248,9 +267,9 @@ export default function OrangeCountyJobMap({
     const map = L.map(host, {
       center: OC_CENTER,
       zoom: 10,
-      minZoom: 9,
+      minZoom: 8,
       maxZoom: 18,
-      maxBounds: OC_BOUNDS.pad(0.08),
+      maxBounds: OC_BOUNDS.pad(0.18),
       scrollWheelZoom: true,
       attributionControl: true,
     });
@@ -270,7 +289,7 @@ export default function OrangeCountyJobMap({
     if (!ctx) return undefined;
     const timer = window.setTimeout(() => ctx.map.invalidateSize(), 200);
     return () => window.clearTimeout(timer);
-  }, [kiosk, filtersOpen]);
+  }, [fullScreen, kiosk, filtersOpen]);
 
   const viewPins = useMemo(() => pinsForView(pins, view), [pins, view]);
   const visiblePins = useMemo(() => viewPins.filter((pin) => pinMatches(pin, filters)), [filters, viewPins]);
@@ -298,8 +317,9 @@ export default function OrangeCountyJobMap({
   useEffect(() => {
     return subscribeMapCommands({
       show: (command: MapShowCommand) => {
+        setFullScreen(true);
         setFiltersOpen(command.openFilters !== false);
-        if (command.view) setView(command.view);
+        setView(command.view && command.view !== 'all' ? command.view : 'pipeline');
         setFilters({
           query: command.query || '',
           city: command.city || '',
@@ -312,11 +332,13 @@ export default function OrangeCountyJobMap({
         setFeaturedJobId(command.jobIds?.[0] || null);
       },
       highlight: (command) => {
-        if (command.jobId) {
-          setFeaturedJobId(command.jobId);
-          return;
-        }
-        setFeaturedJobId(command.jobIds?.[0] || null);
+        setFeaturedJobId(command.jobId || null);
+      },
+      reset: () => {
+        setView('pipeline');
+        setFilters(EMPTY_FILTERS);
+        setFeaturedJobId(null);
+        setFullScreen(false);
       },
     });
   }, []);
@@ -326,13 +348,12 @@ export default function OrangeCountyJobMap({
     if (!ctx) return;
     ctx.markers.clearLayers();
     markerByIdRef.current.clear();
-    const bounds = L.latLngBounds([]);
     visiblePins.forEach((pin) => {
       const marker = L.marker([pin.lat, pin.lng], {
         icon: pinIcon(pin.group, false),
         keyboard: true,
       });
-      marker.bindTooltip(escapeHtml(pinLabel(pin, hideSensitive)), {
+      marker.bindTooltip(escapeHtml(pinLabel(pin)), {
         direction: 'top',
         offset: [0, -12],
         opacity: 1,
@@ -345,18 +366,12 @@ export default function OrangeCountyJobMap({
       });
       marker.addTo(ctx.markers);
       markerByIdRef.current.set(pin.id, { marker, pin });
-      bounds.extend([pin.lat, pin.lng]);
     });
-    window.setTimeout(() => ctx.map.invalidateSize(), 40);
-    if (bounds.isValid()) {
-      ctx.map.fitBounds(bounds.pad(visiblePins.length === 1 ? 0.35 : 0.2), {
-        maxZoom: visiblePins.length === 1 ? 15 : 14,
-        animate: true,
-      });
-    } else {
-      ctx.map.setView(OC_CENTER, 10);
-    }
-  }, [hideSensitive, visiblePins]);
+    window.setTimeout(() => {
+      ctx.map.invalidateSize();
+      fitPins(ctx.map, visiblePins);
+    }, 40);
+  }, [visiblePins]);
 
   useEffect(() => {
     const ctx = mapRef.current;
@@ -366,7 +381,7 @@ export default function OrangeCountyJobMap({
       marker.setIcon(pinIcon(pin.group, featured));
       marker.setZIndexOffset(featured ? 800 : 0);
       marker.unbindTooltip();
-      marker.bindTooltip(escapeHtml(pinLabel(pin, hideSensitive)), {
+      marker.bindTooltip(escapeHtml(pinLabel(pin)), {
         direction: 'top',
         offset: [0, -12],
         opacity: 1,
@@ -377,11 +392,7 @@ export default function OrangeCountyJobMap({
       if (featured) marker.openTooltip();
       else marker.closeTooltip();
     });
-    const featured = featuredJobId ? markerByIdRef.current.get(featuredJobId) : null;
-    if (featured) {
-      ctx.map.panTo([featured.pin.lat, featured.pin.lng], { animate: true });
-    }
-  }, [featuredJobId, hideSensitive, visiblePins]);
+  }, [featuredJobId, visiblePins]);
 
   const handleJobUpdate = useCallback(async (jobId: string, updates: Record<string, unknown>) => {
     await api.patch(`/jobs/${jobId}`, updates);
@@ -391,6 +402,15 @@ export default function OrangeCountyJobMap({
     setOpenJobId(null);
   }, []);
 
+  useEffect(() => {
+    if (!fullScreen) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFullScreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullScreen]);
+
   const fieldSx = { minWidth: { xs: '100%', sm: 140 }, flex: { sm: '0 0 auto' } };
 
   return (
@@ -399,10 +419,23 @@ export default function OrangeCountyJobMap({
       elevation={0}
       sx={{
         ...chartPanelSx(theme),
-        display: { xs: kiosk ? 'flex' : 'none', md: 'flex' },
-        minHeight: kiosk ? 0 : { md: 720 },
-        height: kiosk ? '100%' : 'auto',
-        flex: kiosk ? 1 : undefined,
+        display: { xs: kiosk || fullScreen ? 'flex' : 'none', md: 'flex' },
+        ...(fullScreen
+          ? {
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1400,
+              borderRadius: 0,
+              width: '100vw',
+              height: '100vh',
+              minHeight: '100vh',
+              m: 0,
+            }
+          : {
+              minHeight: kiosk ? 0 : { md: 720 },
+              height: kiosk ? '100%' : 'auto',
+              flex: kiosk ? 1 : undefined,
+            }),
       }}
     >
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.5, mb: 1.5, flexShrink: 0 }}>
@@ -428,6 +461,18 @@ export default function OrangeCountyJobMap({
         >
           Filters
         </Button>
+        <IconButton
+          size="small"
+          aria-label={fullScreen ? 'Exit full screen' : 'Full screen map'}
+          onClick={() => setFullScreen((open) => !open)}
+        >
+          {fullScreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+        </IconButton>
+        {fullScreen ? (
+          <IconButton size="small" aria-label="Close full screen map" onClick={() => setFullScreen(false)}>
+            <CloseIcon />
+          </IconButton>
+        ) : null}
       </Box>
       {filtersOpen ? (
         <Box
@@ -451,7 +496,11 @@ export default function OrangeCountyJobMap({
             <Select
               label="City"
               value={filters.city}
-              onChange={(event) => setFilters((current) => ({ ...current, city: String(event.target.value), jobIds: [] }))}
+              onChange={(event) => {
+                const city = String(event.target.value);
+                if (!city) setView('pipeline');
+                setFilters((current) => ({ ...current, city, jobIds: [] }));
+              }}
             >
               <MenuItem value="">All cities</MenuItem>
               {cities.map((city) => (
@@ -545,7 +594,7 @@ export default function OrangeCountyJobMap({
         sx={{
           position: 'relative',
           flex: 1,
-          minHeight: kiosk ? 0 : 620,
+          minHeight: fullScreen ? 0 : kiosk ? 0 : 620,
           borderRadius: 2,
           overflow: 'hidden',
           '& .leaflet-container': {

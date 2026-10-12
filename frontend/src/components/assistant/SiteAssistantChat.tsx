@@ -49,7 +49,11 @@ export default function SiteAssistantChat() {
       if (mapShow) {
         applyMapShow(mapShow);
         if (mapShow.path) navigate(mapShow.path);
-        if (mapShow.jobIds.length) startMapTour(mapShow.jobIds, Math.max(4000, mapShow.jobIds.length * 2200));
+        if (mapShow.jobIds.length) {
+          const duration = Math.max(4000, mapShow.jobIds.length * 2200);
+          const stopTour = startMapTour(mapShow.jobIds, duration);
+          window.setTimeout(stopTour, duration);
+        }
       }
       for (const a of actions) {
         if (a?.type === 'navigate' && typeof a.path === 'string') {

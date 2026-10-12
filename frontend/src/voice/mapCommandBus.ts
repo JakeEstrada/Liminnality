@@ -21,6 +21,7 @@ export type MapHighlightCommand = {
 type MapListener = {
   show?: (command: MapShowCommand) => void;
   highlight?: (command: MapHighlightCommand) => void;
+  reset?: () => void;
 };
 
 let lastShow: MapShowCommand | null = null;
@@ -55,24 +56,31 @@ export function subscribeMapCommands(listener: MapListener) {
   };
 }
 
+export function resetMapToPipeline() {
+  lastShow = null;
+  listeners.forEach((listener) => listener.reset?.());
+}
+
 export function startMapTour(jobIds: string[], durationMs: number) {
   const ids = jobIds.filter(Boolean);
-  if (!ids.length) return () => {};
+  if (!ids.length) return () => resetMapToPipeline();
   const step = Math.max(1600, Math.floor(Math.max(durationMs, 2400) / ids.length));
   let index = 0;
+  let finished = false;
   highlightMapJobs({ jobId: ids[0] });
   const timer = window.setInterval(() => {
     index += 1;
     if (index >= ids.length) {
       window.clearInterval(timer);
-      highlightMapJobs({ jobIds: ids });
       return;
     }
     highlightMapJobs({ jobId: ids[index] });
   }, step);
   return () => {
+    if (finished) return;
+    finished = true;
     window.clearInterval(timer);
-    highlightMapJobs({ jobIds: ids });
+    resetMapToPipeline();
   };
 }
 
@@ -108,5 +116,6 @@ export function parseMapShowAction(action: unknown): MapShowCommand | undefined 
     jobIds,
     openFilters: row.openFilters !== false,
     path: typeof row.path === 'string' ? row.path : undefined,
+    view: filters.view && filters.view !== 'all' ? filters.view : 'pipeline',
   };
 }

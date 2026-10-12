@@ -562,7 +562,7 @@ function placeMatch(hay, needle) {
   const a = normalizePlace(hay);
   const b = normalizePlace(needle);
   if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  return a === b || (` ${a} `).includes(` ${b} `);
 }
 
 function resolveMapStage(raw) {
@@ -585,19 +585,10 @@ function mapJobAmount(job) {
   return 0;
 }
 
-function mapJobCity(job, address) {
+function mapJobCity(job) {
   const fromJob = String(job.jobAddress?.city || '').trim();
   if (fromJob) return fromJob;
-  const fromCustomer = String(job.customerId?.address?.city || '').trim();
-  if (fromCustomer) return fromCustomer;
-  const parts = String(address || '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length >= 3) {
-    return parts[parts.length - 2].replace(/\s+[A-Z]{2}(\s+\d{5}.*)?$/i, '').trim();
-  }
-  return '';
+  return String(job.customerId?.address?.city || '').trim();
 }
 
 function mapPagePath(pagePath) {
@@ -628,7 +619,7 @@ async function showJobsOnMap({
   const scheduledQ = String(scheduled || 'any').toLowerCase();
   const min = Number(minAmount);
   const max = Number(maxAmount);
-  const viewQ = ['all', 'pipeline', 'current', 'week', 'completed', 'archived'].includes(String(view || ''))
+  const viewQ = ['pipeline', 'current', 'week', 'completed', 'archived'].includes(String(view || ''))
     ? String(view)
     : 'pipeline';
 
@@ -650,7 +641,7 @@ async function showJobsOnMap({
   const filtered = jobs.filter((job) => {
     if (viewQ !== 'archived' && MAP_ESTIMATE_STAGES.has(String(job.stage || ''))) return false;
     const address = formatJobLocation(job);
-    const jobCity = mapJobCity(job, address);
+    const jobCity = mapJobCity(job);
     const hay = [job.title, job.customerId?.name, jobCity, address].filter(Boolean).join(' ');
     if (textQ && !new RegExp(escapeRegex(textQ), 'i').test(hay)) return false;
     if (cityQ && !placeMatch(`${jobCity} ${address}`, cityQ)) return false;
@@ -676,7 +667,7 @@ async function showJobsOnMap({
       id: String(job._id),
       title: job.title || 'Untitled',
       customerName: job.customerId?.name || null,
-      city: mapJobCity(job, address) || null,
+      city: mapJobCity(job) || null,
       amount: formatMoney(mapJobAmount(job)),
       stage: job.stage || null,
       scheduled: MAP_SCHEDULED_STAGES.has(String(job.stage || '')) || Boolean(job.isCompletedClosedOut),
