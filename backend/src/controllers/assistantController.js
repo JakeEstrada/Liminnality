@@ -350,6 +350,121 @@ async function openaiChat(payload) {
   return JSON.parse(text);
 }
 
+function speakMoney(amount) {
+  if (amount == null || !Number.isFinite(Number(amount))) return '';
+  return `$${Number(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
+function voiceReplyFromTools(roundTools) {
+  if (!Array.isArray(roundTools) || !roundTools.length) return null;
+  if (roundTools.some((row) => row?.content?.error)) return null;
+  if (roundTools.length !== 1) return null;
+  const { name, content } = roundTools[0];
+  if (!content || typeof content !== 'object') return null;
+
+  if (name === 'show_jobs_on_map') {
+    const n = Number(content.mappedCount || 0);
+    const noun = n === 1 ? 'job' : 'jobs';
+    const place = content.filters?.near || content.filters?.city;
+    if (content.filters?.near && place) return `${n} ${noun} near ${place}.`;
+    if (place) return `${n} ${noun} in ${place}.`;
+    return `${n} ${noun} on the map.`;
+  }
+
+  if (name === 'open_job_card') {
+    return content.ok ? 'Opened the job.' : null;
+  }
+
+  if (name === 'navigate_user') {
+    return content.ok ? 'Opened.' : null;
+  }
+
+  if (name === 'get_job_details' && !content.error) {
+    return `Opened the ${content.customerName || content.title || 'job'}.`;
+  }
+
+  if (name === 'get_recent_payments') {
+    const payment = content.payments?.[0];
+    if (!payment) return 'No recent payments.';
+    const who = payment.customerName || payment.jobTitle || 'A customer';
+    const amount = speakMoney(payment.amount);
+    const date = payment.paidDate || '';
+    return [who, amount && `paid ${amount}`, date && `on ${date}`].filter(Boolean).join(' ') + '.';
+  }
+
+  if (name === 'get_recent_deposits') {
+    if (content.matchedCustomer && !content.found) {
+      return `No deposit for ${content.matchedCustomer}.`;
+    }
+    const deposit = content.mostRecent;
+    if (!deposit) return 'No customer deposits found.';
+    const who = deposit.customerName || deposit.jobTitle || content.matchedCustomer || 'A customer';
+    const amount = speakMoney(deposit.amount);
+    const date = deposit.date || '';
+    if (content.matchedCustomer) {
+      return ['Yes.', who, amount && `deposited ${amount}`, date && `on ${date}`].filter(Boolean).join(' ') + '.';
+    }
+    return ['Most recent deposit is', amount, who && `from ${who}`, date && `on ${date}`].filter(Boolean).join(' ') + '.';
+  }
+
+  if (name === 'send_customer_info_text') {
+    if (content.sent) return `Sent ${content.customerName} to ${content.toName}.`;
+    return null;
+  }
+
+  if (name === 'get_upcoming_schedule') {
+    const first = content.appointments?.[0] || content.jobsOnCalendar?.[0];
+    if (!first) return 'Nothing coming up on the calendar.';
+    const who = first.customerName || first.title || first.jobTitle || 'the next job';
+    const date = first.date || first.startDate || '';
+    return ['Next is', who, date].filter(Boolean).join(' ') + '.';
+  }
+
+  return null;
+}
+
+async function runMapShow(req, res) {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'No organization context for this account.' });
+  }
+  const pagePath = String(req.body?.pagePath || '').trim().slice(0, 300);
+  try {
+    const mapResult = await showJobsOnMap({
+      city: req.body?.city,
+      near: req.body?.near,
+      radiusMiles: req.body?.radiusMiles,
+      query: req.body?.query,
+      stage: req.body?.stage,
+      scheduled: req.body?.scheduled,
+      minAmount: req.body?.minAmount,
+      maxAmount: req.body?.maxAmount,
+      view: req.body?.view,
+      pagePath,
+      limit: req.body?.limit,
+    });
+    const jobs = mapResult.jobs.filter((job) => job.mapped);
+    const canned = voiceReplyFromTools([
+      { name: 'show_jobs_on_map', content: { ...mapResult, mappedCount: jobs.length } },
+    ]);
+    return res.json({
+      reply: canned || 'Jobs on the map.',
+      actions: [
+        {
+          type: 'map_show',
+          path: mapResult.path,
+          filters: mapResult.filters,
+          jobIds: jobs.map((job) => job.id),
+          jobs,
+          openFilters: true,
+        },
+      ],
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'Map lookup failed.' });
+  }
+}
+
 function parseJobOpenFromPath(path) {
   if (!path || typeof path !== 'string') return null;
   try {
@@ -403,6 +518,7 @@ async function runAssistantChat(req, res) {
       messages.push(msg);
 
       if (msg.tool_calls && msg.tool_calls.length) {
+        const roundTools = [];
         for (const tc of msg.tool_calls) {
           const id = tc.id;
           const fn = tc.function;
@@ -554,15 +670,19 @@ async function runAssistantChat(req, res) {
             tool_call_id: id,
             content: JSON.stringify(toolContent),
           });
+          roundTools.push({ name: fn.name, content: toolContent });
+        }
+        if (voice) {
+          const canned = voiceReplyFromTools(roundTools);
+          if (canned) {
+            return res.json({
+              reply: canned,
+              actions: clientActions.length ? clientActions : undefined,
+            });
+          }
         }
         continue;
       }
-
-      const reply = typeof msg.content === 'string' ? msg.content.trim() : '';
-      return res.json({
-        reply: reply || 'Done.',
-        actions: clientActions.length ? clientActions : undefined,
-      });
     }
 
     return res.status(502).json({ error: 'Assistant stopped after too many tool rounds.' });
@@ -581,4 +701,5 @@ async function runAssistantChat(req, res) {
 
 module.exports = {
   runAssistantChat,
+  runMapShow,
 };

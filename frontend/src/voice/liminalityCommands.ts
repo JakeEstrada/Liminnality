@@ -289,6 +289,44 @@ const SEND_OR_ASK =
   /\b(send|text|message)\b|\bcoming up\b|\bdeposit|\bpayment\b|\bschedule\b/;
 const NAV_PREFIX = /^(open|go to|take me to|switch to|bring up|show me the|show the)\s+/;
 
+export type MapJobSpeech = {
+  city?: string;
+  near?: string;
+  radiusMiles?: number;
+};
+
+const MAP_NEAR =
+  /^(?:(?:what|which)\s+)?(?:jobs?|work)\s+(?:do\s+we\s+have\s+)?(?:near|around|close\s+to)\s+(.+?)\s*\??$/;
+const MAP_IN =
+  /^(?:(?:what|which)\s+)?(?:jobs?|work)\s+(?:do\s+we\s+have\s+)?(?:in|at)\s+(.+?)\s*\??$/;
+const SHOW_NEAR =
+  /^(?:show|open|find|list)\s+(?:me\s+)?(?:the\s+)?jobs?\s+(?:near|around|close\s+to)\s+(.+?)\s*\??$/;
+const SHOW_IN =
+  /^(?:show|open|find|list)\s+(?:me\s+)?(?:the\s+)?jobs?\s+(?:in|at)\s+(.+?)\s*\??$/;
+
+function cleanMapPlace(raw: string) {
+  return String(raw || '')
+    .replace(/\b(california|ca|please)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function parseMapJobSpeech(raw: string): MapJobSpeech | null {
+  const text = normalizeSpeech(raw);
+  if (!text) return null;
+  const near = text.match(MAP_NEAR) || text.match(SHOW_NEAR);
+  if (near) {
+    const place = cleanMapPlace(near[1]);
+    return place ? { near: place, radiusMiles: 10 } : null;
+  }
+  const exact = text.match(MAP_IN) || text.match(SHOW_IN);
+  if (exact) {
+    const place = cleanMapPlace(exact[1]);
+    return place ? { city: place } : null;
+  }
+  return null;
+}
+
 /** Returns one command when exactly one destination matches. Never guesses. */
 export function matchLiminalityCommand(raw: string): LiminalityCommand | null {
   const text = normalizeSpeech(raw);

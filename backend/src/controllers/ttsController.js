@@ -125,26 +125,69 @@ function catalog(req, res) {
   });
 }
 
-async function synthesizeSpeech(req, res) {
+function prepareSpeechRequest(req) {
   const text = String(req.body?.text || '').trim().slice(0, MAX_TTS_CHARS);
-  if (!text) {
-    return res.status(400).json({ error: 'Text is required.' });
-  }
-
-  const parsed = parseVoice(req.body?.voice);
+  if (!text) return { error: 'Text is required.', status: 400 };
   const keyProblem = elevenKeyProblem();
-  if (keyProblem) {
-    return res.status(503).json({ error: keyProblem });
-  }
+  if (keyProblem) return { error: keyProblem, status: 503 };
+  const parsed = parseVoice(req.body?.voice);
+  const tone = String(req.body?.tone || '').toLowerCase() === 'candid' ? 'candid' : 'polite';
+  return {
+    text,
+    tone,
+    elevenId: parsed.elevenId || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id,
+    key: elevenKey(),
+  };
+}
+
+async function synthesizeSpeech(req, res) {
+  const ready = prepareSpeechRequest(req);
+  if (ready.error) return res.status(ready.status).json({ error: ready.error });
 
   try {
-    const tone = String(req.body?.tone || '').toLowerCase() === 'candid' ? 'candid' : 'polite';
-    const elevenId = parsed.elevenId || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id;
-    const audio = await requestElevenSpeech(elevenKey(), elevenId, text, tone);
+    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'mp3');
     if (audio.ok) return sendAudio(res, audio.buffer);
     return res.status(502).json({ error: audio.error });
   } catch {
     return res.status(502).json({ error: 'Could not generate ElevenLabs speech.' });
+  }
+}
+
+async function streamSpeech(req, res) {
+  const ready = prepareSpeechRequest(req);
+  if (ready.error) return res.status(ready.status || 400).json({ error: ready.error });
+
+  try {
+    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'pcm');
+    if (!audio.ok || !audio.body) {
+      return res.status(502).json({ error: audio.error || 'Could not stream ElevenLabs speech.' });
+    }
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Paarth-Audio', 'pcm_s16le_24000');
+    const { Readable } = require('stream');
+    const nodeStream = typeof Readable.fromWeb === 'function' ? Readable.fromWeb(audio.body) : null;
+    if (!nodeStream) {
+      const buffer = Buffer.from(await new Response(audio.body).arrayBuffer());
+      return res.send(buffer);
+    }
+    req.on('close', () => {
+      try {
+        nodeStream.destroy();
+      } catch {
+        /* ignore */
+      }
+    });
+    nodeStream.on('error', () => {
+      if (!res.headersSent) res.status(502).end();
+      else res.end();
+    });
+    nodeStream.pipe(res);
+  } catch {
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'Could not stream ElevenLabs speech.' });
+    }
+    res.end();
   }
 }
 
@@ -204,28 +247,31 @@ function parseElevenError(raw, status) {
   return friendlyElevenError(detail);
 }
 
-async function requestElevenSpeech(key, voiceId, text, tone = 'polite') {
+async function requestElevenSpeech(key, voiceId, text, tone = 'polite', format = 'mp3') {
   const models = elevenModelChain();
   let lastError = 'ElevenLabs could not generate speech.';
+  const stream = format === 'pcm';
+  const path = stream ? `${ELEVEN_SPEECH_URL}/${voiceId}/stream` : `${ELEVEN_SPEECH_URL}/${voiceId}`;
+  const query = stream
+    ? 'output_format=pcm_24000&optimize_streaming_latency=4'
+    : 'output_format=mp3_44100_64&optimize_streaming_latency=4';
 
   for (const model of models) {
-    const response = await fetch(
-      `${ELEVEN_SPEECH_URL}/${voiceId}?output_format=mp3_44100_64&optimize_streaming_latency=4`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': key,
-          'Content-Type': 'application/json',
-          Accept: 'audio/mpeg',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: model,
-          voice_settings: voiceSettingsFor(model, tone),
-        }),
-      }
-    );
+    const response = await fetch(`${path}?${query}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': key,
+        'Content-Type': 'application/json',
+        Accept: stream ? 'application/octet-stream' : 'audio/mpeg',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: model,
+        voice_settings: voiceSettingsFor(model, tone),
+      }),
+    });
     if (response.ok) {
+      if (stream) return { ok: true, body: response.body };
       return { ok: true, buffer: Buffer.from(await response.arrayBuffer()) };
     }
     lastError = parseElevenError(await response.text().catch(() => ''), response.status);
@@ -273,4 +319,4 @@ async function requestOpenAiSpeech(key, voice, text, tone = 'polite') {
   return Buffer.from(await response.arrayBuffer());
 }
 
-module.exports = { synthesizeSpeech, catalog };
+module.exports = { synthesizeSpeech, streamSpeech, catalog };

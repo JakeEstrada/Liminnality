@@ -8,7 +8,7 @@ import {
   speakText,
 } from '../voice/browserSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
-import { askLiminalityAssistant, spokenAssistantReply } from '../voice/assistantVoice';
+import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
 import { abortMapTour, applyMapShow, narrateMapTour } from '../voice/mapCommandBus';
 import {
@@ -19,6 +19,7 @@ import {
   isCloseWorkCommand,
   liminalityCommandRoute,
   matchLiminalityCommand,
+  parseMapJobSpeech,
   parseSendSpeech,
   registerForWake,
   sendUtteranceFor,
@@ -313,6 +314,36 @@ export function useLiminalityVoice({
             listenForCommands();
             return;
           }
+        }
+
+        const mapIntent = parseMapJobSpeech(stripped);
+        if (mapIntent) {
+          setStatusLabel('Opening the map');
+          const result = await askMapJobs(mapIntent);
+          assistantHistoryRef.current = [
+            ...assistantHistoryRef.current,
+            { role: 'user', content: stripped },
+            { role: 'assistant', content: result.reply },
+          ].slice(-8);
+          if (result.mapShow) {
+            setPhase('executing');
+            applyMapShow(result.mapShow);
+            if (result.path) {
+              onNavigateRef.current(result.path);
+              await new Promise((resolve) => window.setTimeout(resolve, 450));
+              applyMapShow(result.mapShow);
+            }
+            if (workGenRef.current !== workGen) return;
+            interruptibleRef.current = true;
+            await new Promise((resolve) => window.setTimeout(resolve, 400));
+            if (workGenRef.current !== workGen) return;
+            await narrateMapTour(result.mapShow, speakAndWait);
+          } else {
+            await speakAndWait(result.reply || 'No jobs on the map.');
+          }
+          if (workGenRef.current !== workGen) return;
+          listenForCommands();
+          return;
         }
 
         const command = matchLiminalityCommand(stripped);
