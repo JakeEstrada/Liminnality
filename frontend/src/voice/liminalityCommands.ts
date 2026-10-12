@@ -136,6 +136,8 @@ const BACKUP_WAKE_PATTERN =
 const NAME_WAKE_PATTERN = /\b(limin+al[a-z]*|lemon\s*al+it(?:y|ies)?|liminal\s*tea)\b/;
 const CANCEL_COMMAND =
   /^(stop|cancel|never\s*mind|that'?s\s+all|go\s+to\s+sleep|good\s*bye|we'?re\s+good|thanks|thank\s+you)$/;
+const CLOSE_WORK_COMMAND =
+  /^(close|close\s+it|close\s+that|close\s+this|shut\s+it|shut\s+that|shut\s+this)$/;
 
 export function isBackupWakeWord(raw: string) {
   return BACKUP_WAKE_PATTERN.test(normalizeSpeech(raw));
@@ -148,6 +150,10 @@ export function hasWakeWord(raw: string) {
 
 export function isCancelCommand(raw: string) {
   return CANCEL_COMMAND.test(normalizeSpeech(raw));
+}
+
+export function isCloseWorkCommand(raw: string) {
+  return CLOSE_WORK_COMMAND.test(normalizeSpeech(raw));
 }
 
 const recentBanter: string[] = [];

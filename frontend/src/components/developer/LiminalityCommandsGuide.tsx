@@ -130,10 +130,19 @@ export default function LiminalityCommandsGuide() {
       />
 
       <Section
-        title="Stop listening"
-        body="Any of these closes the 60-second window and she goes back to waiting for a wake word."
+        title="Close what she opened"
+        body="If she opened the wrong job or started the wrong map tour, say Close. She drops that work and keeps listening so you can try again. You can interrupt her while she is talking."
         examples={[
-          { say: 'Stop', does: 'Cancels the current listen window.' },
+          { say: 'Close', does: 'Closes the job card, stops the map tour, and cuts her off. Still listening.' },
+          { say: 'Close it', does: 'Same. Close that / shut it also work.' },
+        ]}
+      />
+
+      <Section
+        title="Stop listening"
+        body="Any of these closes the listen window and she goes back to waiting for a wake word."
+        examples={[
+          { say: 'Stop', does: 'Cancels the current listen window and any open job or map tour.' },
           { say: 'Never mind', does: 'Same. Cancel, that’s all, goodbye, thanks, and go to sleep also work.' },
         ]}
       />

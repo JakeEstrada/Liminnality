@@ -92,28 +92,42 @@ function wait(ms: number) {
   });
 }
 
+let tourAborted = false;
+let stopTimedTour: (() => void) | null = null;
+
+export function abortMapTour() {
+  tourAborted = true;
+  stopTimedTour?.();
+  stopTimedTour = null;
+  resetMapToPipeline();
+}
+
 export async function narrateMapTour(
   command: MapShowCommand,
   speak: (text: string) => Promise<void>,
 ) {
+  tourAborted = false;
   const jobs =
     command.jobs.length > 0
       ? command.jobs
       : command.jobIds.filter(Boolean).map((id) => ({ id }));
   if (!jobs.length) {
-    await speak(mapTourIntro(command));
-    resetMapToPipeline();
+    if (!tourAborted) await speak(mapTourIntro(command));
+    if (!tourAborted) resetMapToPipeline();
     return;
   }
   try {
+    if (tourAborted) return;
     await speak(mapTourIntro(command));
     for (const job of jobs) {
+      if (tourAborted) return;
       highlightMapJobs({ jobId: job.id });
       await wait(350);
+      if (tourAborted) return;
       await speak(spokenMapJobLine(job));
     }
   } finally {
-    resetMapToPipeline();
+    if (!tourAborted) resetMapToPipeline();
   }
 }
 
@@ -132,12 +146,14 @@ export function startMapTour(jobIds: string[], durationMs: number) {
     }
     highlightMapJobs({ jobId: ids[index] });
   }, step);
-  return () => {
+  const stop = () => {
     if (finished) return;
     finished = true;
     window.clearInterval(timer);
     resetMapToPipeline();
   };
+  stopTimedTour = stop;
+  return stop;
 }
 
 export function estimateSpeechMs(text: string) {
