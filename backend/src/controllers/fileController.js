@@ -7,6 +7,7 @@ const { Readable } = require('stream');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, BUCKET_NAME, isS3Configured } = require('../config/s3');
 const { getTenantContext } = require('../middleware/tenantContext');
+const { resolveJobId } = require('../utils/resolveJobId');
 // Get uploads directory - same as in upload.js middleware
 // Use environment variable if set, otherwise use relative path
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
@@ -549,7 +550,10 @@ async function uploadTwilioMmsStaging(req, res) {
 // Get files for a job
 async function getJobFiles(req, res) {
   try {
-    const { jobId } = req.params;
+    const jobId = resolveJobId(req.params.jobId);
+    if (!jobId) {
+      return res.status(400).json({ error: 'Invalid job id' });
+    }
 
     await File.updateMany({ jobId, isLocked: true }, { $set: { isLocked: false, lockedAt: null } });
 

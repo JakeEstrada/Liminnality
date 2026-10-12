@@ -10,7 +10,7 @@ import {
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, spokenAssistantReply } from '../voice/assistantVoice';
 import { openJobOverlay } from '../voice/jobOverlayBus';
-import { applyMapShow, estimateSpeechMs, startMapTour } from '../voice/mapCommandBus';
+import { applyMapShow, narrateMapTour } from '../voice/mapCommandBus';
 import {
   COMMAND_ENDPOINT_MS,
   COMMAND_TIMEOUT_MS,
@@ -328,17 +328,13 @@ export function useLiminalityVoice({
           if (send.matched && send.job && send.employee && /sent|texted|messaged/i.test(result.reply || '')) {
             pendingSendRef.current = {};
           }
-          const stopTour = result.mapShow?.jobIds?.length
-            ? startMapTour(result.mapShow.jobIds, estimateSpeechMs(result.reply || ''))
-            : () => {};
-          try {
-            if (result.reply) {
-              await speakAndWait(result.reply);
-            } else {
-              await speakAndWait("Didn't catch that. Say it again.");
-            }
-          } finally {
-            stopTour();
+          if (result.mapShow && (result.mapShow.jobs.length || result.mapShow.jobIds.length)) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400));
+            await narrateMapTour(result.mapShow, speakAndWait);
+          } else if (result.reply) {
+            await speakAndWait(result.reply);
+          } else {
+            await speakAndWait("Didn't catch that. Say it again.");
           }
         } catch (error) {
           const data = (error as { response?: { data?: { error?: string } } })?.response?.data;

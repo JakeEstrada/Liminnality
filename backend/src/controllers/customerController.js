@@ -630,6 +630,7 @@ async function fetchGlobalCustomerSearchResults({ tenantId, q, limit: limitArg }
     const destination = jobSearchDestination(job);
     return {
       id: `job-${job._id}`,
+      jobId: String(job._id),
       type: destination.type,
       title: job.title || 'Job',
       subtitle: customerName ? `Customer: ${customerName}` : destination.subtitle,

@@ -8,6 +8,7 @@ const DepositAllocation = require('../models/DepositAllocation');
 const PlaidRegisterCache = require('../models/PlaidRegisterCache');
 const { formatJobLocation, inOrangeCounty } = require('./geocodeService');
 const { lookupCityCenter, milesBetween } = require('./ocCityCenters');
+const { resolveJobId } = require('../utils/resolveJobId');
 
 const SHOP_TIMEZONE = 'America/Los_Angeles';
 
@@ -339,7 +340,7 @@ async function searchJobNotes({ query, limit: limitArg = 12 } = {}) {
  * Detailed job context: notes, payment schedule, recent timeline.
  */
 async function fetchJobDetails({ jobId }) {
-  const id = String(jobId || '').trim();
+  const id = resolveJobId(jobId);
   if (!id) return { error: 'jobId is required' };
 
   const job = await Job.findById(id)
@@ -756,8 +757,8 @@ async function showJobsOnMap({
   pagePath,
   limit: limitArg = 8,
 } = {}) {
-  const limit = clampLimit(limitArg, 8, 12);
   const place = parseNearPlace({ city, near, radiusMiles });
+  const limit = place.center ? 24 : clampLimit(limitArg, 8, 12);
   let cityQ = place.city;
   const nearQ = place.near;
   const radiusQ = place.radiusMiles;

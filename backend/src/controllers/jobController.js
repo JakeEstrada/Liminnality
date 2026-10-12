@@ -18,6 +18,7 @@ const {
 const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationService');
 const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity, reconcilePaymentReceivedActivities } = require('../services/paymentActivitySync');
 const { applyReferralFields } = require('../utils/referralCompany');
+const { resolveJobId } = require('../utils/resolveJobId');
 const { syncJobGeo, parseManualGeo, manualGeoPayload } = require('../services/geocodeService');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
@@ -136,7 +137,11 @@ async function getJobs(req, res) {
 // Get single job
 async function getJob(req, res) {
   try {
-    const job = await Job.findById(req.params.id)
+    const id = resolveJobId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Invalid job id' });
+    }
+    const job = await Job.findById(id)
       .populate('customerId')
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')

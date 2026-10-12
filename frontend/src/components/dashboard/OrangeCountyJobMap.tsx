@@ -353,7 +353,7 @@ export default function OrangeCountyJobMap({
           maxAmount: command.maxAmount != null ? String(command.maxAmount) : '',
           jobIds: command.jobIds || [],
         });
-        setFeaturedJobId(command.jobIds?.[0] || null);
+        setFeaturedJobId(null);
       },
       highlight: (command) => {
         setFeaturedJobId(command.jobId || null);
@@ -413,8 +413,15 @@ export default function OrangeCountyJobMap({
         permanent: featured,
         className: featured ? 'paarth-job-tooltip is-featured' : 'paarth-job-tooltip',
       });
-      if (featured) marker.openTooltip();
-      else marker.closeTooltip();
+      if (featured) {
+        marker.openTooltip();
+        const currentZoom = ctx.map.getZoom();
+        ctx.map.flyTo(marker.getLatLng(), Math.min(13, Math.max(currentZoom, 12)), {
+          duration: 0.4,
+        });
+      } else {
+        marker.closeTooltip();
+      }
     });
   }, [featuredJobId, visiblePins]);
 

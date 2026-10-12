@@ -51,7 +51,7 @@ export default function SiteAssistantChat() {
         applyMapShow(mapShow);
         if (mapShow.path) navigate(mapShow.path);
         if (mapShow.jobIds.length) {
-          const duration = Math.max(4000, mapShow.jobIds.length * 2200);
+          const duration = Math.max(4000, mapShow.jobIds.length * 2400);
           const stopTour = startMapTour(mapShow.jobIds, duration);
           window.setTimeout(stopTour, duration);
         }

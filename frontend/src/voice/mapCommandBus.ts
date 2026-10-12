@@ -1,5 +1,13 @@
 export type MapViewId = 'all' | 'pipeline' | 'current' | 'week' | 'completed' | 'archived';
 
+export type MapTourJob = {
+  id: string;
+  title?: string;
+  customerName?: string;
+  city?: string;
+  distanceMiles?: number | null;
+};
+
 export type MapShowCommand = {
   query?: string;
   city?: string;
@@ -11,6 +19,7 @@ export type MapShowCommand = {
   maxAmount?: number | null;
   view?: MapViewId;
   jobIds: string[];
+  jobs: MapTourJob[];
   openFilters?: boolean;
   path?: string;
 };
@@ -63,10 +72,55 @@ export function resetMapToPipeline() {
   listeners.forEach((listener) => listener.reset?.());
 }
 
+export function spokenMapJobLine(job: MapTourJob) {
+  const name = String(job.customerName || job.title || 'This job').trim();
+  const city = String(job.city || '').trim();
+  return city ? `${name}, ${city}.` : `${name}.`;
+}
+
+export function mapTourIntro(command: MapShowCommand) {
+  const count = command.jobs.length || command.jobIds.length;
+  const noun = count === 1 ? 'job' : 'jobs';
+  if (command.near) return `${count} ${noun} near ${command.near}.`;
+  if (command.city) return `${count} ${noun} in ${command.city}.`;
+  return `${count} ${noun} on the map.`;
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+export async function narrateMapTour(
+  command: MapShowCommand,
+  speak: (text: string) => Promise<void>,
+) {
+  const jobs =
+    command.jobs.length > 0
+      ? command.jobs
+      : command.jobIds.filter(Boolean).map((id) => ({ id }));
+  if (!jobs.length) {
+    await speak(mapTourIntro(command));
+    resetMapToPipeline();
+    return;
+  }
+  try {
+    await speak(mapTourIntro(command));
+    for (const job of jobs) {
+      highlightMapJobs({ jobId: job.id });
+      await wait(350);
+      await speak(spokenMapJobLine(job));
+    }
+  } finally {
+    resetMapToPipeline();
+  }
+}
+
 export function startMapTour(jobIds: string[], durationMs: number) {
   const ids = jobIds.filter(Boolean);
   if (!ids.length) return () => resetMapToPipeline();
-  const step = Math.max(1600, Math.floor(Math.max(durationMs, 2400) / ids.length));
+  const step = Math.max(2200, Math.floor(Math.max(durationMs, ids.length * 2200) / ids.length));
   let index = 0;
   let finished = false;
   highlightMapJobs({ jobId: ids[0] });
@@ -98,15 +152,31 @@ export function parseMapShowAction(action: unknown): MapShowCommand | undefined 
     path?: string;
     filters?: MapShowCommand;
     jobIds?: string[];
-    jobs?: Array<{ id?: string; mapped?: boolean }>;
+    jobs?: Array<{
+      id?: string;
+      title?: string;
+      customerName?: string;
+      city?: string;
+      distanceMiles?: number | null;
+      mapped?: boolean;
+    }>;
     openFilters?: boolean;
   };
   if (row.type !== 'map_show') return undefined;
   const filters: Partial<MapShowCommand> = row.filters || {};
+  const jobs = (row.jobs || [])
+    .filter((job) => job?.id && job.mapped !== false)
+    .map((job) => ({
+      id: String(job.id),
+      title: job.title,
+      customerName: job.customerName,
+      city: job.city,
+      distanceMiles: job.distanceMiles,
+    }));
   const jobIds =
     Array.isArray(row.jobIds) && row.jobIds.length
       ? row.jobIds.filter(Boolean)
-      : (row.jobs || []).filter((job) => job?.mapped && job.id).map((job) => String(job.id));
+      : jobs.map((job) => job.id);
   return {
     query: filters.query,
     city: filters.near ? undefined : filters.city,
@@ -118,6 +188,7 @@ export function parseMapShowAction(action: unknown): MapShowCommand | undefined 
     maxAmount: filters.maxAmount,
     view: filters.view && filters.view !== 'all' ? filters.view : 'pipeline',
     jobIds,
+    jobs: jobs.length ? jobs : jobIds.map((id) => ({ id })),
     openFilters: row.openFilters !== false,
     path: typeof row.path === 'string' ? row.path : undefined,
   };

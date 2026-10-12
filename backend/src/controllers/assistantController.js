@@ -1,5 +1,6 @@
 const { fetchGlobalCustomerSearchResults } = require('./customerController');
 const { ROUTES_MARKDOWN, sanitizeNavigatePath } = require('../services/assistantSiteMap');
+const { resolveJobId } = require('../utils/resolveJobId');
 const {
   fetchRecentPayments,
   fetchRecentDeposits,
@@ -93,7 +94,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          jobId: { type: 'string', description: 'Mongo job id from search results' },
+          jobId: { type: 'string', description: '24-character jobId from search (not the job-… search id)' },
         },
         required: ['jobId'],
       },
@@ -117,7 +118,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          jobId: { type: 'string', description: 'Mongo job id from search results' },
+          jobId: { type: 'string', description: '24-character jobId from search (not the job-… search id)' },
           tab: {
             type: 'string',
             enum: ['overview', 'schedule', 'payments', 'files', 'notes'],
@@ -198,7 +199,7 @@ const TOOLS = [
             enum: ['pipeline', 'all', 'current', 'week', 'completed', 'archived'],
             description: 'Map tab. Default pipeline (contracted live jobs).',
           },
-          limit: { type: 'integer', description: 'Max jobs (1–12)', default: 8 },
+          limit: { type: 'integer', description: 'Max jobs. Near searches return up to 24.' },
         },
       },
     },
@@ -261,7 +262,7 @@ function buildSystemPrompt(voice = false) {
   const voiceLines = voice
     ? [
         'You are Liminality, a short shop-floor voice. Plain and useful. No banter, no feelings, no “I know you are upset.”',
-        'Answer in one short sentence. If you used show_jobs_on_map, name at most three jobs: customer or job and city only. Skip amounts, ids, markdown, and filler.',
+        'Answer in one short sentence. If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
         'If send_customer_info_text sent, confirm who received which customer.',
         'If the tool still returns several people, ask once. If they say "the user" or "the contact", call the tool again with employeeKind set. Do not keep asking the same question.',
         'They already said your name. Follow-ups may be just "the user", "Jake", or a job name. Use history. Do not tell them to repeat the whole command.',
@@ -274,7 +275,7 @@ function buildSystemPrompt(voice = false) {
     'Never ask the user for passwords or API keys. Never fabricate customer or financial data.',
     'Use tools when the user needs live data from their organization or when they want to jump to a page.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
-    'To open a job, call open_job_card. Do not navigate_user to /pipeline?jobId= or /customers?jobId=. The card opens on the current page, Files tab.',
+    'To open a job, call open_job_card with jobId (the 24-character id). If search returned id like job-abc..., use jobId or strip the job- prefix. Do not navigate_user to /pipeline?jobId=.',
     '',
     ...voiceLines,
     'Data tools — use these for operational questions:',
@@ -352,7 +353,7 @@ function parseJobOpenFromPath(path) {
   if (!path || typeof path !== 'string') return null;
   try {
     const url = new URL(path, 'http://local');
-    const jobId = url.searchParams.get('jobId');
+    const jobId = resolveJobId(url.searchParams.get('jobId'));
     return jobId ? { jobId } : null;
   } catch {
     return null;
@@ -447,8 +448,9 @@ async function runAssistantChat(req, res) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
                 toolContent = await fetchJobDetails({ jobId: args.jobId });
-                if (voice && args.jobId && !toolContent?.error) {
-                  clientActions.push({ type: 'open_job', jobId: String(args.jobId), tab: 'files' });
+                const openedId = resolveJobId(toolContent?.jobId || args.jobId);
+                if (voice && openedId && !toolContent?.error) {
+                  clientActions.push({ type: 'open_job', jobId: openedId, tab: 'files' });
                 }
               }
             } else if (fn.name === 'get_current_user_context') {
@@ -460,7 +462,7 @@ async function runAssistantChat(req, res) {
                 isSuperAdmin: role === 'super_admin',
               };
             } else if (fn.name === 'open_job_card') {
-              const jobId = String(args.jobId || '').trim();
+              const jobId = resolveJobId(args.jobId);
               if (!jobId) {
                 toolContent = { ok: false, error: 'jobId is required' };
               } else {
@@ -510,7 +512,7 @@ async function runAssistantChat(req, res) {
                   path: mapResult.path,
                   filters: mapResult.filters,
                   jobIds: mapResult.jobs.filter((job) => job.mapped).map((job) => job.id),
-                  jobs: mapResult.jobs,
+                  jobs: mapResult.jobs.filter((job) => job.mapped),
                   openFilters: true,
                 });
                 toolContent = mapResult;

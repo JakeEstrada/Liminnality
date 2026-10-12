@@ -3,6 +3,16 @@ export type JobOverlayCommand = {
   tab?: string;
 };
 
+export function resolveJobId(raw?: string | null) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const prefixed = value.match(/^(?:job[-_])([a-f0-9]{24})$/i);
+  if (prefixed) return prefixed[1];
+  if (/^[a-f0-9]{24}$/i.test(value)) return value;
+  const embedded = value.match(/[a-f0-9]{24}/i);
+  return embedded ? embedded[0] : '';
+}
+
 type JobOverlayListener = (command: JobOverlayCommand | null) => void;
 
 const listeners = new Set<JobOverlayListener>();
@@ -20,7 +30,7 @@ export function parseJobOverlayPath(path?: string | null): JobOverlayCommand | n
   if (!path) return null;
   try {
     const url = new URL(path, 'http://paarth.local');
-    const jobId = url.searchParams.get('jobId');
+    const jobId = resolveJobId(url.searchParams.get('jobId'));
     if (!jobId || !JOB_PATHS.has(url.pathname)) return null;
     return { jobId, tab: 'files' };
   } catch {
@@ -31,12 +41,13 @@ export function parseJobOverlayPath(path?: string | null): JobOverlayCommand | n
 export function parseOpenJobAction(action: unknown): JobOverlayCommand | null {
   if (!action || typeof action !== 'object') return null;
   const row = action as { type?: string; jobId?: string; tab?: string };
-  if (row.type !== 'open_job' || !row.jobId) return null;
-  return { jobId: String(row.jobId), tab: row.tab || 'files' };
+  const jobId = resolveJobId(row.jobId);
+  if (row.type !== 'open_job' || !jobId) return null;
+  return { jobId, tab: row.tab || 'files' };
 }
 
 export function openJobOverlay(command: JobOverlayCommand) {
-  const jobId = String(command?.jobId || '').trim();
+  const jobId = resolveJobId(command?.jobId);
   if (!jobId) return;
   const next = { jobId, tab: command.tab || 'files' };
   listeners.forEach((listener) => listener(next));
