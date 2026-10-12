@@ -38,6 +38,7 @@ type MapPin = {
   scheduled?: boolean;
   isArchived?: boolean;
   isDeadEstimate?: boolean;
+  isCompletedClosedOut?: boolean;
 };
 
 type MapFilters = {
@@ -140,7 +141,13 @@ function pinLabel(pin: MapPin) {
 function pinsForView(pins: Record<MapViewId, MapPin[]>, view: MapViewId) {
   const list = pins[view] || [];
   if (view === 'pipeline' || view === 'current' || view === 'week') {
-    return list.filter((pin) => pin.group !== 'archived' && !pin.isArchived && !pin.isDeadEstimate);
+    return list.filter(
+      (pin) =>
+        pin.group !== 'archived' &&
+        !pin.isArchived &&
+        !pin.isDeadEstimate &&
+        !pin.isCompletedClosedOut,
+    );
   }
   return list;
 }

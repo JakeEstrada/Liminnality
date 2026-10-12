@@ -630,7 +630,22 @@ async function showJobsOnMap({
       ? { $or: [{ isCompletedClosedOut: true }, { stage: { $in: ['INSTALLED', 'FINAL_PAYMENT_CLOSED'] } }] }
       : viewQ === 'archived'
         ? {}
-        : { isCompletedClosedOut: { $ne: true }, stage: { $ne: 'FINAL_PAYMENT_CLOSED' } }),
+        : {
+            isCompletedClosedOut: { $ne: true },
+            stage: {
+              $in: [
+                'DEPOSIT_PENDING',
+                'JOB_PREP',
+                'TAKEOFF_COMPLETE',
+                'READY_TO_SCHEDULE',
+                'SCHEDULED',
+                'IN_PRODUCTION',
+                'INSTALLED',
+                'FINAL_PAYMENT_CLOSED',
+                'CONTRACT_SIGNED',
+              ],
+            },
+          }),
   })
     .populate('customerId', 'name address')
     .select('title stage jobAddress geo schedule customerId valueContracted valueEstimated isArchived isCompletedClosedOut')

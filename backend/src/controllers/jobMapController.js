@@ -16,8 +16,8 @@ const ESTIMATE_STAGES = [
   'CONTRACT_OUT',
 ];
 
-/** Contracted work: job-readiness + execution (after stage 1). */
-const CONTRACTED_STAGES = [
+/** Contracted work still on the kanban: job-readiness + execution. */
+const PIPELINE_BOARD_STAGES = [
   'DEPOSIT_PENDING',
   'JOB_PREP',
   'TAKEOFF_COMPLETE',
@@ -115,7 +115,12 @@ function isEstimateJob(job) {
 
 function isContractedJob(job) {
   if (isEstimateJob(job)) return false;
-  return CONTRACTED_STAGES.includes(job.stage) || isCompletedJob(job);
+  return PIPELINE_BOARD_STAGES.includes(job.stage) || isCompletedJob(job);
+}
+
+function isPipelineBoardJob(job) {
+  if (isArchivedLike(job) || Boolean(job.isCompletedClosedOut)) return false;
+  return PIPELINE_BOARD_STAGES.includes(job.stage);
 }
 
 function isScheduledJob(job) {
@@ -160,6 +165,7 @@ function pinPayload(job, address, lat, lng) {
     scheduled: isScheduledJob(job),
     isArchived: Boolean(job.isArchived),
     isDeadEstimate: Boolean(job.isDeadEstimate),
+    isCompletedClosedOut: Boolean(job.isCompletedClosedOut),
   };
 }
 
@@ -230,7 +236,7 @@ async function getJobMapPins(req, res) {
 
     await fillMissingCoords(jobs);
 
-    const liveJobs = jobs.filter((job) => !isArchivedLike(job) && isContractedJob(job));
+    const liveJobs = jobs.filter((job) => isPipelineBoardJob(job));
     const pipelineJobs = liveJobs;
     const currentJobs = liveJobs.filter((job) => isCurrentJob(job, today, tomorrow));
     const weekJobs = liveJobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
@@ -239,7 +245,7 @@ async function getJobMapPins(req, res) {
 
     return res.json({
       county: 'Orange County, CA',
-      all: pinsInCounty(jobs.filter((job) => isContractedJob(job) && !job.isDeadEstimate)),
+      all: pinsInCounty(liveJobs),
       pipeline: pinsInCounty(pipelineJobs),
       current: pinsInCounty(currentJobs),
       week: pinsInCounty(weekJobs),
