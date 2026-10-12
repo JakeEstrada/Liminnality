@@ -1,19 +1,29 @@
-const CUE_URL = '/sfx/liminality-listen.mp3';
-const CUE_FALLBACK_MS = 1600;
+export type ListeningCueKind = 'start' | 'close';
 
-let cueAudio: HTMLAudioElement | null = null;
+const CUE_URLS: Record<ListeningCueKind, string> = {
+  start: '/sfx/liminality-listen-start.mp3',
+  close: '/sfx/liminality-listen-close.mp3',
+};
 
-function getCueAudio() {
+const CUE_FALLBACK_MS: Record<ListeningCueKind, number> = {
+  start: 2200,
+  close: 1400,
+};
+
+const cueAudio: Partial<Record<ListeningCueKind, HTMLAudioElement>> = {};
+
+function getCueAudio(kind: ListeningCueKind) {
   if (typeof window === 'undefined') return null;
-  if (!cueAudio) {
-    cueAudio = new Audio(CUE_URL);
-    cueAudio.preload = 'auto';
+  if (!cueAudio[kind]) {
+    const audio = new Audio(CUE_URLS[kind]);
+    audio.preload = 'auto';
+    cueAudio[kind] = audio;
   }
-  return cueAudio;
+  return cueAudio[kind] || null;
 }
 
-export function unlockListeningCue() {
-  const audio = getCueAudio();
+function unlockOne(kind: ListeningCueKind) {
+  const audio = getCueAudio(kind);
   if (!audio) return;
   audio.muted = true;
   void audio
@@ -28,9 +38,14 @@ export function unlockListeningCue() {
     });
 }
 
-/** First hit from the shop UI SFX pack. Mic should be paused while this plays. */
-export async function playListeningCue() {
-  const audio = getCueAudio();
+export function unlockListeningCue() {
+  unlockOne('start');
+  unlockOne('close');
+}
+
+/** Start = 0:00–1.99. Close = 8:00–8.99. Mic should be paused while this plays. */
+export async function playListeningCue(kind: ListeningCueKind = 'start') {
+  const audio = getCueAudio(kind);
   if (!audio) return;
   try {
     audio.pause();
@@ -50,6 +65,6 @@ export async function playListeningCue() {
       resolve();
     };
     audio.addEventListener('ended', done);
-    const timer = window.setTimeout(done, CUE_FALLBACK_MS);
+    const timer = window.setTimeout(done, CUE_FALLBACK_MS[kind]);
   });
 }

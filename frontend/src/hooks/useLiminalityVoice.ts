@@ -202,7 +202,7 @@ export function useLiminalityVoice({
     setPhase('waiting');
     setStatusLabel('Waiting');
     startRecognition();
-    if (opts?.chime) void playListeningCue();
+    if (opts?.chime) void playListeningCue('close');
   }, [clearTimers, startRecognition]);
 
   const remainingMs = () => Math.max(0, deadlineRef.current - Date.now());
@@ -364,7 +364,7 @@ export function useLiminalityVoice({
           /* ignore */
         }
         try {
-          await playListeningCue();
+          await playListeningCue('start');
         } finally {
           speakingRef.current = false;
         }
