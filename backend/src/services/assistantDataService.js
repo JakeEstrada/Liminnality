@@ -382,8 +382,63 @@ async function listRolodexEmployees() {
   return { employees, count: employees.length };
 }
 
+function parseEmployeeQuery(query) {
+  const q = normalizeName(query);
+  let kind = null;
+  if (/\b(users?|account|login)\b/.test(q)) kind = 'user';
+  else if (/\b(contacts?|rolodex)\b/.test(q)) kind = 'contact';
+  const name = q
+    .replace(/\b(the\s+)?(users?|account|login|contacts?|rolodex)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { name: name || q, kind };
+}
+
+function phoneKey(row) {
+  const digits = String(row?.mobile || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  if (digits.length >= 10) return digits.slice(-10);
+  return '';
+}
+
+function preferUser(a, b) {
+  if (a?.kind === 'user' && b?.kind !== 'user') return a;
+  if (b?.kind === 'user' && a?.kind !== 'user') return b;
+  return a || b;
+}
+
+function collapseDuplicatePeople(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = phoneKey(row) || `name:${normalizeName(row.name)}`;
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? preferUser(existing, row) : row);
+  }
+  const collapsed = [...byKey.values()];
+  const byName = new Map();
+  for (const row of collapsed) {
+    const key = normalizeName(row.name);
+    const existing = byName.get(key);
+    byName.set(key, existing ? preferUser(existing, row) : row);
+  }
+  return [...byName.values()];
+}
+
 function matchEmployees(rows, query) {
-  return rows.filter((row) => nameMatches(row.name, query));
+  const { name, kind } = parseEmployeeQuery(query);
+  let hits = collapseDuplicatePeople(rows.filter((row) => nameMatches(row.name, name)));
+  if (kind) {
+    const kindHits = hits.filter((row) => row.kind === kind);
+    if (kindHits.length) hits = kindHits;
+  }
+  if (hits.length > 1) {
+    const names = new Set(hits.map((row) => normalizeName(row.name)));
+    if (names.size === 1) {
+      const userHit = hits.find((row) => row.kind === 'user');
+      hits = [userHit || hits[0]];
+    }
+  }
+  return hits;
 }
 
 async function loadRolodexWithMobiles() {

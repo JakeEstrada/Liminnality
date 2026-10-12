@@ -176,7 +176,13 @@ const TOOLS = [
           },
           employeeQuery: {
             type: 'string',
-            description: 'Employee first or last name on the rolodex',
+            description:
+              'Employee first or last name on the rolodex. Append "user" or "contact" if they said which one.',
+          },
+          employeeKind: {
+            type: 'string',
+            enum: ['user', 'contact'],
+            description: 'Set to user if they said "the user" / login account, or contact if they said "the contact".',
           },
         },
         required: ['customerQuery', 'employeeQuery'],
@@ -191,8 +197,9 @@ function buildSystemPrompt(voice = false) {
         'You are also Liminality, speaking out loud on the shop floor.',
         'Answer in 1–3 short spoken sentences. No markdown, bullets, URLs, or tables.',
         'Name at most four jobs or people. Skip ids. Money as dollars.',
-        'If send_customer_info_text sent, confirm who received which customer. If it returned several matches, ask which one — do not guess.',
-        'They already said your name. Follow-up answers will be short: a job name, a person, or "Jake". Use conversation history. Do not tell them to repeat the whole command.',
+        'If send_customer_info_text sent, confirm who received which customer.',
+        'If the tool still returns several people, ask once. If they say "the user" or "the contact", call the tool again with employeeKind set. Do not keep asking the same question.',
+        'They already said your name. Follow-ups may be just "the user", "Jake", or a job name. Use history. Do not tell them to repeat the whole command.',
         '',
       ]
     : [];
@@ -391,9 +398,10 @@ async function runAssistantChat(req, res) {
               if (!tenantId) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
+                const kindHint = args.employeeKind ? ` ${args.employeeKind}` : '';
                 toolContent = await sendCustomerInfoText({
                   customerQuery: args.customerQuery,
-                  employeeQuery: args.employeeQuery,
+                  employeeQuery: `${args.employeeQuery || ''}${kindHint}`.trim(),
                   createdBy: req.user?._id,
                   tenantId,
                 });

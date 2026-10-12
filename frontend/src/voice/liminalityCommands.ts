@@ -254,10 +254,14 @@ export function parseSendSpeech(raw: string, pending: PendingSend = {}): Pending
   }
 
   const words = text.split(' ').filter(Boolean);
-  if (pending.job && !pending.employee && words.length <= 3 && !SEND_OR_ASK.test(text)) {
+  const kindOnly = /^(the\s+)?(users?|contacts?|account|login|rolodex)$/.test(text);
+  if (kindOnly && pending.employee) {
+    return { job: pending.job, employee: `${pending.employee} ${text}`, matched: true };
+  }
+  if (pending.job && !pending.employee && words.length <= 3 && !SEND_OR_ASK.test(text) && !kindOnly) {
     return { job: pending.job, employee: text, matched: true };
   }
-  if (pending.employee && !pending.job && words.length <= 5 && !SEND_OR_ASK.test(text)) {
+  if (pending.employee && !pending.job && words.length <= 5 && !SEND_OR_ASK.test(text) && !kindOnly) {
     return { job: text, employee: pending.employee, matched: true };
   }
 
