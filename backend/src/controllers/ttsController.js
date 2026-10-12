@@ -3,6 +3,8 @@ const ELEVEN_SPEECH_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
 const MAX_TTS_CHARS = 800;
 
 const ELEVEN_VOICES = {
+  sarah: { id: 'EXAVITQu4vr4xnSDxMaL', label: 'Sarah — natural American woman' },
+  adam: { id: 'pNInz6obpgDQGcFmaJgB', label: 'Adam — natural American man' },
   carla: { id: 'ZP7ctTmcovXNUmOj695o', label: 'Carla — calm, a little mysterious' },
   natasha: { id: 'j05EIz3iI3JmBTWC3CsA', label: 'Natasha — warm woman' },
   kaori: { id: 'mDxkcO3nsRCNeB4si9qg', label: 'Kaori — Japanese woman' },
@@ -10,7 +12,7 @@ const ELEVEN_VOICES = {
   cassius: { id: 'ktrGUw7rURIQyMrQZqCu', label: 'Cassius — man' },
 };
 
-const DEFAULT_ELEVEN_VOICE = 'carla';
+const DEFAULT_ELEVEN_VOICE = 'sarah';
 
 const OPENAI_VOICES = {
   marin: { label: 'Marin — clearest woman' },
@@ -29,6 +31,8 @@ const OPENAI_VOICES = {
 };
 
 const OPENAI_FALLBACK = {
+  sarah: 'marin',
+  adam: 'echo',
   carla: 'marin',
   natasha: 'coral',
   kaori: 'nova',

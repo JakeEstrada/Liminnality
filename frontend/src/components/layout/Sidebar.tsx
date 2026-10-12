@@ -40,6 +40,7 @@ import {
   Language as WebsiteIcon,
   Insights as AnalyticsIcon,
   Nfc as NfcIcon,
+  RecordVoiceOver as VoiceCommandsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -497,7 +498,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         <ListItem disablePadding>
           <ListItemButton
             onClick={() => handleNavigation('/developer')}
-            selected={isActive('/developer', { exact: true })}
+            selected={isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice')}
             sx={{
               mx: 1,
               mb: 0.5,
@@ -526,7 +527,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <ListItemIcon
               sx={{
                 minWidth: 40,
-                color: isActive('/developer', { exact: true }) ? '#F57C00' : 'inherit',
+                color: isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice') ? '#F57C00' : 'inherit',
               }}
             >
               <DeveloperIcon />
@@ -535,7 +536,30 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               primary="Developer Tasks"
               primaryTypographyProps={{
                 fontSize: '0.9375rem',
-                fontWeight: isActive('/developer', { exact: true }) ? 600 : 400,
+                fontWeight: isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice') ? 600 : 400,
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
+            onClick={() => handleNavigation('/developer?tab=voice')}
+            selected={isActive('/developer?tab=voice')}
+            sx={navButtonSx}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 40,
+                color: isActive('/developer?tab=voice') ? theme.palette.primary.main : 'inherit',
+              }}
+            >
+              <VoiceCommandsIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="Voice commands"
+              primaryTypographyProps={{
+                fontSize: '0.9375rem',
+                fontWeight: isActive('/developer?tab=voice') ? 600 : 400,
               }}
             />
           </ListItemButton>

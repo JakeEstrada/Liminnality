@@ -4,6 +4,7 @@
  * Docs: ../../../docs/PAGES.md#developertaskspagetsx
  */
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -22,6 +23,8 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Tab,
+  Tabs,
   useTheme,
 } from '@mui/material';
 import {
@@ -34,11 +37,14 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import GeocodeIssuePanel from '../components/developer/GeocodeIssuePanel';
+import LiminalityCommandsGuide from '../components/developer/LiminalityCommandsGuide';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 function DeveloperTasksPage() {
   const theme = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const voiceTab = searchParams.get('tab') === 'voice';
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -229,28 +235,47 @@ function DeveloperTasksPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 600 }}>
-            Developer Tasks
+            {voiceTab ? 'Voice commands' : 'Developer Tasks'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Track your development tasks and todos
+            {voiceTab
+              ? 'What you can say to Liminality after the listen cue'
+              : 'Track your development tasks and todos'}
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddClick}
-          sx={{
-            borderRadius: '8px',
-            textTransform: 'none',
-          }}
-        >
-          Add Task
-        </Button>
+        {!voiceTab ? (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddClick}
+            sx={{
+              borderRadius: '8px',
+              textTransform: 'none',
+            }}
+          >
+            Add Task
+          </Button>
+        ) : null}
       </Box>
 
+      <Tabs
+        value={voiceTab ? 'voice' : 'tasks'}
+        onChange={(_event, next) => {
+          setSearchParams(next === 'voice' ? { tab: 'voice' } : {}, { replace: true });
+        }}
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab value="tasks" label="Tasks" sx={{ textTransform: 'none' }} />
+        <Tab value="voice" label="Voice commands" sx={{ textTransform: 'none' }} />
+      </Tabs>
+
+      {voiceTab ? (
+        <LiminalityCommandsGuide />
+      ) : (
+        <>
       <GeocodeIssuePanel />
 
       {/* Incomplete Tasks */}
@@ -411,6 +436,8 @@ function DeveloperTasksPage() {
             Loading tasks...
           </Typography>
         </Paper>
+      )}
+        </>
       )}
 
       {/* Add Task Dialog */}

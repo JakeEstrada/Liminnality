@@ -8,6 +8,8 @@ export type NeuralVoice = {
 };
 
 export const ELEVEN_VOICES: NeuralVoice[] = [
+  { id: 'sarah', name: 'Sarah', description: 'natural American woman', uri: 'eleven:sarah' },
+  { id: 'adam', name: 'Adam', description: 'natural American man', uri: 'eleven:adam' },
   { id: 'carla', name: 'Carla', description: 'calm, a little mysterious', uri: 'eleven:carla' },
   { id: 'natasha', name: 'Natasha', description: 'warm woman', uri: 'eleven:natasha' },
   { id: 'kaori', name: 'Kaori', description: 'Japanese woman', uri: 'eleven:kaori' },
@@ -15,7 +17,7 @@ export const ELEVEN_VOICES: NeuralVoice[] = [
   { id: 'cassius', name: 'Cassius', description: 'man', uri: 'eleven:cassius' },
 ];
 
-export const DEFAULT_NEURAL_VOICE_URI = 'eleven:carla';
+export const DEFAULT_NEURAL_VOICE_URI = 'eleven:sarah';
 
 const ELEVEN_URI_SET = new Set(ELEVEN_VOICES.map((voice) => voice.uri));
 
