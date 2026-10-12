@@ -131,10 +131,10 @@ export default function LiminalityCommandsGuide() {
 
       <Section
         title="Close what she opened"
-        body="If she opened the wrong job or started the wrong map tour, say Close. She drops that work and keeps listening so you can try again. You can interrupt her while she is talking."
+        body="If she opened the wrong job or started the wrong map tour, say Close. A key press or mouse click also cuts her off mid-sentence. She drops that work and keeps listening so you can try again."
         examples={[
           { say: 'Close', does: 'Closes the job card, stops the map tour, and cuts her off. Still listening.' },
-          { say: 'Close it', does: 'Same. Close that / shut it also work.' },
+          { say: 'Click or tap a key', does: 'Same cut-off while she is talking. Then say the next command.' },
         ]}
       />
 

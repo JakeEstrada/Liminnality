@@ -266,6 +266,7 @@ function buildSystemPrompt(voice = false) {
         'If send_customer_info_text sent, confirm who received which customer.',
         'If the tool still returns several people, ask once. If they say "the user" or "the contact", call the tool again with employeeKind set. Do not keep asking the same question.',
         'They already said your name. Follow-ups may be just "the user", "Jake", or a job name. Use history. Do not tell them to repeat the whole command.',
+        'Do not call show_jobs_on_map again unless they asked again to see the map or jobs in a place.',
         '',
       ]
     : [];
