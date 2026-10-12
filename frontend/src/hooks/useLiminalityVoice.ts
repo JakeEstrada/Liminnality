@@ -184,7 +184,7 @@ export function useLiminalityVoice({
     }
   }, [commitHeard, destroyRecognition]);
 
-  const goWaiting = useCallback(() => {
+  const goWaiting = useCallback((opts?: { chime?: boolean }) => {
     clearTimers();
     deadlineRef.current = 0;
     pendingSendRef.current = {};
@@ -201,6 +201,7 @@ export function useLiminalityVoice({
     setPhase('waiting');
     setStatusLabel('Waiting');
     startRecognition();
+    if (opts?.chime) void playListeningCue();
   }, [clearTimers, startRecognition]);
 
   const remainingMs = () => Math.max(0, deadlineRef.current - Date.now());
@@ -213,7 +214,7 @@ export function useLiminalityVoice({
     }
     const left = remainingMs();
     if (left <= 0) {
-      goWaiting();
+      goWaiting({ chime: true });
       return;
     }
     modeRef.current = 'command';
@@ -222,7 +223,7 @@ export function useLiminalityVoice({
     setStatusLabel(`Listening · ${Math.ceil(left / 1000)}s`);
     startRecognition();
     timeoutRef.current = window.setTimeout(() => {
-      goWaiting();
+      goWaiting({ chime: true });
     }, left);
     tickRef.current = window.setInterval(() => {
       const ms = remainingMs();
@@ -230,10 +231,6 @@ export function useLiminalityVoice({
       setStatusLabel(`Listening · ${Math.ceil(ms / 1000)}s`);
     }, 1000);
   }, [clearTimers, goWaiting, startRecognition]);
-
-  const bumpCommandWindow = useCallback(() => {
-    deadlineRef.current = Date.now() + COMMAND_TIMEOUT_MS;
-  }, []);
 
   const speakAndWait = useCallback(async (text: string) => {
     speakingRef.current = true;
@@ -262,15 +259,13 @@ export function useLiminalityVoice({
         setStatusLabel('Processing');
         const stripped = stripWakeWord(spoken);
         if (!stripped) {
-          bumpCommandWindow();
           listenForCommands();
           return;
         }
 
         if (isCancelCommand(stripped)) {
           pendingSendRef.current = {};
-          await speakAndWait(registerRef.current === 'candid' ? 'Cool. Yell when you need me.' : 'Okay. Call me if you need me.');
-          goWaiting();
+          goWaiting({ chime: true });
           return;
         }
 
@@ -278,13 +273,11 @@ export function useLiminalityVoice({
         if (send.matched) {
           pendingSendRef.current = { job: send.job, employee: send.employee };
           if (!send.job && send.employee) {
-            bumpCommandWindow();
             await speakAndWait('Which job?');
             listenForCommands();
             return;
           }
           if (send.job && !send.employee) {
-            bumpCommandWindow();
             await speakAndWait('Who should I send it to?');
             listenForCommands();
             return;
@@ -297,7 +290,6 @@ export function useLiminalityVoice({
           setStatusLabel(`Opening ${command.label}`);
           onNavigateRef.current(liminalityCommandRoute(command, spoken));
           await speakAndWait(spokenCommandResponse(command, registerRef.current));
-          bumpCommandWindow();
           listenForCommands();
           return;
         }
@@ -330,7 +322,6 @@ export function useLiminalityVoice({
           if (send.matched && send.job && send.employee && /sent|texted|messaged/i.test(result.reply || '')) {
             pendingSendRef.current = {};
           }
-          bumpCommandWindow();
           const stopTour = result.mapShow?.jobIds?.length
             ? startMapTour(result.mapShow.jobIds, estimateSpeechMs(result.reply || ''))
             : () => {};
@@ -346,7 +337,6 @@ export function useLiminalityVoice({
         } catch (error) {
           const data = (error as { response?: { data?: { error?: string } } })?.response?.data;
           const message = spokenAssistantReply(data?.error || '') || "Didn't catch that. Say it again.";
-          bumpCommandWindow();
           await speakAndWait(message);
         }
         listenForCommands();
@@ -388,7 +378,7 @@ export function useLiminalityVoice({
         listenForCommands();
       })();
     };
-  }, [bumpCommandWindow, clearTimers, goWaiting, listenForCommands, speakAndWait]);
+  }, [clearTimers, goWaiting, listenForCommands, speakAndWait]);
 
   useEffect(() => {
     if (!supported) {

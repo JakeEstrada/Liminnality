@@ -17,32 +17,32 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
     id: 'contacts',
     keywords: ['contact', 'contacts', 'customer', 'customers', 'customers view', 'customer view'],
     route: '/customers-view',
-    response: 'Customers. Let’s go.',
-    candidResponse: 'Customers. Try not to scare them.',
+    response: 'Opening customers.',
+    candidResponse: 'Opening customers.',
     label: 'Customers view',
   },
   {
     id: 'calendar',
     keywords: ['calendar', 'calendar view'],
     route: '/calendar-view',
-    response: 'Calendar. Coming right up.',
-    candidResponse: 'Calendar. Let’s see who we’re bothering today.',
+    response: 'Opening calendar.',
+    candidResponse: 'Opening calendar.',
     label: 'Calendar view',
   },
   {
     id: 'pipeline',
     keywords: ['pipeline', 'pipeline view'],
     route: '/pipeline-view',
-    response: 'Pipeline. Here we go.',
-    candidResponse: 'Pipeline. The jobs aren’t going to stare at themselves.',
+    response: 'Opening pipeline.',
+    candidResponse: 'Opening pipeline.',
     label: 'Pipeline view',
   },
   {
     id: 'dashboard',
     keywords: ['dashboard', 'home', 'dashboard view'],
     route: '/dashboard',
-    response: 'Dashboard. Charts and the map.',
-    candidResponse: 'Dashboard. Charts, the map, the whole bit.',
+    response: 'Opening dashboard.',
+    candidResponse: 'Opening dashboard.',
     label: 'Dashboard',
   },
 ];
@@ -50,15 +50,10 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
 export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal', 'motherfucker'];
 
 export const UNKNOWN_COMMAND_RESPONSES = [
-  "I don't have that one. Dashboard, pipeline, calendar, or customers?",
-  "Hmm. Not ringing a bell. Try a shop view.",
-  "Yeah no. I got dashboard, pipeline, calendar, and customers.",
+  'Try dashboard, pipeline, calendar, or customers.',
 ];
 export const UNKNOWN_CANDID_RESPONSES = [
-  "Yeah I don't know that one. Dashboard, pipeline, calendar, or customers.",
-  "Nope. I got dashboard, pipeline, calendar, and customers. Pick a lane.",
-  "That’s not a page I have. Try the shop views.",
-  "I heard you. I just don’t have a screen for that.",
+  'Try dashboard, pipeline, calendar, or customers.',
 ];
 export const WAKE_RESPONSES = [
   "What's cookin, good lookin?",
@@ -124,7 +119,7 @@ export const BACKUP_WAKE_RESPONSES = [
   "Alright captain. Deck's yours.",
   "I contain a pipeline, a calendar, and a short fuse. Pick one.",
 ];
-export const COMMAND_TIMEOUT_MS = 60_000;
+export const COMMAND_TIMEOUT_MS = 30_000;
 export const RESET_TO_WAITING_MS = 2_000;
 export const COMMAND_ENDPOINT_MS = 900;
 

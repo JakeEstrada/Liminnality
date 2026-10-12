@@ -525,6 +525,39 @@ async function uploadCustomersCSV(req, res) {
   }
 }
 
+function jobSearchDestination(job) {
+  if (job?.isDeadEstimate) {
+    return {
+      type: 'dead_estimate',
+      locationLabel: 'Job Archive',
+      subtitle: 'Dead estimate',
+      path: `/archive?jobId=${job._id}`,
+    };
+  }
+  if (job?.isArchived) {
+    return {
+      type: 'archived_job',
+      locationLabel: 'Job Archive',
+      subtitle: 'Archived job',
+      path: `/archive?jobId=${job._id}`,
+    };
+  }
+  if (job?.isCompletedClosedOut || job?.stage === 'FINAL_PAYMENT_CLOSED') {
+    return {
+      type: 'finished_job',
+      locationLabel: 'Completed Jobs',
+      subtitle: 'Completed job',
+      path: `/completed-jobs?jobId=${job._id}`,
+    };
+  }
+  return {
+    type: 'pipeline_job',
+    locationLabel: 'Pipeline',
+    subtitle: job?.stage ? `Stage: ${job.stage}` : 'Pipeline job',
+    path: `/pipeline?jobId=${job._id}`,
+  };
+}
+
 /**
  * Same data as GET /customers/global-search (tenant-scoped). Used by assistant tools.
  * @returns {Promise<Array<{id:string,type:string,title:string,subtitle:string,locationLabel:string,path:string}>>}
@@ -542,159 +575,79 @@ async function fetchGlobalCustomerSearchResults({ tenantId, q, limit: limitArg }
   const escaped = qTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const nameRegex = new RegExp(escaped, 'i');
 
-  const [archivedCustomers, finishedJobs, customersWithNoJobs, pipelineJobs] = await Promise.all([
-      Customer.aggregate([
-        { $match: { tenantId } },
-        {
-          $lookup: {
-            from: 'jobs',
-            let: { customerId: '$_id', tenantId: '$tenantId' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$tenantId', '$$tenantId'] },
-                      { $eq: ['$customerId', '$$customerId'] },
-                      {
-                        $or: [
-                          { $eq: ['$isArchived', true] },
-                          { $eq: ['$isDeadEstimate', true] },
-                        ],
-                      },
-                    ],
-                  },
-                },
-              },
-              { $project: { _id: 1, title: 1 } },
-            ],
-            as: 'archivedJobs',
-          },
-        },
-        {
-          $match: {
-            $or: [
-              { name: nameRegex },
-              { primaryEmail: nameRegex },
-              { primaryPhone: nameRegex },
-            ],
-            'archivedJobs.0': { $exists: true },
-          },
-        },
-        { $sort: { updatedAt: -1 } },
-        { $limit: limit },
-        { $project: { _id: 1, name: 1, primaryEmail: 1, primaryPhone: 1, archivedJobs: 1 } },
-      ]),
-      Job.aggregate([
-        {
-          $match: {
-            tenantId,
-            stage: 'FINAL_PAYMENT_CLOSED',
-            isDeadEstimate: { $ne: true },
-            $or: [{ title: nameRegex }],
-          },
-        },
-        { $sort: { updatedAt: -1 } },
-        { $limit: limit },
-        {
-          $lookup: {
-            from: 'customers',
-            localField: 'customerId',
-            foreignField: '_id',
-            as: 'customer',
-          },
-        },
-        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 1, title: 1, stage: 1, customerName: '$customer.name', customerId: '$customer._id' } },
-      ]),
-      Customer.aggregate([
-        { $match: { tenantId } },
-        {
-          $lookup: {
-            from: 'jobs',
-            let: { customerId: '$_id', tenantId: '$tenantId' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [{ $eq: ['$tenantId', '$$tenantId'] }, { $eq: ['$customerId', '$$customerId'] }],
-                  },
-                },
-              },
-              { $project: { _id: 1 } },
-            ],
-            as: 'jobs',
-          },
-        },
-        {
-          $match: {
-            $or: [{ name: nameRegex }, { primaryEmail: nameRegex }, { primaryPhone: nameRegex }],
-            'jobs.0': { $exists: false },
-          },
-        },
-        { $sort: { updatedAt: -1 } },
-        { $limit: limit },
-        { $project: { _id: 1, name: 1, primaryEmail: 1, primaryPhone: 1 } },
-      ]),
-      Job.aggregate([
-        {
-          $match: {
-            tenantId,
-            isArchived: { $ne: true },
-            isDeadEstimate: { $ne: true },
-            isCompletedClosedOut: { $ne: true },
-            stage: { $ne: 'FINAL_PAYMENT_CLOSED' },
-            title: nameRegex,
-          },
-        },
-        { $sort: { updatedAt: -1 } },
-        { $limit: limit },
-        {
-          $lookup: {
-            from: 'customers',
-            localField: 'customerId',
-            foreignField: '_id',
-            as: 'customer',
-          },
-        },
-        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 1, title: 1, stage: 1, customerName: '$customer.name', customerId: '$customer._id' } },
-      ]),
-    ]);
+  const nameCustomers = await Customer.find({
+    tenantId,
+    $or: [{ name: nameRegex }, { primaryEmail: nameRegex }, { primaryPhone: nameRegex }],
+  })
+    .select('_id')
+    .limit(40)
+    .lean();
+  const customerIds = nameCustomers.map((row) => row._id);
 
-    const results = [
-      ...archivedCustomers.map((c) => ({
-        id: `archived-customer-${c._id}`,
-        type: 'archived_customer',
-        title: c.name || 'Unnamed customer',
-        subtitle: c.archivedJobs?.[0]?.title ? `Archived in job: ${c.archivedJobs[0].title}` : 'Archived customer record',
-        locationLabel: 'Customers (archived jobs)',
-        path: `/customers?customerId=${c._id}`,
-      })),
-      ...finishedJobs.map((j) => ({
-        id: `finished-job-${j._id}`,
-        type: 'finished_job',
-        title: j.title || 'Finished job',
-        subtitle: j.customerName ? `Customer: ${j.customerName}` : 'Final Payment Closed',
-        locationLabel: 'Completed Jobs',
-        path: `/completed-jobs?jobId=${j._id}`,
-      })),
-      ...customersWithNoJobs.map((c) => ({
-        id: `customer-no-jobs-${c._id}`,
-        type: 'customer_no_jobs',
-        title: c.name || 'Unnamed customer',
-        subtitle: 'Customer exists but has no jobs',
-        locationLabel: 'Customers',
-        path: `/customers?customerId=${c._id}`,
-      })),
-      ...pipelineJobs.map((j) => ({
-        id: `pipeline-job-${j._id}`,
-        type: 'pipeline_job',
-        title: j.title || 'Pipeline job',
-        subtitle: j.customerName ? `Customer: ${j.customerName}` : `Stage: ${j.stage || 'Unknown'}`,
-        locationLabel: 'Pipeline',
-        path: `/pipeline?jobId=${j._id}`,
-      })),
+  const [matchedJobs, customersWithNoJobs] = await Promise.all([
+    Job.find({
+      tenantId,
+      $or: [{ title: nameRegex }, ...(customerIds.length ? [{ customerId: { $in: customerIds } }] : [])],
+    })
+      .populate({ path: 'customerId', select: 'name', strictPopulate: false })
+      .select('title stage customerId isArchived isDeadEstimate isCompletedClosedOut')
+      .sort({ updatedAt: -1 })
+      .limit(limit)
+      .lean(),
+    Customer.aggregate([
+      { $match: { tenantId } },
+      {
+        $lookup: {
+          from: 'jobs',
+          let: { customerId: '$_id', tenantId: '$tenantId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [{ $eq: ['$tenantId', '$$tenantId'] }, { $eq: ['$customerId', '$$customerId'] }],
+                },
+              },
+            },
+            { $project: { _id: 1 } },
+          ],
+          as: 'jobs',
+        },
+      },
+      {
+        $match: {
+          $or: [{ name: nameRegex }, { primaryEmail: nameRegex }, { primaryPhone: nameRegex }],
+          'jobs.0': { $exists: false },
+        },
+      },
+      { $sort: { updatedAt: -1 } },
+      { $limit: limit },
+      { $project: { _id: 1, name: 1, primaryEmail: 1, primaryPhone: 1 } },
+    ]),
+  ]);
+
+  const jobResults = matchedJobs.map((job) => {
+    const customerName = job.customerId && typeof job.customerId === 'object' ? job.customerId.name : '';
+    const destination = jobSearchDestination(job);
+    return {
+      id: `job-${job._id}`,
+      type: destination.type,
+      title: job.title || 'Job',
+      subtitle: customerName ? `Customer: ${customerName}` : destination.subtitle,
+      locationLabel: destination.locationLabel,
+      path: destination.path,
+    };
+  });
+
+  const results = [
+    ...jobResults,
+    ...customersWithNoJobs.map((c) => ({
+      id: `customer-no-jobs-${c._id}`,
+      type: 'customer_no_jobs',
+      title: c.name || 'Unnamed customer',
+      subtitle: 'Customer exists but has no jobs',
+      locationLabel: 'Customers',
+      path: `/customers?customerId=${c._id}`,
+    })),
   ].slice(0, limit * 4);
 
   return results;

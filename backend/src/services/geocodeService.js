@@ -92,9 +92,20 @@ async function geocodeAddress(address) {
   }
 }
 
+function parseManualGeo(raw) {
+  const lat = Number(raw?.lat);
+  const lng = Number(raw?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
 function shouldRetryGeo(job, address) {
   const geo = job?.geo;
   if (!geo) return true;
+  if (geo.source === 'manual' && Number.isFinite(Number(geo.lat)) && Number.isFinite(Number(geo.lng))) {
+    return false;
+  }
   if (geo.sourceAddress !== address) return true;
   if (geo.status === 'ok' && Number.isFinite(geo.lat) && Number.isFinite(geo.lng)) return false;
   const stamped = geo.geocodedAt ? new Date(geo.geocodedAt).getTime() : 0;
@@ -107,7 +118,19 @@ function geoPayload(address, hit) {
     lng: hit?.lng,
     sourceAddress: address,
     geocodedAt: new Date(),
+    source: 'geocode',
     status: hit ? 'ok' : 'failed',
+  };
+}
+
+function manualGeoPayload(job, lat, lng) {
+  return {
+    lat,
+    lng,
+    sourceAddress: formatJobLocation(job) || 'manual',
+    geocodedAt: new Date(),
+    source: 'manual',
+    status: 'ok',
   };
 }
 
@@ -138,6 +161,8 @@ module.exports = {
   inOrangeCounty,
   geocodeAddress,
   shouldRetryGeo,
+  parseManualGeo,
   geoPayload,
+  manualGeoPayload,
   syncJobGeo,
 };

@@ -234,6 +234,10 @@ const jobSchema = new mongoose.Schema({
     lng: Number,
     sourceAddress: String,
     geocodedAt: Date,
+    source: {
+      type: String,
+      enum: ['geocode', 'manual'],
+    },
     status: {
       type: String,
       enum: ['ok', 'failed'],

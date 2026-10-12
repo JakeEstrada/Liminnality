@@ -45,10 +45,10 @@ const OPENAI_FALLBACK = {
 };
 
 const LIMINALITY_INSTRUCTIONS =
-  'Speak as Liminality, a playful, natural-sounding American woman. Warm, a little flirty, a little tired of everyone, like a friend on the shop floor. Conversational pacing. Smile in the voice. Never robotic, never like a GPS, never customer service.';
+  'Speak as Liminality, a clear American woman. Plain, calm, and brief. No flirting, no attitude, no customer-service filler. Sound like a coworker reading a short note.';
 
 const CANDID_INSTRUCTIONS =
-  'Speak as a sharp, funny friend on a shop floor. Dry, amused, unbothered by swearing. Natural pacing, like you are talking to one person, not reading a script. A little smirk is fine. Never shocked, never customer-service, never a GPS.';
+  'Speak plainly and briefly. No jokes, no attitude, no filler. Same calm coworker tone.';
 
 function openaiKey() {
   return String(process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '').trim();

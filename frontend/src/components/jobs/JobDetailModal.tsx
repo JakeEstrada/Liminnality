@@ -692,6 +692,15 @@ function JobDetailModal({
         referralCompany:
           editedJob.source === 'referral' ? clipReferralCompany(editedJob.referralCompany) : '',
         jobAddress,
+        geo: (() => {
+          const lat = Number(editedJob?.geo?.lat);
+          const lng = Number(editedJob?.geo?.lng);
+          const prevLat = Number(job?.geo?.lat);
+          const prevLng = Number(job?.geo?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+          if (lat === prevLat && lng === prevLng) return undefined;
+          return { lat, lng };
+        })(),
       };
 
       await onJobUpdate(jobId, updates);
@@ -722,6 +731,16 @@ function JobDetailModal({
       ...prev,
       jobAddress: {
         ...(prev?.jobAddress || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleGeoFieldChange = (field, value) => {
+    setEditedJob((prev) => ({
+      ...prev,
+      geo: {
+        ...(prev?.geo || {}),
         [field]: value,
       },
     }));
@@ -1523,7 +1542,30 @@ function JobDetailModal({
                             onChange={(e) => handleJobAddressFieldChange('zip', e.target.value)}
                           />
                         </Grid>
+                        <Grid item xs={6} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Latitude"
+                            value={editedJob?.geo?.lat ?? ''}
+                            onChange={(e) => handleGeoFieldChange('lat', e.target.value)}
+                            placeholder="33.4581"
+                          />
+                        </Grid>
+                        <Grid item xs={6} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Longitude"
+                            value={editedJob?.geo?.lng ?? ''}
+                            onChange={(e) => handleGeoFieldChange('lng', e.target.value)}
+                            placeholder="-117.6981"
+                          />
+                        </Grid>
                       </Grid>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                        Latitude and longitude are optional. Use them when the map cannot find the street.
+                      </Typography>
                     </Grid>
                     <Grid item xs={12} sm={6} md={4}>
                       <FormControl fullWidth size="small">

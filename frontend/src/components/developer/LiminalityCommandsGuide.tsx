@@ -77,7 +77,7 @@ export default function LiminalityCommandsGuide() {
 
       <Section
         title="Wake her up"
-        body="Say either name. You get a tech listen sound, not a spoken hello. After that she keeps a 60-second window open — you do not have to say the name again for each command. Each command you give slides that window forward."
+        body="Say either name. You get a listen sound, not a spoken hello. Then she listens for 30 seconds. The same sound plays when that window ends. You do not have to say the name again during those 30 seconds."
         examples={[
           { say: 'Liminnality', does: 'Primary wake. Liminality / liminal also work if speech-to-text mangles it.' },
           { say: 'Motherfucker', does: 'Backup wake. Chrome often censors it; mother trucker / mother father still count.' },
