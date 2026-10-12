@@ -28,19 +28,14 @@ import {
   CheckCircle as CompletedJobsIcon,
   Code as DeveloperIcon,
   AccountBalance as PayrollIcon,
-  Nfc as RfidTimesheetIcon,
   Person as UsersIcon,
   Receipt as ReceiptIcon,
   TableChart as TableChartIcon,
   ViewWeek as PipelineViewKioskIcon,
-  AccountBalanceWallet as FinanceHubIcon,
   TableRows as TakeoffIcon,
   Sms as SmsIcon,
   Store as StoreIcon,
-  Language as WebsiteIcon,
   Insights as AnalyticsIcon,
-  Nfc as NfcIcon,
-  RecordVoiceOver as VoiceCommandsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -61,10 +56,8 @@ const workspaceItems = [
 ];
 
 const financeItems = [
-  { text: 'Finance Hub', icon: <FinanceHubIcon />, path: '/finance', superAdminOnly: true },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills', superAdminOnly: true },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
-  { text: 'RFID Timesheets', icon: <RfidTimesheetIcon />, path: '/rfid-timesheets' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
 ];
 
@@ -77,7 +70,6 @@ const operationsItems = [
 const archiveItems = [
   { text: 'Job Archive', icon: <ArchiveIcon />, path: '/archive' },
   { text: 'Completed Jobs', icon: <CompletedJobsIcon />, path: '/completed-jobs' },
-  { text: 'Weekly Activity Log', icon: <TasksIcon />, path: '/completed-tasks' },
 ];
 
 /** Phones only get these pages — see utils/mobileNav.ts for the matching route guard. */
@@ -406,167 +398,93 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         ))}
       </List>
 
-      <Divider sx={{ my: 2 }} />
-
-      <Box sx={{ px: 2, pb: 1 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-            color: theme.palette.text.secondary,
-            fontSize: '0.75rem',
-          }}
-        >
-          Developer
-        </Typography>
-      </Box>
-
-      <List>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={() => handleNavigation('/rfid')}
-            selected={isActive('/rfid')}
-            sx={navButtonSx}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 40,
-                color: isActive('/rfid') ? theme.palette.primary.main : 'inherit',
-              }}
-            >
-              <NfcIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="RFID scans"
-              primaryTypographyProps={{
-                fontSize: '0.9375rem',
-                fontWeight: isActive('/rfid') ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-        {isSuperAdmin() ? (
+      {isSuperAdmin() ? (
         <>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={() => handleNavigation('/website')}
-            selected={isActive('/website')}
-            sx={navButtonSx}
-          >
-            <ListItemIcon
+          <Divider sx={{ my: 2 }} />
+
+          <Box sx={{ px: 2, pb: 1 }}>
+            <Typography
+              variant="caption"
               sx={{
-                minWidth: 40,
-                color: isActive('/website') ? theme.palette.primary.main : 'inherit',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                fontWeight: 600,
+                color: theme.palette.text.secondary,
+                fontSize: '0.75rem',
               }}
             >
-              <WebsiteIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="Website"
-              primaryTypographyProps={{
-                fontSize: '0.9375rem',
-                fontWeight: isActive('/website') ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={() => handleNavigation('/developer/analytics')}
-            selected={isActive('/developer/analytics')}
-            sx={navButtonSx}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 40,
-                color: isActive('/developer/analytics') ? theme.palette.primary.main : 'inherit',
-              }}
-            >
-              <AnalyticsIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="Website Analytics"
-              primaryTypographyProps={{
-                fontSize: '0.9375rem',
-                fontWeight: isActive('/developer/analytics') ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={() => handleNavigation('/developer')}
-            selected={isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice')}
-            sx={{
-              mx: 1,
-              mb: 0.5,
-              borderRadius: '8px',
-              '&.Mui-selected': {
-                backgroundColor: theme.palette.mode === 'dark'
-                  ? 'rgba(245, 124, 0, 0.16)'
-                  : '#FFF3E0',
-                color: '#F57C00',
-                '&:hover': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? 'rgba(245, 124, 0, 0.24)'
-                    : '#FFE0B2',
-                },
-                '& .MuiListItemIcon-root': {
-                  color: '#F57C00',
-                },
-              },
-              '&:hover': {
-                backgroundColor: theme.palette.mode === 'dark'
-                  ? 'rgba(255, 255, 255, 0.08)'
-                  : '#F5F5F5',
-              },
-            }}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 40,
-                color: isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice') ? '#F57C00' : 'inherit',
-              }}
-            >
-              <DeveloperIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="Developer Tasks"
-              primaryTypographyProps={{
-                fontSize: '0.9375rem',
-                fontWeight: isActive('/developer', { exact: true }) && !isActive('/developer?tab=voice') ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={() => handleNavigation('/developer?tab=voice')}
-            selected={isActive('/developer?tab=voice')}
-            sx={navButtonSx}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 40,
-                color: isActive('/developer?tab=voice') ? theme.palette.primary.main : 'inherit',
-              }}
-            >
-              <VoiceCommandsIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="Voice commands"
-              primaryTypographyProps={{
-                fontSize: '0.9375rem',
-                fontWeight: isActive('/developer?tab=voice') ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
+              Developer
+            </Typography>
+          </Box>
+
+          <List>
+            <ListItem disablePadding>
+              <ListItemButton
+                onClick={() => handleNavigation('/developer')}
+                selected={
+                  isActive('/developer')
+                  || isActive('/website')
+                  || isActive('/finance')
+                  || isActive('/rfid')
+                  || isActive('/completed-tasks')
+                }
+                sx={{
+                  mx: 1,
+                  mb: 0.5,
+                  borderRadius: '8px',
+                  '&.Mui-selected': {
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(245, 124, 0, 0.16)'
+                      : '#FFF3E0',
+                    color: '#F57C00',
+                    '&:hover': {
+                      backgroundColor: theme.palette.mode === 'dark'
+                        ? 'rgba(245, 124, 0, 0.24)'
+                        : '#FFE0B2',
+                    },
+                    '& .MuiListItemIcon-root': {
+                      color: '#F57C00',
+                    },
+                  },
+                  '&:hover': {
+                    backgroundColor: theme.palette.mode === 'dark'
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : '#F5F5F5',
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: 40,
+                    color: isActive('/developer')
+                      || isActive('/website')
+                      || isActive('/finance')
+                      || isActive('/rfid')
+                      || isActive('/completed-tasks')
+                      ? '#F57C00'
+                      : 'inherit',
+                  }}
+                >
+                  <DeveloperIcon />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Developer"
+                  primaryTypographyProps={{
+                    fontSize: '0.9375rem',
+                    fontWeight: isActive('/developer')
+                      || isActive('/website')
+                      || isActive('/finance')
+                      || isActive('/rfid')
+                      || isActive('/completed-tasks')
+                      ? 600
+                      : 400,
+                  }}
+                />
+              </ListItemButton>
+            </ListItem>
+          </List>
         </>
-        ) : null}
-      </List>
+      ) : null}
     </>
   );
 

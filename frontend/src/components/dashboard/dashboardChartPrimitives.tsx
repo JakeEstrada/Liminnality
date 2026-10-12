@@ -200,12 +200,14 @@ export function AreaChart({
   height = 240,
   formatValue,
   showDots = false,
+  onDayClick,
 }: {
   data: ChartPoint[];
   series: ChartSeries[];
   height?: number;
   formatValue?: (value: number) => string;
   showDots?: boolean;
+  onDayClick?: (date: string) => void;
 }) {
   const theme = useTheme();
   const uid = useId().replace(/:/g, '');
@@ -349,7 +351,12 @@ export function AreaChart({
               width={bandW}
               height={innerH}
               fill="transparent"
+              style={{ cursor: onDayClick ? 'pointer' : 'default' }}
               onMouseEnter={() => setHover(index)}
+              onClick={() => {
+                const date = String(data[index]?.date || '');
+                if (date && onDayClick) onDayClick(date);
+              }}
             />
           );
         })}

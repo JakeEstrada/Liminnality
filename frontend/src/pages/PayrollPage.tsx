@@ -1,9 +1,10 @@
 /**
- * PayrollPage — Timesheets, mileage, print.
- * Route: /payroll
+ * PayrollPage — Manual timesheet plus RFID payroll on a second tab.
+ * Route: /payroll  (?tab=payroll for RFID hours)
  * Docs: ../../../docs/PAGES.md#payrollpagetsx
  */
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import {
@@ -30,8 +31,11 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  Tab,
+  Tabs,
   useTheme,
 } from '@mui/material';
+import RfidTimesheetPage from './RfidTimesheetPage';
 import BrandLogo from '../components/common/BrandLogo';
 import {
   Print as PrintIcon,
@@ -81,7 +85,7 @@ const DAY_SHIFT_HOURS = DAYS.map((day) => ({
   breaks: '30',
 }));
 
-function PayrollPage() {
+function ManualPayrollPage() {
   const theme = useTheme();
   const [employeeName, setEmployeeName] = useState('');
   const [ratePerHour, setRatePerHour] = useState('');
@@ -1208,6 +1212,35 @@ function PayrollPage() {
       </Dialog>
     </Box>
     </>
+  );
+}
+
+function PayrollPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'payroll' ? 'payroll' : 'manual';
+
+  return (
+    <Box>
+      <Box
+        sx={{
+          px: { xs: 1, sm: 2, md: 4 },
+          pt: { xs: 1, sm: 2, md: 3 },
+          '@media print': { display: 'none' },
+        }}
+      >
+        <Tabs
+          value={tab}
+          onChange={(_event, next) => {
+            setSearchParams(next === 'payroll' ? { tab: 'payroll' } : {}, { replace: true });
+          }}
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab value="manual" label="Manual" sx={{ textTransform: 'none' }} />
+          <Tab value="payroll" label="Payroll" sx={{ textTransform: 'none' }} />
+        </Tabs>
+      </Box>
+      {tab === 'payroll' ? <RfidTimesheetPage hidePageTitle /> : <ManualPayrollPage />}
+    </Box>
   );
 }
 

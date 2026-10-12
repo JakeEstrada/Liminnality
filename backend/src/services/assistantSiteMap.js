@@ -61,14 +61,14 @@ Main app routes (path → purpose):
 - /calendar — calendar and scheduling
 - /tasks — projects and tasks
 - /archive — job archive (also /dead-estimates)
-- /completed-tasks — completed tasks and appointments
+- /completed-tasks — weekly activity log (developer tab; also opened from the dashboard team-activity graph)
 - /completed-jobs — finished closed-out jobs
-- /website — customer website homepage CMS (super admin only)
-- /developer/analytics — Google campaign tag and first-party website traffic log (super admin only)
-- /developer — internal developer tasks (super admin only)
-- /payroll — payroll tools
+- /website — customer website homepage CMS (developer tab, super admin only)
+- /developer/analytics — Google campaign tag and first-party website traffic log (developer tab, super admin only)
+- /developer — developer page with tabs for tasks, voice, finance hub, activity log, website, analytics, and RFID
+- /payroll — payroll (Manual tab + Payroll tab for RFID hours)
 - /bills — bills (super admin only)
-- /finance — finance hub (super admin only; bank register, deposit linking, payment tracking)
+- /finance — finance hub (hidden from typical nav; developer tab, super admin only)
 - /takeoff-sheet — takeoff sheet
 - /users — user management and activity log (super admin only)
 - /account-settings — profile, password, org logo (super admin)

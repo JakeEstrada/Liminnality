@@ -1,11 +1,25 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Paper,
+  Typography,
+} from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import { eachDayOfInterval, format, subDays } from 'date-fns';
-import { useMemo } from 'react';
+import axios from 'axios';
+import { eachDayOfInterval, format, parseISO, subDays } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, DonutChart, ScatterChart, chartPanelSx, compactMoney } from './dashboardChartPrimitives';
 import OrangeCountyJobMap from './OrangeCountyJobMap';
 import { formatMoney } from '../../utils/paymentSchedule';
+import { useAuth } from '../../context/AuthContext';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 type PaymentRow = {
   amount?: number;
@@ -19,6 +33,17 @@ type PaymentRow = {
 type ActivityRow = {
   type?: string;
   createdAt?: string;
+  note?: string;
+  jobId?: { title?: string } | string;
+  createdBy?: { name?: string };
+};
+
+type AuditEvent = {
+  id?: string;
+  type?: string;
+  label?: string;
+  occurredAt?: string;
+  user?: { name?: string } | null;
 };
 
 type TrafficPoint = {
@@ -64,6 +89,34 @@ function activityBucket(type: string) {
   return 'other';
 }
 
+function shopActivityTitle(type?: string) {
+  const labels: Record<string, string> = {
+    stage_change: 'Stage change',
+    note: 'Note',
+    manual_entry: 'Note',
+    job_created: 'Job created',
+    job_updated: 'Job updated',
+    job_archived: 'Job archived',
+    task_completed: 'Task completed',
+    task_created: 'Task created',
+    appointment_created: 'Appointment',
+    appointment_completed: 'Appointment done',
+    payment_received: 'Payment',
+    deposit_received: 'Deposit',
+    payroll_printed: 'Payroll printed',
+    call: 'Call',
+    email: 'Email',
+    sms: 'SMS',
+  };
+  if (type && labels[type]) return labels[type];
+  return String(type || 'Activity').replace(/_/g, ' ');
+}
+
+function jobTitle(jobId?: ActivityRow['jobId']) {
+  if (!jobId || typeof jobId === 'string') return '';
+  return jobId.title || '';
+}
+
 export default function DashboardInsightGrid({
   hideSensitive,
   showTraffic,
@@ -72,7 +125,7 @@ export default function DashboardInsightGrid({
   traffic,
   teamActivity,
   pipeline,
-  canOpenFinance,
+  canOpenFinance: _canOpenFinance,
   layout = 'full',
 }: {
   hideSensitive: boolean;
@@ -87,7 +140,12 @@ export default function DashboardInsightGrid({
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canLoadAudit = user?.role === 'super_admin';
   const days = useMemo(() => dayKeys(30), []);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   const paymentPoints = useMemo(() => {
     return payments
@@ -149,6 +207,41 @@ export default function DashboardInsightGrid({
     }));
   }, [activitySeries, auditHasData, days, teamActivity]);
 
+  const dayActivities = useMemo(() => {
+    if (!selectedDay) return [];
+    return activities.filter((row) => ymd(row.createdAt) === selectedDay);
+  }, [activities, selectedDay]);
+
+  useEffect(() => {
+    if (!selectedDay || !canLoadAudit) {
+      setAuditEvents([]);
+      setAuditLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setAuditLoading(true);
+    axios
+      .get(`${API_URL}/audit-logs`, {
+        params: {
+          from: `${selectedDay}T00:00:00`,
+          to: `${selectedDay}T23:59:59.999`,
+          limit: 200,
+        },
+      })
+      .then(({ data }) => {
+        if (!cancelled) setAuditEvents(Array.isArray(data?.events) ? data.events : []);
+      })
+      .catch(() => {
+        if (!cancelled) setAuditEvents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAuditLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canLoadAudit, selectedDay]);
+
   const paymentTotal = paymentPoints.reduce((sum, row) => sum + row.y, 0);
   const activityTotal = activitySeries.reduce(
     (sum, row) => sum + row.pipeline + row.notes + row.tasks + row.other,
@@ -195,8 +288,8 @@ export default function DashboardInsightGrid({
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
             {auditHasData
-              ? 'Pages, clicks, and sign-ins in Paarth'
-              : `Shop work logged in Paarth · ${activityTotal} events`}
+              ? 'Pages, clicks, and sign-ins in Paarth · click a day to see what happened'
+              : `Shop work logged in Paarth · ${activityTotal} events · click a day to see what happened`}
           </Typography>
           <AreaChart
             data={teamSeries}
@@ -216,6 +309,7 @@ export default function DashboardInsightGrid({
                   ]
             }
             showDots
+            onDayClick={setSelectedDay}
           />
         </Paper>
         {showTraffic ? (
@@ -230,7 +324,7 @@ export default function DashboardInsightGrid({
                 </Typography>
               </Box>
               {!kiosk ? (
-                <Button size="small" onClick={() => navigate('/developer/analytics')} sx={{ textTransform: 'none' }}>
+                <Button size="small" onClick={() => navigate('/developer?section=analytics')} sx={{ textTransform: 'none' }}>
                   Analytics
                 </Button>
               ) : null}
@@ -264,6 +358,101 @@ export default function DashboardInsightGrid({
 
       <OrangeCountyJobMap hideSensitive={hideSensitive} kiosk={kiosk} />
 
+      <Dialog
+        open={Boolean(selectedDay)}
+        onClose={() => setSelectedDay(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {selectedDay
+            ? format(parseISO(`${selectedDay}T12:00:00`), 'EEEE, MMM d')
+            : 'Team activity'}
+        </DialogTitle>
+        <DialogContent>
+          {auditLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : null}
+          {!auditLoading && dayActivities.length === 0 && auditEvents.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+              Nothing logged this day.
+            </Typography>
+          ) : null}
+          {dayActivities.length > 0 ? (
+            <Box sx={{ mb: auditEvents.length ? 2.5 : 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Shop work
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {dayActivities.map((row, index) => (
+                  <Box
+                    key={`${row.createdAt || 'act'}-${index}`}
+                    sx={{
+                      p: 1.25,
+                      borderRadius: 1.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                      <Chip
+                        size="small"
+                        label={shopActivityTitle(row.type)}
+                        sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {row.createdAt ? format(new Date(row.createdAt), 'h:mm a') : ''}
+                        {row.createdBy?.name ? ` · ${row.createdBy.name}` : ''}
+                      </Typography>
+                    </Box>
+                    {row.note ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {row.note}
+                      </Typography>
+                    ) : null}
+                    {jobTitle(row.jobId) ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                        {jobTitle(row.jobId)}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+          {auditEvents.length > 0 ? (
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Pages, clicks, and sign-ins
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {auditEvents.map((event, index) => (
+                  <Box
+                    key={event.id || `${event.occurredAt}-${index}`}
+                    sx={{
+                      p: 1.25,
+                      borderRadius: 1.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {event.label || event.type}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {event.occurredAt ? format(new Date(event.occurredAt), 'h:mm a') : ''}
+                      {event.user?.name ? ` · ${event.user.name}` : ''}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {kiosk ? null : (
         <Box
           sx={{
@@ -283,11 +472,6 @@ export default function DashboardInsightGrid({
                   Last 30 days · {paymentPoints.length} payments · {money(paymentTotal)}
                 </Typography>
               </Box>
-              {canOpenFinance ? (
-                <Button size="small" onClick={() => navigate('/finance?tab=deposits')} sx={{ textTransform: 'none' }}>
-                  Finance
-                </Button>
-              ) : null}
             </Box>
             <ScatterChart
               height={200}

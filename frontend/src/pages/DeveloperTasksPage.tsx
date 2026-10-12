@@ -25,7 +25,6 @@ import {
   Select,
   Tab,
   Tabs,
-  useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,13 +37,31 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import GeocodeIssuePanel from '../components/developer/GeocodeIssuePanel';
 import LiminalityCommandsGuide from '../components/developer/LiminalityCommandsGuide';
+import FinanceHubPage from './FinanceHubPage';
+import CompletedTasksPage from './CompletedTasksPage';
+import WebsitePage from './WebsitePage';
+import WebsiteAnalyticsPage from './WebsiteAnalyticsPage';
+import RfidPage from './RfidPage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+const DEVELOPER_SECTIONS = ['tasks', 'voice', 'finance', 'activity', 'website', 'analytics', 'rfid'];
+const FINANCE_TABS = ['deposits', 'register', 'estimates', 'change-orders', 'payment-schedules'];
+
+function resolveDeveloperSection(searchParams) {
+  const section = searchParams.get('section');
+  if (DEVELOPER_SECTIONS.includes(section)) return section;
+  const tab = searchParams.get('tab');
+  if (tab === 'voice') return 'voice';
+  if (tab === 'campaign' || tab === 'traffic') return 'analytics';
+  if (FINANCE_TABS.includes(tab)) return 'finance';
+  return 'tasks';
+}
+
 function DeveloperTasksPage() {
-  const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const voiceTab = searchParams.get('tab') === 'voice';
+  const section = resolveDeveloperSection(searchParams);
+  const showTaskChrome = section === 'tasks';
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -233,20 +250,38 @@ function DeveloperTasksPage() {
   const incompleteTasks = tasks.filter((task) => !task.completed);
   const completedTasks = tasks.filter((task) => task.completed);
 
+  const sectionTitle = {
+    tasks: 'Developer',
+    voice: 'Voice commands',
+    finance: 'Finance Hub',
+    activity: 'Activity log',
+    website: 'Website',
+    analytics: 'Website Analytics',
+    rfid: 'RFID scans',
+  }[section];
+  const sectionSubtitle = {
+    tasks: 'Shop extras in one place — typical users do not see these tabs',
+    voice: 'What you can say to Liminality after the listen cue',
+    finance: 'Bank register, deposits, estimates, and payment tracking',
+    activity: 'Completed work, appointments, and stage changes by week',
+    website: 'Customer-facing homepage CMS',
+    analytics: 'Campaign tags and first-party traffic',
+    rfid: 'Live scan log and employee tag registry',
+  }[section];
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: ['finance', 'activity', 'website', 'analytics', 'rfid'].includes(section) ? 0 : 3 }}>
+      <Box sx={{ px: ['finance', 'activity', 'website', 'analytics', 'rfid'].includes(section) ? 3 : 0, pt: ['finance', 'activity', 'website', 'analytics', 'rfid'].includes(section) ? 2 : 0 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 600 }}>
-            {voiceTab ? 'Voice commands' : 'Developer Tasks'}
+            {sectionTitle}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {voiceTab
-              ? 'What you can say to Liminality after the listen cue'
-              : 'Track your development tasks and todos'}
+            {sectionSubtitle}
           </Typography>
         </Box>
-        {!voiceTab ? (
+        {showTaskChrome ? (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -262,18 +297,40 @@ function DeveloperTasksPage() {
       </Box>
 
       <Tabs
-        value={voiceTab ? 'voice' : 'tasks'}
+        value={section}
         onChange={(_event, next) => {
-          setSearchParams(next === 'voice' ? { tab: 'voice' } : {}, { replace: true });
+          if (next === 'tasks') setSearchParams({}, { replace: true });
+          else if (next === 'voice') setSearchParams({ tab: 'voice' }, { replace: true });
+          else setSearchParams({ section: next }, { replace: true });
         }}
+        variant="scrollable"
+        scrollButtons="auto"
         sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab value="tasks" label="Tasks" sx={{ textTransform: 'none' }} />
-        <Tab value="voice" label="Voice commands" sx={{ textTransform: 'none' }} />
+        <Tab value="voice" label="Voice" sx={{ textTransform: 'none' }} />
+        <Tab value="finance" label="Finance Hub" sx={{ textTransform: 'none' }} />
+        <Tab value="activity" label="Activity log" sx={{ textTransform: 'none' }} />
+        <Tab value="website" label="Website" sx={{ textTransform: 'none' }} />
+        <Tab value="analytics" label="Analytics" sx={{ textTransform: 'none' }} />
+        <Tab value="rfid" label="RFID" sx={{ textTransform: 'none' }} />
       </Tabs>
+      </Box>
 
-      {voiceTab ? (
-        <LiminalityCommandsGuide />
+      {section === 'voice' ? (
+        <Box sx={{ px: 0 }}>
+          <LiminalityCommandsGuide />
+        </Box>
+      ) : section === 'finance' ? (
+        <FinanceHubPage />
+      ) : section === 'activity' ? (
+        <CompletedTasksPage />
+      ) : section === 'website' ? (
+        <WebsitePage />
+      ) : section === 'analytics' ? (
+        <WebsiteAnalyticsPage />
+      ) : section === 'rfid' ? (
+        <RfidPage />
       ) : (
         <>
       <GeocodeIssuePanel />

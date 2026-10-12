@@ -1,6 +1,6 @@
 /**
  * RfidTimesheetPage — RFID-derived timesheets by employee & pay period (Fri–Thu).
- * Route: /rfid-timesheets
+ * Shown as the Payroll tab on /payroll. /rfid-timesheets redirects there.
  * Current week and payday week are editable. Older weeks unlock with the financial PIN.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -395,7 +395,7 @@ function calculateWeightedHours(workHours: DayRow[], additionalHours: Additional
   return { regular: totalRegular, overtime: totalOvertime, weighted: totalWeighted, manualHours };
 }
 
-function RfidTimesheetPage() {
+function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean } = {}) {
   const theme = useTheme();
   const { tenantIdForBranding } = useAuth();
   const [employees, setEmployees] = useState<RfidEmployeeOption[]>([]);
@@ -1411,9 +1411,11 @@ function RfidTimesheetPage() {
       <Box sx={{ maxWidth: 1200, mx: 'auto', '@media print': { display: 'none' } }}>
       <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
         <Box sx={{ minWidth: 0, flex: '1 1 280px' }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main, mb: 0.5 }}>
-            RFID Timesheets
-          </Typography>
+          {hidePageTitle ? null : (
+            <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main, mb: 0.5 }}>
+              Payroll
+            </Typography>
+          )}
           <Typography variant="body2" color="text.secondary">
             Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
             Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
@@ -1589,7 +1591,7 @@ function RfidTimesheetPage() {
 
       {!selectedEmployee && !loadingEmployees && (
         <Alert severity="warning">
-          No RFID tags or kiosk PINs found. Register employees on the <strong>RFID scans</strong> page first
+          No RFID tags or kiosk PINs found. Register employees on the Developer RFID tab first
           (use the same name for tag and PIN so they appear as one person), then return here.
         </Alert>
       )}

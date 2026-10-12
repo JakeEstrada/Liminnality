@@ -13,7 +13,7 @@ const PATH_LABELS: Record<string, string> = {
   '/finance': 'Finance Hub',
   '/bills': 'Bills',
   '/payroll': 'Payroll',
-  '/rfid-timesheets': 'RFID Timesheets',
+  '/rfid-timesheets': 'Payroll',
   '/commission-logs': 'Commission Logs',
   '/takeoff-sheet': 'Take Off Sheet',
   '/vendors': 'Vendors',

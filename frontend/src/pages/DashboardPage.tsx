@@ -1611,8 +1611,8 @@ function DashboardPage() {
         <DashboardPanelHeader
           title="Deposits & payments marked paid"
           subtitle="Marked paid = when you clicked Paid · Paid date = date entered on the payment schedule"
-          actionLabel={canOpenFinanceHub ? 'Finance Hub' : undefined}
-          onAction={canOpenFinanceHub ? () => navigate('/finance?tab=deposits') : undefined}
+          actionLabel={undefined}
+          onAction={undefined}
           headerActions={<PaymentNotificationSettings canEdit={canEditPaymentAlerts} dialogTrigger />}
         />
         {recentMarkedPaidPayments.length === 0 ? (

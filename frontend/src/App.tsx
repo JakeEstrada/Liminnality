@@ -35,7 +35,6 @@ import WebsitePage from './pages/WebsitePage';
 import WebsiteAnalyticsPage from './pages/WebsiteAnalyticsPage';
 import CustomersPage from './pages/CustomersPage';
 import PayrollPage from './pages/PayrollPage';
-import RfidTimesheetPage from './pages/RfidTimesheetPage';
 import CommissionLogsPage from './pages/CommissionLogsPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
@@ -224,7 +223,7 @@ function App(): JSX.Element | null {
                   <Route path="/developer/analytics" element={<ProtectedRoute requireSuperAdmin><WebsiteAnalyticsPage /></ProtectedRoute>} />
                   <Route path="/developer" element={<ProtectedRoute requireSuperAdmin><DeveloperTasksPage /></ProtectedRoute>} />
                   <Route path="/payroll" element={<PayrollPage />} />
-                  <Route path="/rfid-timesheets" element={<RfidTimesheetPage />} />
+                  <Route path="/rfid-timesheets" element={<Navigate to="/payroll?tab=payroll" replace />} />
                   <Route path="/commission-logs" element={<CommissionLogsPage />} />
                   <Route path="/bills" element={<ProtectedRoute requireSuperAdmin><BillsPage /></ProtectedRoute>} />
                   <Route path="/finance" element={<ProtectedRoute requireSuperAdmin><FinanceHubPage /></ProtectedRoute>} />
