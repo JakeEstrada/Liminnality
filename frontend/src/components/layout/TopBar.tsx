@@ -23,8 +23,6 @@ import {
   Person as PersonIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
   Menu as MenuIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
@@ -33,7 +31,6 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useFinancialPinLockContext } from '../../context/FinancialPinLockContext';
 import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
 
@@ -51,8 +48,6 @@ function userInitials(name) {
 function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
-  const financialPin = useFinancialPinLockContext();
-  const { unlocked, openUnlockDialog, lockFinancials } = financialPin;
   const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user);
   const liminality = useLiminalitySettings();
   const navigate = useNavigate();
@@ -217,30 +212,6 @@ function TopBar({ onMenuClick }) {
               }}
             />
           ) : null}
-          {/* Phones have no PIN gate, so there's nothing to lock. */}
-          {!isMobile && (
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                if (unlocked) {
-                  lockFinancials();
-                } else {
-                  openUnlockDialog();
-                }
-              }}
-              size="small"
-              title={unlocked ? 'Lock financial amounts' : 'Unlock financial amounts'}
-              sx={{
-                '&:hover': {
-                  backgroundColor: 'action.hover',
-                },
-              }}
-            >
-              {unlocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
-            </IconButton>
-          )}
-          {/* On phones this lived next to the avatar and was easy to hit by accident —
-              it moved into the user menu below. */}
           {!isMobile && (
             <IconButton
               onClick={toggleColorMode}

@@ -47,7 +47,7 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
   },
 ];
 
-export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal'];
+export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal', 'motherfucker'];
 
 export const UNKNOWN_COMMAND_RESPONSES = [
   "I don't have that one. Dashboard, pipeline, calendar, or customers?",
@@ -124,8 +124,9 @@ export const BACKUP_WAKE_RESPONSES = [
   "Alright captain. Deck's yours.",
   "I contain a pipeline, a calendar, and a short fuse. Pick one.",
 ];
-export const COMMAND_TIMEOUT_MS = 10_000;
+export const COMMAND_TIMEOUT_MS = 60_000;
 export const RESET_TO_WAITING_MS = 2_000;
+export const COMMAND_ENDPOINT_MS = 900;
 
 export function normalizeSpeech(raw: string) {
   return String(raw || '')
@@ -135,7 +136,11 @@ export function normalizeSpeech(raw: string) {
     .trim();
 }
 
-const BACKUP_WAKE_PATTERN = /\b(mother\s*fuck+er|mutha\s*fucka+)\b/;
+const BACKUP_WAKE_PATTERN =
+  /\b(mother\s*fuck+er|mutha\s*fucka+|mother\s*trucker|mother\s*father|mother\s*forker)\b/;
+const NAME_WAKE_PATTERN = /\b(limin+al[a-z]*|lemon\s*al+it(?:y|ies)?|liminal\s*tea)\b/;
+const CANCEL_COMMAND =
+  /^(stop|cancel|never\s*mind|that'?s\s+all|go\s+to\s+sleep|good\s*bye|we'?re\s+good|thanks|thank\s+you)$/;
 
 export function isBackupWakeWord(raw: string) {
   return BACKUP_WAKE_PATTERN.test(normalizeSpeech(raw));
@@ -143,7 +148,11 @@ export function isBackupWakeWord(raw: string) {
 
 export function hasWakeWord(raw: string) {
   const text = normalizeSpeech(raw);
-  return /limin+al/.test(text) || BACKUP_WAKE_PATTERN.test(text);
+  return NAME_WAKE_PATTERN.test(text) || BACKUP_WAKE_PATTERN.test(text);
+}
+
+export function isCancelCommand(raw: string) {
+  return CANCEL_COMMAND.test(normalizeSpeech(raw));
 }
 
 const recentBanter: string[] = [];
@@ -205,10 +214,63 @@ export function spokenUnknownResponse(register: LiminalityRegister) {
 
 export function stripWakeWord(raw: string) {
   return normalizeSpeech(raw)
-    .replace(/limin+al[a-z]*/g, ' ')
+    .replace(NAME_WAKE_PATTERN, ' ')
     .replace(BACKUP_WAKE_PATTERN, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export type PendingSend = { job?: string; employee?: string };
+
+const THIS_JOB = /^(this|that|the|current)(\s+job)?$|^it$|^this\s+one$|^that\s+one$/;
+
+export function parseSendSpeech(raw: string, pending: PendingSend = {}): PendingSend & { matched: boolean } {
+  const text = normalizeSpeech(raw);
+  if (!text) return { ...pending, matched: false };
+
+  const full = text.match(
+    /^(?:please\s+)?(?:send|text|message|share)\s+(.+?)\s+(?:over\s+to|to|with)\s+(.+)$/,
+  );
+  if (full) {
+    return {
+      job: THIS_JOB.test(full[1].trim()) ? pending.job || 'this job' : full[1].replace(/^(the|this|a)\s+/, '').trim(),
+      employee: full[2].trim(),
+      matched: true,
+    };
+  }
+
+  const toOnly = text.match(/^(?:send\s+it\s+to|send\s+to|text\s+to|to)\s+(.+)$/);
+  if (toOnly) {
+    return { job: pending.job, employee: toOnly[1].trim(), matched: true };
+  }
+
+  const sendJobOnly = text.match(/^(?:please\s+)?(?:send|text|message|share)\s+(.+)$/);
+  if (sendJobOnly && !/\bto\b/.test(sendJobOnly[1])) {
+    return {
+      job: THIS_JOB.test(sendJobOnly[1].trim()) ? pending.job || 'this job' : sendJobOnly[1].replace(/^(the|this|a)\s+/, '').trim(),
+      employee: pending.employee,
+      matched: true,
+    };
+  }
+
+  const words = text.split(' ').filter(Boolean);
+  if (pending.job && !pending.employee && words.length <= 3 && !SEND_OR_ASK.test(text)) {
+    return { job: pending.job, employee: text, matched: true };
+  }
+  if (pending.employee && !pending.job && words.length <= 5 && !SEND_OR_ASK.test(text)) {
+    return { job: text, employee: pending.employee, matched: true };
+  }
+
+  return { ...pending, matched: false };
+}
+
+export function sendUtteranceFor(pending: PendingSend) {
+  const job = String(pending.job || '').trim();
+  const employee = String(pending.employee || '').trim();
+  if (job && employee) return `Send the job or customer named "${job}" to employee "${employee}".`;
+  if (job) return `Send the job or customer named "${job}" to an employee. Ask who.`;
+  if (employee) return `Send a job to employee "${employee}". Ask which job.`;
+  return '';
 }
 
 function hasKeyword(text: string, tokens: Set<string>, keyword: string) {

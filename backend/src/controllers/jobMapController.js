@@ -7,18 +7,33 @@ const {
   shouldRetryGeo,
 } = require('../services/geocodeService');
 
-const PIPELINE_STAGES = [
+/** Estimate / sales funnel — not shown on the map. */
+const ESTIMATE_STAGES = [
   'APPOINTMENT_SCHEDULED',
   'ESTIMATE_IN_PROGRESS',
   'ESTIMATE_SENT',
   'ENGAGED_DESIGN_REVIEW',
   'CONTRACT_OUT',
+];
+
+/** Contracted work: job-readiness + execution (after stage 1). */
+const CONTRACTED_STAGES = [
   'DEPOSIT_PENDING',
   'JOB_PREP',
   'TAKEOFF_COMPLETE',
   'READY_TO_SCHEDULE',
   'SCHEDULED',
   'IN_PRODUCTION',
+  'INSTALLED',
+  'FINAL_PAYMENT_CLOSED',
+  'CONTRACT_SIGNED',
+];
+
+const SCHEDULED_STAGES = [
+  'SCHEDULED',
+  'IN_PRODUCTION',
+  'INSTALLED',
+  'FINAL_PAYMENT_CLOSED',
 ];
 
 const CURRENT_STAGES = ['SCHEDULED', 'IN_PRODUCTION'];
@@ -94,10 +109,23 @@ function isArchivedLike(job) {
   return Boolean(job.isArchived) || Boolean(job.isDeadEstimate);
 }
 
+function isEstimateJob(job) {
+  return ESTIMATE_STAGES.includes(job.stage);
+}
+
+function isContractedJob(job) {
+  if (isEstimateJob(job)) return false;
+  return CONTRACTED_STAGES.includes(job.stage) || isCompletedJob(job);
+}
+
+function isScheduledJob(job) {
+  return SCHEDULED_STAGES.includes(job.stage) || isCompletedJob(job);
+}
+
 function pinGroup(job) {
   if (isArchivedLike(job)) return 'archived';
-  if (isCompletedJob(job)) return 'completed';
-  return 'active';
+  if (isScheduledJob(job)) return 'scheduled';
+  return 'unscheduled';
 }
 
 function pinPayload(job, address, lat, lng) {
@@ -112,6 +140,7 @@ function pinPayload(job, address, lat, lng) {
     lat,
     lng,
     group: pinGroup(job),
+    scheduled: isScheduledJob(job),
     isArchived: Boolean(job.isArchived),
     isDeadEstimate: Boolean(job.isDeadEstimate),
   };
@@ -184,10 +213,8 @@ async function getJobMapPins(req, res) {
 
     await fillMissingCoords(jobs);
 
-    const liveJobs = jobs.filter((job) => !isArchivedLike(job));
-    const pipelineJobs = liveJobs.filter(
-      (job) => PIPELINE_STAGES.includes(job.stage) && !isCompletedJob(job),
-    );
+    const liveJobs = jobs.filter((job) => !isArchivedLike(job) && isContractedJob(job));
+    const pipelineJobs = liveJobs;
     const currentJobs = liveJobs.filter((job) => isCurrentJob(job, today, tomorrow));
     const weekJobs = liveJobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
     const completedJobs = jobs.filter((job) => !job.isDeadEstimate && isCompletedJob(job));
@@ -195,7 +222,7 @@ async function getJobMapPins(req, res) {
 
     return res.json({
       county: 'Orange County, CA',
-      all: pinsInCounty(jobs),
+      all: pinsInCounty(jobs.filter((job) => isContractedJob(job) && !job.isDeadEstimate)),
       pipeline: pinsInCounty(pipelineJobs),
       current: pinsInCounty(currentJobs),
       week: pinsInCounty(weekJobs),

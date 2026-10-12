@@ -37,6 +37,7 @@ import api from '../utils/axios';
 import ProfilePhotoFieldPreview from '../components/common/ProfilePhotoFieldPreview';
 import { useTheme } from '@mui/material/styles';
 import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
+import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import LiminalitySettingsPanel from '../components/voice/LiminalitySettingsPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -45,6 +46,7 @@ function AccountSettingsPage() {
   const { user: currentUser, fetchCurrentUser, isSuperAdmin } = useAuth();
   const theme = useTheme();
   const { isShopViewRole, sensitiveUnlocked, setSensitiveUnlocked } = useShopViewSensitive(currentUser?.role);
+  const financialPin = useFinancialPinLockContext();
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -451,6 +453,47 @@ function AccountSettingsPage() {
       </Paper>
 
       <LiminalitySettingsPanel />
+
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: '16px',
+          p: 4,
+          mb: 3,
+          background: theme.palette.background.paper,
+          boxShadow:
+            theme.palette.mode === 'dark'
+              ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+              : '0 2px 12px rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <LockIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Sensitive data
+          </Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Turn this on if you want job totals hidden until a PIN is entered. Leave it off so amounts
+          stay visible.
+        </Typography>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={financialPin.protectEnabled}
+              onChange={(e) => financialPin.setProtectEnabled(e.target.checked)}
+            />
+          }
+          label="Protect sensitive data with PIN"
+        />
+        {financialPin.protectEnabled && !financialPin.unlocked ? (
+          <Box sx={{ mt: 1 }}>
+            <Button variant="outlined" onClick={() => financialPin.openUnlockDialog()}>
+              Unlock amounts
+            </Button>
+          </Box>
+        ) : null}
+      </Paper>
 
       {isShopViewRole && (
         <Paper

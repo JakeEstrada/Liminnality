@@ -192,6 +192,7 @@ function buildSystemPrompt(voice = false) {
         'Answer in 1–3 short spoken sentences. No markdown, bullets, URLs, or tables.',
         'Name at most four jobs or people. Skip ids. Money as dollars.',
         'If send_customer_info_text sent, confirm who received which customer. If it returned several matches, ask which one — do not guess.',
+        'They already said your name. Follow-up answers will be short: a job name, a person, or "Jake". Use conversation history. Do not tell them to repeat the whole command.',
         '',
       ]
     : [];
@@ -278,7 +279,14 @@ async function runAssistantChat(req, res) {
   }
 
   const voice = Boolean(req.body?.voice);
-  const messages = [{ role: 'system', content: buildSystemPrompt(voice) }, ...clientMessages];
+  const pagePath = String(req.body?.pagePath || '').trim().slice(0, 300);
+  const pageLine = pagePath
+    ? `The user is currently looking at ${pagePath}. If they say "this job" or "this customer", use that page when it includes a customer or job id; otherwise ask which one.`
+    : '';
+  const messages = [
+    { role: 'system', content: [buildSystemPrompt(voice), pageLine].filter(Boolean).join('\n') },
+    ...clientMessages,
+  ];
   const clientActions = [];
   const tenantId = req.user?.tenantId;
 

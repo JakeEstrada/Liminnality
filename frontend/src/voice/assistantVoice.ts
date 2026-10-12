@@ -23,7 +23,8 @@ export async function askLiminalityAssistant(
   spoken: string,
 ): Promise<AssistantVoiceResult> {
   const messages = [...history, { role: 'user' as const, content: spoken }].slice(-8);
-  const { data } = await api.post('/assistant/chat', { messages, voice: true });
+  const pagePath = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
+  const { data } = await api.post('/assistant/chat', { messages, voice: true, pagePath });
   const reply = spokenAssistantReply(typeof data?.reply === 'string' ? data.reply : '');
   const actions = Array.isArray(data?.actions) ? data.actions : [];
   const path = actions.find((row: { type?: string; path?: string }) => row?.type === 'navigate' && row.path)?.path;
