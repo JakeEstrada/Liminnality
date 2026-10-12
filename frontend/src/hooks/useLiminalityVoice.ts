@@ -9,6 +9,7 @@ import {
 } from '../voice/browserSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, spokenAssistantReply } from '../voice/assistantVoice';
+import { applyMapShow, estimateSpeechMs, startMapTour } from '../voice/mapCommandBus';
 import {
   COMMAND_ENDPOINT_MS,
   COMMAND_TIMEOUT_MS,
@@ -312,19 +313,35 @@ export function useLiminalityVoice({
             { role: 'user', content: assistantSpoken },
             { role: 'assistant', content: result.reply },
           ].slice(-8);
+          if (result.mapShow) {
+            setPhase('executing');
+            setStatusLabel('Opening the map');
+            applyMapShow(result.mapShow);
+          }
           if (result.path) {
             setPhase('executing');
-            setStatusLabel('Opening page');
+            setStatusLabel(result.mapShow ? 'Opening the map' : 'Opening page');
             onNavigateRef.current(result.path);
+            if (result.mapShow) {
+              await new Promise((resolve) => window.setTimeout(resolve, 450));
+              applyMapShow(result.mapShow);
+            }
           }
           if (send.matched && send.job && send.employee && /sent|texted|messaged/i.test(result.reply || '')) {
             pendingSendRef.current = {};
           }
           bumpCommandWindow();
-          if (result.reply) {
-            await speakAndWait(result.reply);
-          } else {
-            await speakAndWait("Didn't catch that. Say it again.");
+          const stopTour = result.mapShow?.jobIds?.length
+            ? startMapTour(result.mapShow.jobIds, estimateSpeechMs(result.reply || ''))
+            : () => {};
+          try {
+            if (result.reply) {
+              await speakAndWait(result.reply);
+            } else {
+              await speakAndWait("Didn't catch that. Say it again.");
+            }
+          } finally {
+            stopTour();
           }
         } catch (error) {
           const data = (error as { response?: { data?: { error?: string } } })?.response?.data;

@@ -6,6 +6,7 @@ const {
   searchJobNotes,
   fetchJobDetails,
   searchJobs,
+  showJobsOnMap,
   fetchUpcomingSchedule,
   listRolodexEmployees,
   sendCustomerInfoText,
@@ -126,7 +127,7 @@ const TOOLS = [
     function: {
       name: 'search_jobs',
       description:
-        'Find active jobs by city, street, customer name, or job title. Use for "jobs in Dana Point", "jobs in San Clemente", or a customer last name.',
+        'Find active jobs by city, street, customer name, or job title as a text list. Prefer show_jobs_on_map when they want to see jobs on the Orange County map.',
       parameters: {
         type: 'object',
         properties: {
@@ -134,6 +135,38 @@ const TOOLS = [
           limit: { type: 'integer', description: 'Max jobs (1–15)', default: 8 },
         },
         required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'show_jobs_on_map',
+      description:
+        'Open the Orange County jobs map, filter pins, zoom to the matches, and highlight them. Use for "jobs in Dana Point", "show scheduled jobs", "jobs over 20 thousand", or any request to see jobs on the map. Then describe the mapped jobs in the same order returned.',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string', description: 'City such as Dana Point or San Clemente' },
+          query: { type: 'string', description: 'Customer or job name fragment' },
+          stage: {
+            type: 'string',
+            description: 'Pipeline stage such as SCHEDULED, JOB_PREP, or "ready to schedule"',
+          },
+          scheduled: {
+            type: 'string',
+            enum: ['any', 'yes', 'no'],
+            description: 'yes = on the calendar / in production, no = contracted but not scheduled',
+          },
+          minAmount: { type: 'number', description: 'Minimum contract amount in dollars' },
+          maxAmount: { type: 'number', description: 'Maximum contract amount in dollars' },
+          view: {
+            type: 'string',
+            enum: ['pipeline', 'all', 'current', 'week', 'completed', 'archived'],
+            description: 'Map tab. Default pipeline (contracted live jobs).',
+          },
+          limit: { type: 'integer', description: 'Max jobs (1–12)', default: 8 },
+        },
       },
     },
   },
@@ -195,7 +228,8 @@ function buildSystemPrompt(voice = false) {
   const voiceLines = voice
     ? [
         'You are also Liminality, speaking out loud on the shop floor.',
-        'Answer in 1–3 short spoken sentences. No markdown, bullets, URLs, or tables.',
+        'Answer in 1–3 short spoken sentences unless you used show_jobs_on_map.',
+        'If you used show_jobs_on_map, walk the mapped jobs in that same order. One short sentence per job, at most four jobs. Name the customer or job, the city, scheduled or not, and the amount if present. Skip ids. No markdown, bullets, URLs, or tables.',
         'Name at most four jobs or people. Skip ids. Money as dollars.',
         'If send_customer_info_text sent, confirm who received which customer.',
         'If the tool still returns several people, ask once. If they say "the user" or "the contact", call the tool again with employeeKind set. Do not keep asking the same question.',
@@ -217,7 +251,8 @@ function buildSystemPrompt(voice = false) {
     '- search_job_notes: job modal notes and crew notes (materials to order, supplies, reminders)',
     '- get_job_details: one job\'s notes, payment schedule, and timeline (use jobId from search)',
     '- global_search: find a customer or job by name before get_job_details',
-    '- search_jobs: jobs by city, street, customer, or title ("jobs in Dana Point")',
+    '- search_jobs: jobs by city, street, customer, or title as a list',
+    '- show_jobs_on_map: open the dashboard map, filter pins, zoom, and highlight ("jobs in Dana Point")',
     '- get_upcoming_schedule: appointments and jobs coming up on the calendar',
     '- send_customer_info_text: text a customer card to an employee on the rolodex ("send Hammer to Jake")',
     '- list_sms_employees: rolodex names that can receive texts',
@@ -225,6 +260,7 @@ function buildSystemPrompt(voice = false) {
     'For "send [customer] to [employee]", call send_customer_info_text. Do not invent a phone number. Do not send custom message bodies — only the customer card.',
     'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from the results only.',
+    'For "jobs in [city]", "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
     'When deposit sources differ (CRM vs bank), say which is most recent by date.',
     '',
@@ -381,6 +417,31 @@ async function runAssistantChat(req, res) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
                 toolContent = await searchJobs({ query: args.query, limit: args.limit });
+              }
+            } else if (fn.name === 'show_jobs_on_map') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                const mapResult = await showJobsOnMap({
+                  city: args.city,
+                  query: args.query,
+                  stage: args.stage,
+                  scheduled: args.scheduled,
+                  minAmount: args.minAmount,
+                  maxAmount: args.maxAmount,
+                  view: args.view,
+                  pagePath,
+                  limit: args.limit,
+                });
+                clientActions.push({
+                  type: 'map_show',
+                  path: mapResult.path,
+                  filters: mapResult.filters,
+                  jobIds: mapResult.jobs.filter((job) => job.mapped).map((job) => job.id),
+                  jobs: mapResult.jobs,
+                  openFilters: true,
+                });
+                toolContent = mapResult;
               }
             } else if (fn.name === 'get_upcoming_schedule') {
               if (!tenantId) {

@@ -52,7 +52,8 @@ function sanitizeNavigatePath(raw, role) {
 
 const ROUTES_MARKDOWN = `
 Main app routes (path → purpose):
-- /dashboard — overview and recent activity
+- /dashboard — overview, recent activity, and the Orange County jobs map (filter by city, name, stage, scheduled, amount)
+- /dashboard-view — shop TV dashboard with the same map
 - /pipeline — job pipeline board
 - /messages — SMS inbox; ?tab=inbox is the team Outlook worksheets (admin)
 - /outlook — redirects to /messages?tab=inbox

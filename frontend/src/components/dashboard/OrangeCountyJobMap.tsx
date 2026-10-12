@@ -1,9 +1,21 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../utils/axios';
+import { formatMoney } from '../../utils/paymentSchedule';
+import { subscribeMapCommands, type MapShowCommand, type MapViewId } from '../../voice/mapCommandBus';
 import JobDetailModal from '../jobs/JobDetailModal';
 import { chartPanelSx } from './dashboardChartPrimitives';
 
@@ -12,6 +24,8 @@ type MapPin = {
   title: string;
   stage: string;
   customerName: string;
+  city?: string;
+  amount?: number;
   address: string;
   lat: number;
   lng: number;
@@ -21,9 +35,27 @@ type MapPin = {
   isDeadEstimate?: boolean;
 };
 
-type MapView = 'all' | 'pipeline' | 'current' | 'week' | 'completed' | 'archived';
+type MapFilters = {
+  query: string;
+  city: string;
+  stage: string;
+  scheduled: 'any' | 'yes' | 'no';
+  minAmount: string;
+  maxAmount: string;
+  jobIds: string[];
+};
 
-const VIEWS: { id: MapView; label: string }[] = [
+const EMPTY_FILTERS: MapFilters = {
+  query: '',
+  city: '',
+  stage: '',
+  scheduled: 'any',
+  minAmount: '',
+  maxAmount: '',
+  jobIds: [],
+};
+
+const VIEWS: { id: MapViewId; label: string }[] = [
   { id: 'all', label: 'All jobs' },
   { id: 'pipeline', label: 'Pipeline' },
   { id: 'current', label: 'On site now' },
@@ -31,6 +63,18 @@ const VIEWS: { id: MapView; label: string }[] = [
   { id: 'completed', label: 'Completed' },
   { id: 'archived', label: 'Archived' },
 ];
+
+const STAGE_LABELS: Record<string, string> = {
+  DEPOSIT_PENDING: 'Signed / deposit pending',
+  JOB_PREP: 'Job prep',
+  TAKEOFF_COMPLETE: 'Fabrication',
+  READY_TO_SCHEDULE: 'Ready to schedule',
+  SCHEDULED: 'Scheduled',
+  IN_PRODUCTION: 'In production',
+  INSTALLED: 'Installed',
+  FINAL_PAYMENT_CLOSED: 'Final payment closed',
+  CONTRACT_SIGNED: 'Contract signed',
+};
 
 const PIN_COLORS: Record<string, string> = {
   unscheduled: '#f59e0b',
@@ -40,13 +84,37 @@ const PIN_COLORS: Record<string, string> = {
   active: '#f59e0b',
 };
 
-function pinIcon(group = 'active') {
+const CITY_ALIASES: Record<string, string> = {
+  'dana pt': 'dana point',
+  'sj clemente': 'san clemente',
+  's clemente': 'san clemente',
+};
+
+function normalizePlace(value: string) {
+  const cleaned = String(value || '')
+    .toLowerCase()
+    .replace(/\bcalifornia\b|\bca\b/g, ' ')
+    .replace(/\bpt\.?\b/g, 'point')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return CITY_ALIASES[cleaned] || cleaned;
+}
+
+function placeMatch(hay: string, needle: string) {
+  const a = normalizePlace(hay);
+  const b = normalizePlace(needle);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function pinIcon(group = 'active', featured = false) {
   const color = PIN_COLORS[group] || PIN_COLORS.active;
   return L.divIcon({
     className: 'paarth-job-pin',
-    html: `<span class="paarth-job-pin-dot" style="background:${color}"></span>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
+    html: `<span class="paarth-job-pin-dot${featured ? ' is-featured' : ''}" style="background:${color}"></span>`,
+    iconSize: featured ? [28, 28] : [22, 22],
+    iconAnchor: featured ? [14, 14] : [11, 11],
     popupAnchor: [0, -12],
   });
 }
@@ -59,16 +127,40 @@ function escapeHtml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-function pinLabel(pin: MapPin) {
-  return pin.customerName || pin.title || 'Job';
+function pinLabel(pin: MapPin, hideSensitive: boolean) {
+  const name = pin.customerName || pin.title || 'Job';
+  const city = pin.city ? ` · ${pin.city}` : '';
+  const amount = !hideSensitive && pin.amount ? ` · ${formatMoney(pin.amount)}` : '';
+  return `${name}${city}${amount}`;
 }
 
-function pinsForView(pins: Record<MapView, MapPin[]>, view: MapView) {
+function pinsForView(pins: Record<MapViewId, MapPin[]>, view: MapViewId) {
   const list = pins[view] || [];
   if (view === 'pipeline' || view === 'current' || view === 'week') {
     return list.filter((pin) => pin.group !== 'archived' && !pin.isArchived && !pin.isDeadEstimate);
   }
   return list;
+}
+
+function pinMatches(pin: MapPin, filters: MapFilters) {
+  const query = filters.query.trim().toLowerCase();
+  if (query) {
+    const hay = `${pin.title} ${pin.customerName} ${pin.city} ${pin.address}`.toLowerCase();
+    if (!hay.includes(query)) return false;
+  }
+  if (filters.city && !placeMatch(`${pin.city || ''} ${pin.address || ''}`, filters.city)) {
+    return false;
+  }
+  if (filters.stage && pin.stage !== filters.stage) return false;
+  if (filters.scheduled === 'yes' && !pin.scheduled) return false;
+  if (filters.scheduled === 'no' && pin.scheduled) return false;
+  const amount = Number(pin.amount) || 0;
+  const min = Number(filters.minAmount);
+  const max = Number(filters.maxAmount);
+  if (Number.isFinite(min) && filters.minAmount !== '' && amount < min) return false;
+  if (Number.isFinite(max) && filters.maxAmount !== '' && amount > max) return false;
+  if (filters.jobIds.length && !filters.jobIds.includes(pin.id)) return false;
+  return true;
 }
 
 const OC_CENTER: L.LatLngExpression = [33.67, -117.78];
@@ -109,9 +201,13 @@ export default function OrangeCountyJobMap({
   const theme = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
-  const [view, setView] = useState<MapView>('pipeline');
+  const markerByIdRef = useRef<Map<string, { marker: L.Marker; pin: MapPin }>>(new Map());
+  const [view, setView] = useState<MapViewId>('pipeline');
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filters, setFilters] = useState<MapFilters>(EMPTY_FILTERS);
+  const [featuredJobId, setFeaturedJobId] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
-  const [pins, setPins] = useState<Record<MapView, MapPin[]>>({
+  const [pins, setPins] = useState<Record<MapViewId, MapPin[]>>({
     all: [],
     pipeline: [],
     current: [],
@@ -174,18 +270,69 @@ export default function OrangeCountyJobMap({
     if (!ctx) return undefined;
     const timer = window.setTimeout(() => ctx.map.invalidateSize(), 200);
     return () => window.clearTimeout(timer);
-  }, [kiosk]);
+  }, [kiosk, filtersOpen]);
 
-  const visiblePins = useMemo(() => pinsForView(pins, view), [pins, view]);
+  const viewPins = useMemo(() => pinsForView(pins, view), [pins, view]);
+  const visiblePins = useMemo(() => viewPins.filter((pin) => pinMatches(pin, filters)), [filters, viewPins]);
+  const cities = useMemo(() => {
+    const unique = new Set(
+      viewPins.map((pin) => String(pin.city || '').trim()).filter(Boolean),
+    );
+    return [...unique].sort((a, b) => a.localeCompare(b));
+  }, [viewPins]);
+  const stages = useMemo(() => {
+    const unique = new Set(viewPins.map((pin) => pin.stage).filter(Boolean));
+    return [...unique].sort((a, b) =>
+      (STAGE_LABELS[a] || a).localeCompare(STAGE_LABELS[b] || b),
+    );
+  }, [viewPins]);
+  const filtersActive =
+    Boolean(filters.query.trim()) ||
+    Boolean(filters.city) ||
+    Boolean(filters.stage) ||
+    filters.scheduled !== 'any' ||
+    filters.minAmount !== '' ||
+    filters.maxAmount !== '' ||
+    filters.jobIds.length > 0;
+
+  useEffect(() => {
+    return subscribeMapCommands({
+      show: (command: MapShowCommand) => {
+        setFiltersOpen(command.openFilters !== false);
+        if (command.view) setView(command.view);
+        setFilters({
+          query: command.query || '',
+          city: command.city || '',
+          stage: command.stage || '',
+          scheduled: command.scheduled || 'any',
+          minAmount: command.minAmount != null ? String(command.minAmount) : '',
+          maxAmount: command.maxAmount != null ? String(command.maxAmount) : '',
+          jobIds: command.jobIds || [],
+        });
+        setFeaturedJobId(command.jobIds?.[0] || null);
+      },
+      highlight: (command) => {
+        if (command.jobId) {
+          setFeaturedJobId(command.jobId);
+          return;
+        }
+        setFeaturedJobId(command.jobIds?.[0] || null);
+      },
+    });
+  }, []);
 
   useEffect(() => {
     const ctx = mapRef.current;
     if (!ctx) return;
     ctx.markers.clearLayers();
+    markerByIdRef.current.clear();
     const bounds = L.latLngBounds([]);
     visiblePins.forEach((pin) => {
-      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.group), keyboard: true });
-      marker.bindTooltip(escapeHtml(pinLabel(pin)), {
+      const marker = L.marker([pin.lat, pin.lng], {
+        icon: pinIcon(pin.group, false),
+        keyboard: true,
+      });
+      marker.bindTooltip(escapeHtml(pinLabel(pin, hideSensitive)), {
         direction: 'top',
         offset: [0, -12],
         opacity: 1,
@@ -197,17 +344,44 @@ export default function OrangeCountyJobMap({
         setOpenJobId(pin.id);
       });
       marker.addTo(ctx.markers);
+      markerByIdRef.current.set(pin.id, { marker, pin });
       bounds.extend([pin.lat, pin.lng]);
     });
     window.setTimeout(() => ctx.map.invalidateSize(), 40);
     if (bounds.isValid()) {
-      ctx.map.fitBounds(bounds.pad(0.2), { maxZoom: 13, animate: true });
+      ctx.map.fitBounds(bounds.pad(visiblePins.length === 1 ? 0.35 : 0.2), {
+        maxZoom: visiblePins.length === 1 ? 15 : 14,
+        animate: true,
+      });
     } else {
       ctx.map.setView(OC_CENTER, 10);
     }
-  }, [visiblePins]);
+  }, [hideSensitive, visiblePins]);
 
-  const activePins = visiblePins;
+  useEffect(() => {
+    const ctx = mapRef.current;
+    if (!ctx) return;
+    markerByIdRef.current.forEach(({ marker, pin }, id) => {
+      const featured = id === featuredJobId;
+      marker.setIcon(pinIcon(pin.group, featured));
+      marker.setZIndexOffset(featured ? 800 : 0);
+      marker.unbindTooltip();
+      marker.bindTooltip(escapeHtml(pinLabel(pin, hideSensitive)), {
+        direction: 'top',
+        offset: [0, -12],
+        opacity: 1,
+        sticky: !featured,
+        permanent: featured,
+        className: featured ? 'paarth-job-tooltip is-featured' : 'paarth-job-tooltip',
+      });
+      if (featured) marker.openTooltip();
+      else marker.closeTooltip();
+    });
+    const featured = featuredJobId ? markerByIdRef.current.get(featuredJobId) : null;
+    if (featured) {
+      ctx.map.panTo([featured.pin.lat, featured.pin.lng], { animate: true });
+    }
+  }, [featuredJobId, hideSensitive, visiblePins]);
 
   const handleJobUpdate = useCallback(async (jobId: string, updates: Record<string, unknown>) => {
     await api.patch(`/jobs/${jobId}`, updates);
@@ -217,8 +391,11 @@ export default function OrangeCountyJobMap({
     setOpenJobId(null);
   }, []);
 
+  const fieldSx = { minWidth: { xs: '100%', sm: 140 }, flex: { sm: '0 0 auto' } };
+
   return (
     <Paper
+      id="orange-county-job-map"
       elevation={0}
       sx={{
         ...chartPanelSx(theme),
@@ -234,20 +411,134 @@ export default function OrangeCountyJobMap({
             key={item.id}
             size="small"
             variant={view === item.id ? 'contained' : 'outlined'}
-            onClick={() => setView(item.id)}
+            onClick={() => {
+              setView(item.id);
+              setFilters((current) => ({ ...current, jobIds: [] }));
+            }}
             sx={{ textTransform: 'none', minWidth: 0 }}
           >
             {item.label}
           </Button>
         ))}
+        <Button
+          size="small"
+          variant={filtersOpen ? 'contained' : 'outlined'}
+          onClick={() => setFiltersOpen((open) => !open)}
+          sx={{ textTransform: 'none', minWidth: 0, ml: 'auto' }}
+        >
+          Filters
+        </Button>
       </Box>
+      {filtersOpen ? (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            mb: 1.5,
+            flexShrink: 0,
+          }}
+        >
+          <TextField
+            size="small"
+            label="Name"
+            value={filters.query}
+            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value, jobIds: [] }))}
+            sx={{ minWidth: { xs: '100%', sm: 180 }, flex: 1 }}
+          />
+          <FormControl size="small" sx={fieldSx}>
+            <InputLabel>City</InputLabel>
+            <Select
+              label="City"
+              value={filters.city}
+              onChange={(event) => setFilters((current) => ({ ...current, city: String(event.target.value), jobIds: [] }))}
+            >
+              <MenuItem value="">All cities</MenuItem>
+              {cities.map((city) => (
+                <MenuItem key={city} value={city}>
+                  {city}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={fieldSx}>
+            <InputLabel>Stage</InputLabel>
+            <Select
+              label="Stage"
+              value={filters.stage}
+              onChange={(event) => setFilters((current) => ({ ...current, stage: String(event.target.value), jobIds: [] }))}
+            >
+              <MenuItem value="">All stages</MenuItem>
+              {stages.map((stage) => (
+                <MenuItem key={stage} value={stage}>
+                  {STAGE_LABELS[stage] || stage}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={fieldSx}>
+            <InputLabel>Scheduled</InputLabel>
+            <Select
+              label="Scheduled"
+              value={filters.scheduled}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  scheduled: event.target.value as MapFilters['scheduled'],
+                  jobIds: [],
+                }))
+              }
+            >
+              <MenuItem value="any">Any</MenuItem>
+              <MenuItem value="yes">Scheduled</MenuItem>
+              <MenuItem value="no">Not scheduled</MenuItem>
+            </Select>
+          </FormControl>
+          {hideSensitive ? null : (
+            <>
+              <TextField
+                size="small"
+                label="Min $"
+                type="number"
+                value={filters.minAmount}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, minAmount: event.target.value, jobIds: [] }))
+                }
+                sx={{ width: 110 }}
+              />
+              <TextField
+                size="small"
+                label="Max $"
+                type="number"
+                value={filters.maxAmount}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, maxAmount: event.target.value, jobIds: [] }))
+                }
+                sx={{ width: 110 }}
+              />
+            </>
+          )}
+          {filtersActive ? (
+            <Button
+              size="small"
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setFeaturedJobId(null);
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              Clear
+            </Button>
+          ) : null}
+        </Box>
+      ) : null}
       <Box sx={{ mb: 1, flexShrink: 0 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
           Orange County jobs
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {activePins.length} mapped · hover a pin for the job · click to open · orange not
-          scheduled · green scheduled · gray archived
+          {visiblePins.length} mapped{filtersActive ? ' · filtered' : ''} · hover a pin for the job ·
+          click to open · orange not scheduled · green scheduled · gray archived
         </Typography>
       </Box>
       <Box
@@ -272,6 +563,17 @@ export default function OrangeCountyJobMap({
             border: '2px solid #fff',
             boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
           },
+          '& .paarth-job-pin-dot.is-featured': {
+            width: 24,
+            height: 24,
+            boxShadow: '0 0 0 4px rgba(56, 189, 248, 0.9), 0 0 18px 6px rgba(14, 165, 233, 0.55)',
+            animation: 'paarth-pin-pulse 0.9s ease-in-out infinite',
+          },
+          '@keyframes paarth-pin-pulse': {
+            '0%': { transform: 'scale(1)' },
+            '50%': { transform: 'scale(1.18)' },
+            '100%': { transform: 'scale(1)' },
+          },
           '& .paarth-job-tooltip': {
             background: theme.palette.background.paper,
             color: theme.palette.text.primary,
@@ -285,13 +587,16 @@ export default function OrangeCountyJobMap({
             fontSize: 13,
             padding: '6px 10px',
           },
+          '& .paarth-job-tooltip.is-featured': {
+            outline: '2px solid #38bdf8',
+          },
           '& .paarth-job-tooltip.leaflet-tooltip-top::before': {
             borderTopColor: theme.palette.background.paper,
           },
         }}
       >
         <Box ref={hostRef} sx={{ position: 'absolute', inset: 0 }} />
-        {!activePins.length ? (
+        {!visiblePins.length ? (
           <Typography
             variant="body2"
             color="common.white"
@@ -304,7 +609,9 @@ export default function OrangeCountyJobMap({
               textShadow: '0 1px 4px rgba(0,0,0,0.7)',
             }}
           >
-            Jobs show up here after their street address is converted to a map point.
+            {filtersActive
+              ? 'No mapped jobs match these filters.'
+              : 'Jobs show up here after their street address is converted to a map point.'}
           </Typography>
         ) : null}
       </Box>

@@ -16,6 +16,7 @@ import { Chat as ChatIcon, Close as CloseIcon, Send as SendIcon } from '@mui/ico
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../utils/axios';
+import { applyMapShow, parseMapShowAction, startMapTour } from '../../voice/mapCommandBus';
 
 export default function SiteAssistantChat() {
   const navigate = useNavigate();
@@ -44,10 +45,15 @@ export default function SiteAssistantChat() {
       setMessages((prev) => [...prev, { role: 'assistant', content: reply || '—' }]);
 
       const actions = Array.isArray(data?.actions) ? data.actions : [];
+      const mapShow = parseMapShowAction(actions.find((row) => row?.type === 'map_show'));
+      if (mapShow) {
+        applyMapShow(mapShow);
+        if (mapShow.path) navigate(mapShow.path);
+        if (mapShow.jobIds.length) startMapTour(mapShow.jobIds, Math.max(4000, mapShow.jobIds.length * 2200));
+      }
       for (const a of actions) {
         if (a?.type === 'navigate' && typeof a.path === 'string') {
           navigate(a.path);
-          toast.success(`Opened ${a.path.split('?')[0]}`);
         }
       }
     } catch (err) {

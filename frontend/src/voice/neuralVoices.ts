@@ -10,6 +10,8 @@ export type NeuralVoice = {
 export const ELEVEN_VOICES: NeuralVoice[] = [
   { id: 'sarah', name: 'Sarah', description: 'natural American woman', uri: 'eleven:sarah' },
   { id: 'adam', name: 'Adam', description: 'natural American man', uri: 'eleven:adam' },
+  { id: 'jessa', name: 'Jessa', description: 'clear woman', uri: 'eleven:jessa' },
+  { id: 'victor', name: 'Victor', description: 'clear man', uri: 'eleven:victor' },
   { id: 'carla', name: 'Carla', description: 'calm, a little mysterious', uri: 'eleven:carla' },
   { id: 'natasha', name: 'Natasha', description: 'warm woman', uri: 'eleven:natasha' },
   { id: 'kaori', name: 'Kaori', description: 'Japanese woman', uri: 'eleven:kaori' },

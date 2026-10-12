@@ -1,8 +1,10 @@
 import api from '../utils/axios';
+import { parseMapShowAction, type MapShowCommand } from './mapCommandBus';
 
 export type AssistantVoiceResult = {
   reply: string;
   path?: string;
+  mapShow?: MapShowCommand;
 };
 
 export function spokenAssistantReply(raw: string) {
@@ -28,5 +30,10 @@ export async function askLiminalityAssistant(
   const reply = spokenAssistantReply(typeof data?.reply === 'string' ? data.reply : '');
   const actions = Array.isArray(data?.actions) ? data.actions : [];
   const path = actions.find((row: { type?: string; path?: string }) => row?.type === 'navigate' && row.path)?.path;
-  return { reply, path: typeof path === 'string' ? path : undefined };
+  const mapShow = parseMapShowAction(actions.find((row: { type?: string }) => row?.type === 'map_show'));
+  return {
+    reply,
+    path: mapShow?.path || (typeof path === 'string' ? path : undefined),
+    mapShow,
+  };
 }

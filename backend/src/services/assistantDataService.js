@@ -6,6 +6,7 @@ const User = require('../models/User');
 const EmployeeContact = require('../models/EmployeeContact');
 const DepositAllocation = require('../models/DepositAllocation');
 const PlaidRegisterCache = require('../models/PlaidRegisterCache');
+const { formatJobLocation, inOrangeCounty } = require('./geocodeService');
 
 const SHOP_TIMEZONE = 'America/Los_Angeles';
 
@@ -506,6 +507,206 @@ async function searchJobs({ query, limit: limitArg = 8 } = {}) {
   };
 }
 
+const MAP_STAGE_ALIASES = {
+  'appointment scheduled': 'APPOINTMENT_SCHEDULED',
+  'estimate in progress': 'ESTIMATE_IN_PROGRESS',
+  'estimate sent': 'ESTIMATE_SENT',
+  'design review': 'ENGAGED_DESIGN_REVIEW',
+  'contract out': 'CONTRACT_OUT',
+  'contract signed': 'CONTRACT_SIGNED',
+  'deposit pending': 'DEPOSIT_PENDING',
+  'signed': 'DEPOSIT_PENDING',
+  'job prep': 'JOB_PREP',
+  'fabrication': 'TAKEOFF_COMPLETE',
+  'takeoff complete': 'TAKEOFF_COMPLETE',
+  'ready to schedule': 'READY_TO_SCHEDULE',
+  scheduled: 'SCHEDULED',
+  'in production': 'IN_PRODUCTION',
+  installed: 'INSTALLED',
+  'final payment closed': 'FINAL_PAYMENT_CLOSED',
+};
+
+const MAP_SCHEDULED_STAGES = new Set([
+  'SCHEDULED',
+  'IN_PRODUCTION',
+  'INSTALLED',
+  'FINAL_PAYMENT_CLOSED',
+]);
+
+const MAP_ESTIMATE_STAGES = new Set([
+  'APPOINTMENT_SCHEDULED',
+  'ESTIMATE_IN_PROGRESS',
+  'ESTIMATE_SENT',
+  'ENGAGED_DESIGN_REVIEW',
+  'CONTRACT_OUT',
+]);
+
+const CITY_ALIASES = {
+  'dana pt': 'dana point',
+  'sj clemente': 'san clemente',
+  's clemente': 'san clemente',
+};
+
+function normalizePlace(value) {
+  const cleaned = String(value || '')
+    .toLowerCase()
+    .replace(/\bcalifornia\b|\bca\b/g, ' ')
+    .replace(/\bpt\.?\b/g, 'point')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return CITY_ALIASES[cleaned] || cleaned;
+}
+
+function placeMatch(hay, needle) {
+  const a = normalizePlace(hay);
+  const b = normalizePlace(needle);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function resolveMapStage(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  if (/^[A-Z_]+$/.test(text) && MAP_STAGE_ALIASES[text.toLowerCase().replace(/_/g, ' ')]) {
+    return text;
+  }
+  const key = normalizePlace(text).replace(/\s+/g, ' ');
+  return MAP_STAGE_ALIASES[key] || (Object.prototype.hasOwnProperty.call(MAP_STAGE_ALIASES, text.toLowerCase())
+    ? MAP_STAGE_ALIASES[text.toLowerCase()]
+    : text.toUpperCase().replace(/\s+/g, '_'));
+}
+
+function mapJobAmount(job) {
+  const contracted = Number(job.valueContracted);
+  if (Number.isFinite(contracted) && contracted > 0) return contracted;
+  const estimated = Number(job.valueEstimated);
+  if (Number.isFinite(estimated) && estimated > 0) return estimated;
+  return 0;
+}
+
+function mapJobCity(job, address) {
+  const fromJob = String(job.jobAddress?.city || '').trim();
+  if (fromJob) return fromJob;
+  const fromCustomer = String(job.customerId?.address?.city || '').trim();
+  if (fromCustomer) return fromCustomer;
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 3) {
+    return parts[parts.length - 2].replace(/\s+[A-Z]{2}(\s+\d{5}.*)?$/i, '').trim();
+  }
+  return '';
+}
+
+function mapPagePath(pagePath) {
+  const path = String(pagePath || '');
+  if (['/dashboard-view', '/pipeline-view', '/calendar-view', '/customers-view'].some((root) =>
+    path === root || path.startsWith(`${root}/`),
+  )) {
+    return '/dashboard-view';
+  }
+  return '/dashboard';
+}
+
+async function showJobsOnMap({
+  city,
+  query,
+  stage,
+  scheduled,
+  minAmount,
+  maxAmount,
+  view,
+  pagePath,
+  limit: limitArg = 8,
+} = {}) {
+  const limit = clampLimit(limitArg, 8, 12);
+  const cityQ = String(city || '').trim();
+  const textQ = String(query || '').trim();
+  const stageQ = resolveMapStage(stage);
+  const scheduledQ = String(scheduled || 'any').toLowerCase();
+  const min = Number(minAmount);
+  const max = Number(maxAmount);
+  const viewQ = ['all', 'pipeline', 'current', 'week', 'completed', 'archived'].includes(String(view || ''))
+    ? String(view)
+    : 'pipeline';
+
+  const jobs = await Job.find({
+    isDeadEstimate: { $ne: true },
+    ...(viewQ === 'archived' ? { isArchived: true } : { isArchived: { $ne: true } }),
+    ...(viewQ === 'completed'
+      ? { $or: [{ isCompletedClosedOut: true }, { stage: { $in: ['INSTALLED', 'FINAL_PAYMENT_CLOSED'] } }] }
+      : viewQ === 'archived'
+        ? {}
+        : { isCompletedClosedOut: { $ne: true }, stage: { $ne: 'FINAL_PAYMENT_CLOSED' } }),
+  })
+    .populate('customerId', 'name address')
+    .select('title stage jobAddress geo schedule customerId valueContracted valueEstimated isArchived isCompletedClosedOut')
+    .sort({ updatedAt: -1 })
+    .limit(80)
+    .lean();
+
+  const filtered = jobs.filter((job) => {
+    if (viewQ !== 'archived' && MAP_ESTIMATE_STAGES.has(String(job.stage || ''))) return false;
+    const address = formatJobLocation(job);
+    const jobCity = mapJobCity(job, address);
+    const hay = [job.title, job.customerId?.name, jobCity, address].filter(Boolean).join(' ');
+    if (textQ && !new RegExp(escapeRegex(textQ), 'i').test(hay)) return false;
+    if (cityQ && !placeMatch(`${jobCity} ${address}`, cityQ)) return false;
+    if (stageQ && String(job.stage || '') !== stageQ) return false;
+    const isScheduled = MAP_SCHEDULED_STAGES.has(String(job.stage || '')) || Boolean(job.isCompletedClosedOut);
+    if (scheduledQ === 'yes' && !isScheduled) return false;
+    if (scheduledQ === 'no' && isScheduled) return false;
+    const amount = mapJobAmount(job);
+    if (Number.isFinite(min) && min > 0 && amount < min) return false;
+    if (Number.isFinite(max) && max > 0 && amount > max) return false;
+    return true;
+  });
+
+  const mapped = [];
+  const unmapped = [];
+  for (const job of filtered.slice(0, limit)) {
+    const address = formatJobLocation(job);
+    const lat = Number(job.geo?.lat);
+    const lng = Number(job.geo?.lng);
+    const onMap =
+      job.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng) && inOrangeCounty(lat, lng);
+    const row = {
+      id: String(job._id),
+      title: job.title || 'Untitled',
+      customerName: job.customerId?.name || null,
+      city: mapJobCity(job, address) || null,
+      amount: formatMoney(mapJobAmount(job)),
+      stage: job.stage || null,
+      scheduled: MAP_SCHEDULED_STAGES.has(String(job.stage || '')) || Boolean(job.isCompletedClosedOut),
+      address: address || null,
+      mapped: onMap,
+      lat: onMap ? lat : null,
+      lng: onMap ? lng : null,
+    };
+    if (onMap) mapped.push(row);
+    else unmapped.push(row);
+  }
+
+  return {
+    filters: {
+      query: textQ || undefined,
+      city: cityQ || undefined,
+      stage: stageQ || undefined,
+      scheduled: scheduledQ === 'yes' || scheduledQ === 'no' ? scheduledQ : 'any',
+      minAmount: Number.isFinite(min) && min > 0 ? min : undefined,
+      maxAmount: Number.isFinite(max) && max > 0 ? max : undefined,
+      view: viewQ,
+    },
+    path: mapPagePath(pagePath),
+    count: mapped.length + unmapped.length,
+    mappedCount: mapped.length,
+    unmappedCount: unmapped.length,
+    jobs: [...mapped, ...unmapped],
+  };
+}
+
 async function fetchUpcomingSchedule({ days: daysArg = 14, limit: limitArg = 12 } = {}) {
   const days = clampLimit(daysArg, 14, 30);
   const limit = clampLimit(limitArg, 12, 20);
@@ -656,6 +857,7 @@ module.exports = {
   searchJobNotes,
   fetchJobDetails,
   searchJobs,
+  showJobsOnMap,
   fetchUpcomingSchedule,
   listRolodexEmployees,
   sendCustomerInfoText,

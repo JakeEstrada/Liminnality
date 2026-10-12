@@ -128,6 +128,30 @@ function pinGroup(job) {
   return 'unscheduled';
 }
 
+function jobCity(job, address) {
+  const fromJob = String(job.jobAddress?.city || '').trim();
+  if (fromJob) return fromJob;
+  const customer = job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
+  const fromCustomer = String(customer?.address?.city || customer?.addresses?.[0]?.city || '').trim();
+  if (fromCustomer) return fromCustomer;
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 3) {
+    return parts[parts.length - 2].replace(/\s+[A-Z]{2}(\s+\d{5}.*)?$/i, '').trim();
+  }
+  return '';
+}
+
+function jobAmount(job) {
+  const contracted = Number(job.valueContracted);
+  if (Number.isFinite(contracted) && contracted > 0) return contracted;
+  const estimated = Number(job.valueEstimated);
+  if (Number.isFinite(estimated) && estimated > 0) return estimated;
+  return 0;
+}
+
 function pinPayload(job, address, lat, lng) {
   const customer =
     job.customerId && typeof job.customerId === 'object' ? job.customerId : null;
@@ -136,6 +160,8 @@ function pinPayload(job, address, lat, lng) {
     title: String(job.title || 'Untitled job'),
     stage: String(job.stage || ''),
     customerName: String(customer?.name || '').trim(),
+    city: jobCity(job, address),
+    amount: jobAmount(job),
     address,
     lat,
     lng,
@@ -198,7 +224,7 @@ async function getJobMapPins(req, res) {
 
     const jobs = await Job.find({})
       .select(
-        'title stage jobAddress geo schedule customerId isArchived isDeadEstimate isCompletedClosedOut',
+        'title stage jobAddress geo schedule customerId valueContracted valueEstimated isArchived isDeadEstimate isCompletedClosedOut',
       )
       .populate({ path: 'customerId', select: 'name address addresses', strictPopulate: false });
 
