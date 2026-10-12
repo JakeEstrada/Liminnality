@@ -58,7 +58,7 @@ const EMPTY_FILTERS: MapFilters = {
   query: '',
   city: '',
   near: '',
-  radiusMiles: 25,
+  radiusMiles: 10,
   stage: '',
   scheduled: 'any',
   minAmount: '',
@@ -165,7 +165,7 @@ function pinMatches(pin: MapPin, filters: MapFilters) {
   }
   if (filters.near) {
     const center = lookupCityCenter(filters.near);
-    const radius = filters.radiusMiles > 0 ? filters.radiusMiles : 25;
+    const radius = filters.radiusMiles > 0 ? filters.radiusMiles : 10;
     if (center) {
       const miles = milesBetween(pin.lat, pin.lng, center.lat, center.lng);
       if (miles > radius) return false;
@@ -346,7 +346,7 @@ export default function OrangeCountyJobMap({
           query: command.query || '',
           city: command.near ? '' : command.city || '',
           near: command.near || '',
-          radiusMiles: command.radiusMiles && command.radiusMiles > 0 ? command.radiusMiles : 25,
+          radiusMiles: command.radiusMiles && command.radiusMiles > 0 ? command.radiusMiles : 10,
           stage: command.stage || '',
           scheduled: command.scheduled || 'any',
           minAmount: command.minAmount != null ? String(command.minAmount) : '',

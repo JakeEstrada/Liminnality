@@ -739,7 +739,7 @@ function parseNearPlace({ city, near, radiusMiles }) {
   return {
     city: exactCity,
     near: nearPlace,
-    radiusMiles: Number.isFinite(radius) && radius > 0 ? Math.min(Math.max(radius, 1), 50) : 25,
+    radiusMiles: Number.isFinite(radius) && radius > 0 ? Math.min(Math.max(radius, 1), 50) : 10,
     center: nearPlace ? lookupCityCenter(nearPlace) : null,
   };
 }

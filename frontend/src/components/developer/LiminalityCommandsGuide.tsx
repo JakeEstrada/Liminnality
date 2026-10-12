@@ -118,7 +118,7 @@ export default function LiminalityCommandsGuide() {
           { say: 'Who’s coming up?', does: 'Upcoming calendar appointments and jobs.' },
           { say: 'What’s on the calendar this week?', does: 'Same schedule lookup, next several days.' },
           { say: 'What jobs do we have in Dana Point?', does: 'Opens the dashboard map, filters to that city only, zooms in, and highlights each job as she names it.' },
-          { say: 'What jobs do we have near Fullerton?', does: 'Same map, 25-mile radius. She names each job while that pin highlights.' },
+          { say: 'What jobs do we have near Fullerton?', does: 'Same map, 10-mile radius. She names each job while that pin highlights.' },
           { say: 'Show scheduled jobs over twenty thousand', does: 'Same map, filtered by scheduled + amount.' },
           { say: 'Jobs in Dana Point', does: 'Same map tour. You can also filter the map yourself by name, city, stage, scheduled, and amount.' },
           { say: 'Open the Hammer job', does: 'Opens the job card here (does not switch to pipeline) on the Files tab so photos are visible.' },

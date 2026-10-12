@@ -168,7 +168,7 @@ const TOOLS = [
     function: {
       name: 'show_jobs_on_map',
       description:
-        'Open the Orange County jobs map, filter pins, zoom to the matches, and highlight them. Use city for jobs IN a city. Use near + radiusMiles 25 for jobs NEAR / around a city. Then describe the mapped jobs in the same order returned.',
+        'Open the Orange County jobs map, filter pins, zoom to the matches, and highlight them. Use city for jobs IN a city. Use near + radiusMiles 10 for jobs NEAR / around a city. Then describe the mapped jobs in the same order returned.',
       parameters: {
         type: 'object',
         properties: {
@@ -179,8 +179,8 @@ const TOOLS = [
           },
           radiusMiles: {
             type: 'number',
-            description: 'Radius in miles when near is set. Default 25.',
-            default: 25,
+            description: 'Radius in miles when near is set. Default 10.',
+            default: 10,
           },
           query: { type: 'string', description: 'Customer or job name fragment' },
           stage: {
@@ -296,7 +296,7 @@ function buildSystemPrompt(voice = false) {
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
     'For "jobs in [city]", call show_jobs_on_map with city set to that city (exact city only).',
-    'For "jobs near [city]", "around [city]", or "close to [city]", call show_jobs_on_map with near set to that city and radiusMiles 25. Do not use city= for near.',
+    'For "jobs near [city]", "around [city]", or "close to [city]", call show_jobs_on_map with near set to that city and radiusMiles 10. Do not use city= for near.',
     'For "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
     'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
