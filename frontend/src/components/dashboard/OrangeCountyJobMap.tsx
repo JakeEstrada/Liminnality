@@ -145,14 +145,18 @@ function pinLabel(pin: MapPin) {
 
 function pinsForView(pins: Record<MapViewId, MapPin[]>, view: MapViewId) {
   const list = pins[view] || [];
-  if (view === 'pipeline' || view === 'current' || view === 'week') {
+  if (view === 'pipeline' || view === 'current' || view === 'week' || view === 'all') {
     return list.filter(
       (pin) =>
         pin.group !== 'archived' &&
         !pin.isArchived &&
         !pin.isDeadEstimate &&
-        !pin.isCompletedClosedOut,
+        !pin.isCompletedClosedOut &&
+        pin.stage !== 'FINAL_PAYMENT_CLOSED',
     );
+  }
+  if (view === 'completed') {
+    return list.filter((pin) => !pin.isDeadEstimate && Boolean(pin.isCompletedClosedOut));
   }
   return list;
 }

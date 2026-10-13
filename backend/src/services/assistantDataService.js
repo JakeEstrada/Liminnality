@@ -779,7 +779,7 @@ async function showJobsOnMap({
     isDeadEstimate: { $ne: true },
     ...(viewQ === 'archived' ? { isArchived: true } : { isArchived: { $ne: true } }),
     ...(viewQ === 'completed'
-      ? { $or: [{ isCompletedClosedOut: true }, { stage: { $in: ['INSTALLED', 'FINAL_PAYMENT_CLOSED'] } }] }
+      ? { isCompletedClosedOut: true }
       : viewQ === 'archived'
         ? {}
         : {
@@ -793,7 +793,6 @@ async function showJobsOnMap({
                 'SCHEDULED',
                 'IN_PRODUCTION',
                 'INSTALLED',
-                'FINAL_PAYMENT_CLOSED',
                 'CONTRACT_SIGNED',
               ],
             },

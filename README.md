@@ -4,15 +4,17 @@
 
 Paarth is the system of record for San Clemente Woodworking. Every job that enters the shop lives here from the first phone call to the final payment: the estimate, the signed contract, the deposit that cleared the bank, the takeoff measurements, the installer assigned to Tuesday, the text message that told the customer their stairs were ready, and the commission the salesman earned when the check arrived. One database, one timeline per job, one place to look.
 
-It is built for the way a real shop actually works. The owner opens it on a laptop. The salesman checks the pipeline from a phone in a customer's driveway. A TV on the shop wall shows the board and the install calendar all day without anyone touching it. A Raspberry Pi by the door reads RFID badges and turns them into timesheets. Nobody has to be at a desk for the business to keep running.
+It is built for the way a real shop actually works. The owner opens it on a laptop. The salesman checks the pipeline from a phone in a customer's driveway. A TV on the shop wall shows the board, the install calendar, and the county map all day without anyone touching it. A Raspberry Pi by the door reads RFID badges, and a text to the shop line clocks the same timesheet. Nobody has to be at a desk for the business to keep running.
 
 ### Recent (October 2026)
 
-The last stretch of work went into talking to the shop, printing the packet the customer actually signs, and giving the owner a dashboard that looks like the county instead of a spreadsheet.
+The last stretch went into the wall display, the county map, and talking to the shop without picking up a phone.
 
-- **Liminality** — a wake-word voice on desktop (Chrome or Edge) plus the in-app help chat. Say the name, then open a shop view, ask a live question (“jobs in Dana Point”, “who’s coming up”, “most recent deposit”), or “send Hammer to Jake” to text that customer card to someone on the employee rolodex. Speech uses ElevenLabs; answers use the same live-data tools as Paarth Help.
-- **Cover pages** — from the job card, a two-page letter PDF that matches the paper contract packet: estimate number, payment terms from the job schedule, Zelle QR, California contract language, and a signature block. It saves onto the job’s files.
-- **Dashboard** — charts for pipeline mix, payments, site traffic, and team activity, plus an Orange County map of geocoded job sites.
+- **Shop dashboard** — `/dashboard-view` is the TV page: team activity, pipeline mix, and the job map, with a switcher for pipeline, calendar, and customers. The office `/dashboard` stays the full morning page.
+- **Job map** — Orange County pins from geocoded sites. New and edited jobs place themselves (US Census, then OpenStreetMap). Views for the pipeline, who is on site now, this week, completed, and archived. Filter by name, city, stage, scheduled or not, dollar amount, or a 10-mile radius. Full screen, satellite imagery, and a click opens the job card. A wrong pin can be corrected with lat/lng on the job.
+- **Liminality** — wake word, then a 30-second listen window with a start sound and a close sound. She opens shop screens, texts a customer card, books a reminder or an appointment, and answers live questions (payments, deposits, who is coming up). “Jobs in Dana Point” and “jobs near Fullerton” walk the map, naming each job while that pin highlights. “Open the Hammer job” puts the card on the current page, Files tab first. Speech streams from ElevenLabs so she starts talking before the sentence is finished. **Stop** ends the window. **Close**, or a key or click while she is talking, drops the card or the tour and keeps listening. The voice is chosen under Account Settings → Liminality.
+- **Text clock-in** — a registered mobile texts the shop line `in`, `out`, a period, or a blank and gets a confirmation back. The API also polls Twilio every 10 seconds, so a missed webhook still becomes a punch.
+- **Cover pages** — from the job card, a two-page letter PDF: estimate number, payment terms from the job schedule, Zelle QR, California contract language, and a signature block. It saves onto the job’s files.
 
 ---
 
@@ -23,6 +25,7 @@ The last stretch of work went into talking to the shop, printing the packet the 
 - [Scheduling and the install calendar](#scheduling-and-the-install-calendar)
 - [Mobile messaging](#mobile-messaging)
 - [Liminality](#liminality) — voice and in-app help
+- [The job map](#the-job-map)
 - [Real-time updates](#real-time-updates)
 - [What it keeps track of](#what-it-keeps-track-of)
 - [Money](#money)
@@ -46,7 +49,7 @@ The last stretch of work went into talking to the shop, printing the packet the 
 | Salesman | Phone and laptop | Pipeline, customers, calendar, their commission log |
 | Shop lead | Wall-mounted TV | The board and the install calendar, read-only, never logs out |
 | Installer | Phone | Where they are going, who the customer is, what the address is |
-| Shop employee | RFID badge or kiosk PIN | Clock in, clock out |
+| Shop employee | RFID badge, kiosk PIN, or a text | Clock in, clock out |
 | Office | Desktop | Estimates, invoices, contracts, bills, payroll, messages |
 
 The same application serves all of them. What changes is what each one is allowed to see and how the interface reshapes itself for the screen it is on — covered in [Interface and experience](#interface-and-experience).
@@ -102,7 +105,7 @@ That distinction between *scheduled* and *on the bench* is the one the whole cal
 - **Right-click any job** for a context menu: move to a stage, add a change order, add a task, edit the payment schedule, archive it.
 - **Close out completed jobs.** When jobs pile up in Final Payment Closed, one control archives them in bulk after a confirmation, keeping the board honest without losing history.
 - **Custom boards.** A tenant can define alternate pipeline layouts with their own phase titles and their own stage keys, and jobs are filed against the layout they belong to. Stage labels, descriptions, and visibility on the default board are also overridable per tenant, so a business can rename "Fabrication" to whatever its crew actually calls it, or hide a stage it does not use.
-- **Fullscreen / TV mode** at `/pipeline-view` strips the board down for a wall display: no task lists, no appointment panel, no SMS prompts, no sidebar, and a long-lived kiosk session so the screen survives a power cycle without someone typing a password.
+- **Fullscreen / TV mode.** `/pipeline-view`, `/calendar-view`, `/customers-view`, and `/dashboard-view` strip the app down for a wall display: no sidebar, a switcher between those four screens, and a long-lived kiosk session so the screen survives a power cycle without someone typing a password. Leaving the display asks for a PIN. The pipeline TV view also drops task lists, the appointment panel, and SMS prompts.
 
 ---
 
@@ -146,7 +149,7 @@ Recipients can be resolved from the employee roster rather than retyped, and mes
 
 Replies come back. A public webhook at `POST /twilio/sms` receives Twilio's callback, infers which tenant the message belongs to (by prior conversation thread, then by the number it was sent from, then by fallback), and stores it as an inbound message. Delivery receipts arrive on a separate status callback and update each message's delivery state.
 
-Because webhooks can be misconfigured or miss a window, there is also an admin-only **backfill**: one button pulls recent messages straight from the Twilio API and reconciles anything the webhook missed.
+Because webhooks can be misconfigured or miss a window, the API also **polls Twilio every 10 seconds** for recent inbound messages and records any clock-in texts it finds. There is still an admin-only **backfill**: one button pulls recent messages straight from the Twilio API and reconciles anything both paths missed.
 
 Unread replies surface as a **badge in the sidebar**, polled on an interval and refreshed immediately when the user reads a thread, so a reply is never silently sitting in a page nobody opened.
 
@@ -162,19 +165,50 @@ A scheduler inside the API process wakes every minute, claims scheduled messages
 
 Hands-busy help for the shop floor and the office, not a generic chatbot bolted on the side.
 
-**Paarth Help** is the typed assistant (floating chat). It only answers about this app and this tenant. Tools pull live data the signed-in user is already allowed to see: global search, job notes, job details, recent payments, recent deposits, jobs by city or name, the upcoming calendar, and the employee rolodex. It can also jump the browser to a whitelisted path. It does not invent customer or financial numbers.
+**Paarth Help** is the typed assistant (floating chat). It only answers about this app and this tenant. Tools pull live data the signed-in user is already allowed to see: global search, job notes, job details, recent payments, recent deposits, jobs by city or name, the upcoming calendar, the employee rolodex, and the job map. It can jump the browser to a whitelisted path, open a job card, or filter the map. It does not invent customer or financial numbers.
 
-**Voice** is the same brain, spoken. On desktop Chrome or Edge, Settings → Liminality turns the microphone on. Nothing is listened to while it is off. Flow:
+**Voice** is the same brain, spoken. On desktop Chrome or Edge, Account Settings → Liminality turns the microphone on and picks the ElevenLabs voice (Sarah by default). Nothing is listened to while it is off.
 
-1. Say **Liminality** (or a short “Liminality pipeline” in one breath).
-2. Shop-view words — pipeline, calendar, customers, dashboard — open the TV/kiosk screens immediately.
-3. Anything else goes to the assistant and is read back in a short spoken answer.
+1. Say **Liminality**. A listen sound plays. She then listens for 30 seconds; you do not have to say the name again inside that window. A different sound plays when the window ends.
+2. Shop-view words — pipeline, calendar, customers, dashboard — open the matching screen immediately. On a kiosk she stays inside the `*-view` routes. From the office dashboard, “dashboard” stays on the office page unless you say “dashboard view”.
+3. A few commands are handled in the browser before any model runs: navigation, “send Hammer to Jake”, stop, and close.
+4. Anything else goes to the assistant and is read back in one or two short sentences.
 
-“Send Hammer to Jake” resolves a unique customer/job and a unique rolodex name with a mobile on file, then sends the same contact card the job-card share button uses (name, phones, email, address, gate code, job title). Ambiguous names are asked back; it never texts an arbitrary number.
+What she can do once she is listening:
 
-Speech is ElevenLabs (Flash by default, with slower models as fallback). Common lines are warmed when the mic turns on so replies are not waiting on a cold round-trip. Recognition commits after a short pause instead of waiting for Chrome’s slow “final” transcript.
+| You say | What happens |
+|---------|----------------|
+| Pipeline, calendar, customers, dashboard | Opens that screen |
+| Send Hammer to Jake | Texts the Hammer customer card (name, phones, email, address, gate code, job title) to a rolodex mobile. Ambiguous names are asked back. It never texts an arbitrary number |
+| Remind me to call the lumber yard | Creates the task, then asks whether you want a reminder text. The number has to already be on a user or rolodex card. Yesterday is rejected. “Next week” means seven days out at 9 PM |
+| Create an appointment with Hammer tomorrow at 2 | Books the appointment, then offers the same reminder text |
+| What’s the most recent deposit? / Did Hammer make a deposit? | Reads the job’s paid deposit line. Unlinked bank inflows are ignored |
+| Who’s coming up? | Upcoming appointments and dated jobs |
+| What jobs do we have in Dana Point? | Opens the map, filters to that city, zooms in, and names each job while that pin highlights |
+| What jobs do we have near Fullerton? | Same tour, inside a 10-mile radius |
+| Open the Hammer job | Opens that job card on the page you are already on, Files tab first, so photos are visible |
+| Close | Drops the job card and stops the map tour. She keeps listening |
+| Stop / never mind / goodbye | Ends the listen window and goes back to waiting for the wake word |
+
+A key press or a click while she is talking cuts her off the same way **Close** does, so a wrong answer does not have to finish.
+
+Speech streams PCM from ElevenLabs (Flash by default, with slower models as fallback), so playback starts before the whole sentence is ready. Common navigation lines are still warmed when the mic turns on. Recognition commits after a short pause instead of waiting for Chrome’s slow “final” transcript. The microphone is muted while she talks, so her own voice is not taken as the next command.
+
+A command cheat sheet lives on the developer page. The request path — wake, local match, assistant tools, streamed speech — is written up in [liminalVoice.md](liminalVoice.md).
 
 Liminality is a desktop feature. Phones stay on the five-page mobile product; the mic toggle is a no-op there.
+
+---
+
+## The job map
+
+The Orange County map sits on both dashboards. Pins come from job-site coordinates, not from a hand-maintained list.
+
+A job is geocoded when it is created, when its address changes, and in small batches when the map is opened if a pin is still missing. The API asks the US Census geocoder first and OpenStreetMap if Census misses. A hit is stored on the job (`lat`, `lng`, the address that was looked up, and whether it succeeded) and is not looked up again until the address changes or a failed lookup is a week old. Coordinates typed on the job card are marked manual and are left alone. Opening the map only plots points inside Orange County. Sales-funnel jobs (estimate through contract out) stay off the pipeline view; that view is contracted work. Misses — no street number, no match, nothing to plot — show up on the developer geocode panel, and lat/lng on the job card overrides the lookup.
+
+The map itself has five views — **Pipeline**, **On site now** (scheduled or in production today), **This week**, **Completed**, and **Archived** — and filters for name, city, stage, scheduled or not, and amount. “Near” is a 10-mile radius around a city center. Green pins are scheduled or completed; amber pins are still unscheduled; grey pins are archived. Dollar amounts on the pins follow the same financial gates as the rest of the app.
+
+The basemap is Mapbox satellite streets when `VITE_MAPBOX_ACCESS_TOKEN` is set, and Esri imagery with a label overlay otherwise. Full screen takes the map over the page. Zoom fits the pins that are actually showing, so two jobs in one city do not sit at a county-wide view. Clicking a pin opens the job card. Liminality drives the same component: a voice tour sets the filters, highlights one pin at a time, and speaks that job’s name.
 
 ---
 
@@ -192,10 +226,11 @@ Events the server emits:
 | `task.created` / `task.updated` | A task is created, edited, completed, or removed |
 | `appointment.changed` | An appointment is booked, edited, completed, cancelled, or deleted |
 | `customer.changed` | A customer is created, edited, or deleted |
-| `rfid.scan.created` | A badge is scanned at the shop reader |
-| `rfid.tag.*`, `rfid.pin.*`, `rfid.timesheet.updated`, `rfid.employee-profile.updated` | Timekeeping configuration or timesheet changes |
+| `rfid.scan.created` | A badge is scanned, or a text clock-in is recorded |
+| `rfid.tag.*`, `rfid.pin.*`, `rfid.phone.*`, `rfid.timesheet.updated`, `rfid.employee-profile.updated` | Timekeeping configuration or timesheet changes |
 | `user.audit.created` | Audit activity is ingested |
 | `website.analytics.created` | A visitor event lands from the public marketing site |
+| `sms.inbound.created` | An inbound text is stored, including one found by the Twilio poll |
 
 On the client, two hooks do the work:
 
@@ -211,7 +246,7 @@ Two details matter more than they look:
 
 ## What it keeps track of
 
-Thirty-one collections, every one of them scoped to a tenant. The core thread is **Customer → Job**, and almost everything else hangs off a job.
+Thirty-two collections, every one of them scoped to a tenant. The core thread is **Customer → Job**, and almost everything else hangs off a job.
 
 ```mermaid
 erDiagram
@@ -239,7 +274,7 @@ A job is the richest document in the system, because in this business a job *is*
 - **Change orders** — each billed separately or rolled into the final payment, each with its own paid status
 - **Measurements** — the complete takeoff sheet, saved as structured data, with who completed it and when
 - **The install plan** — start and end dates, installers, multiple scheduled entries, crew notes, calendar colour, and a flag for jobs parked back on the bench
-- **Where it is** — job site address (with lat/lng when geocoded) and on-site contact, which are often not the customer's billing details. Customers also carry a **gate code**, which prints on cover pages and in the installer text card
+- **Where it is** — job site address and on-site contact, which are often not the customer's billing details. The address is geocoded onto the job automatically; lat/lng can also be set by hand. Customers also carry a **gate code**, which prints on cover pages and in the installer text card
 - **How it closed** — final payment method, close-out state, archive state, and a "dead estimate" flag for jobs that never happened
 - **Its whole story** — a notes timeline where stage changes, appointments, and flagged important notes are interleaved with free text
 
@@ -251,7 +286,7 @@ A job is the richest document in the system, because in this business a job *is*
 | **Money** | `Estimate`, `Contract`, `Invoice`, `DocumentSequence`, `DepositAllocation`, `PlaidRegisterCache`, `Bill` | Numbered financial documents, their counters, bank reconciliation, recurring bills |
 | **Work** | `Task`, `Activity`, `File`, `DocumentFolder` | To-dos (which can nest under a parent to form projects), the audit timeline, uploads, and a folder tree |
 | **Messaging** | `SmsMessage`, `ScheduledSms`, `OutlookMessage`, `EmployeeContact` | Sent and received texts, the outbound queue, synced email, and the roster of staff without logins |
-| **Shop floor** | `RfidTag`, `RfidPin`, `RfidScan`, `RfidEmployeeProfile`, `RfidTimesheetWeek` | Badges, kiosk PINs, raw scans, pay rates and shift defaults, compiled timesheets |
+| **Shop floor** | `RfidTag`, `RfidPin`, `RfidPhone`, `RfidScan`, `RfidEmployeeProfile`, `RfidTimesheetWeek` | Badges, kiosk PINs, text-in numbers, raw scans, pay rates and shift defaults, compiled timesheets |
 | **Suppliers** | `Vendor` | Lumber, hardware, subcontractors, delivery, with reusable order-item catalogues |
 | **Marketing** | `WebsiteContent`, `WebsiteAnalyticsEvent` | The public site's CMS and first-party visitor analytics |
 | **Platform** | `Tenant`, `User`, `UserAuditLog`, `DeveloperTask` | Organisations, logins, a security audit trail, and the internal engineering backlog |
@@ -295,6 +330,8 @@ The parts of the business that happen away from a computer.
 
 **RFID time clock.** A Raspberry Pi with an MFRC522 reader sits at the shop entrance running a small Python script that posts every badge scan to the API, authenticated with a device key and a tenant header rather than a user login. Each employee has a badge, and a four-digit kiosk PIN as a fallback for a lost or forgotten one. Scans stream into the app in real time.
 
+**Text clock-in.** The same timesheet accepts a punch from a phone. On the RFID page, a mobile number is registered to an employee name. That person texts the shop Twilio line `in`, `out`, a period, or a blank message (a space counts). Anything else stays a normal customer text and is not a punch. The shop replies with the clock time. A second punch from the same number inside two minutes is ignored, so a webhook and the inbound poll cannot double-book the same text. The scan is stored like a badge read, with the source marked as SMS, and it rolls into the same Friday-to-Thursday timesheet.
+
 **Timesheets.** Raw scans are compiled into weekly timesheets on a Friday-to-Thursday pay period. The current week is editable — because readers get missed and people forget to clock out — while past weeks lock as a record. Each employee has shift defaults, a break allowance, and an hourly rate, and each week can carry extra hours, expense receipts, and travel mileage.
 
 **Takeoff sheet.** A measurement tool built for the way takeoffs are actually written: room-by-room rows, fractional measurements, autofill from the job, tab-completion for repeated values, local persistence so a half-finished sheet survives a closed tab, and PDF export. The completed sheet saves back onto the job as structured data.
@@ -324,7 +361,13 @@ Smaller decisions throughout: dialogs go nearly full-bleed instead of floating i
 
 ### The dashboard
 
-On a desktop, `/dashboard` is the owner’s morning page: pipeline mix, recent payments, site traffic, team activity, and an **Orange County job map** plotted from geocoded job sites. Sensitive money series hide behind the same financial gates as the rest of the app. It is not in the five-page mobile set.
+`/dashboard` is the office morning page: pipeline mix, recent payments, site traffic, team activity (pages, clicks, and sign-ins, with a day you can open), the upcoming work list, and the job map. Sensitive money series hide behind the same financial gates as the rest of the app. It is not in the five-page mobile set.
+
+`/dashboard-view` is the shop-wall version of that page. It keeps team activity, pipeline mix, and the map, drops the payment ledger and the finance shortcuts, and sits in the same kiosk frame as the pipeline, calendar, and customers TVs. A `shop_view` login lands there. Voice “dashboard” follows whichever of the two you are already in.
+
+### The job map on screen
+
+Both dashboards embed the [Orange County job map](#the-job-map). On a phone the map is hidden; the wall and the office are where it is meant to be read.
 
 ### Design system
 
@@ -339,7 +382,7 @@ A single theme provider defines light and dark palettes, responsive typography t
 - **Confirmation dialogs** on destructive and bulk actions — archiving, closing out, deleting schedule entries
 - **Print stylesheets** on payroll and the dashboard day sheet, because those are documents that leave the screen
 - **Empty states** written as guidance rather than "No data"
-- **Kiosk mode** with a floating view switcher, a long-lived session so wall displays never log out, and a PIN to leave the display and get back to the app
+- **Kiosk mode** with a view switcher across dashboard, pipeline, calendar, and customers, a long-lived session so wall displays never log out, and a PIN to leave the display and get back to the office app
 - **Accessibility** touches: `aria-label` on icon-only buttons, `title` on truncated text so a clipped job name is still readable on hover, and `role="img"` on the hand-rolled analytics chart
 - **Deep links** throughout — `?jobId=`, `?customerId=`, `?tab=` — so a page can be shared or bookmarked in the state you were looking at
 
@@ -353,11 +396,11 @@ A board on a shop wall should not display what every job is worth to anyone walk
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19, Vite, TypeScript, Material UI 7, React Router 7, Axios, Socket.IO client, date-fns, dnd-kit (sortable grids), jsPDF + html2canvas, pdf.js |
+| Frontend | React 19, Vite, TypeScript, Material UI 7, React Router 7, Axios, Socket.IO client, Leaflet, date-fns, dnd-kit (sortable grids), jsPDF + html2canvas, pdf.js |
 | Backend | Node.js, Express 5, Mongoose 9, JSON Web Tokens, Socket.IO |
 | Database | MongoDB, multi-tenant |
 | Files | AWS S3 in production, local disk in development, chosen automatically |
-| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and Paarth Help / Liminality), ElevenLabs (spoken replies) |
+| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and Paarth Help / Liminality), ElevenLabs (spoken replies, streamed), US Census and OpenStreetMap (job-site geocoding), Mapbox or Esri (map tiles) |
 
 ### Multi-tenancy
 
@@ -418,21 +461,21 @@ Every authenticated session also writes an audit trail — logins, logouts, page
 Paarth/
 ├── frontend/                 React SPA
 │   └── src/
-│       ├── pages/            33 route-level pages
-│       ├── components/       pipeline/, jobs/, finance/, layout/, common/, …
+│       ├── pages/            34 route-level pages
+│       ├── components/       pipeline/, jobs/, finance/, dashboard/, layout/, common/, …
 │       ├── context/          auth, theme, financial PIN lock
 │       ├── hooks/            useIsMobile, useSocketSubscription, PIN gates, Liminality voice
-│       ├── voice/            wake word, command table, ElevenLabs playback, assistant speech
+│       ├── voice/            wake word, command table, streamed ElevenLabs playback, map and job-card buses
 │       ├── services/         socket client
 │       └── utils/            axios, payment schedules, SMS templates, mobile nav, customer share texts
 ├── backend/                  Express API
 │   └── src/
-│       ├── models/           31 Mongoose models + tenant-scope plugin
+│       ├── models/           32 Mongoose models + tenant-scope plugin
 │       ├── controllers/      request handlers
-│       ├── routes/           26 route modules
-│       ├── services/         socket server, event bus, Plaid, Outlook, deposits, notifications
+│       ├── routes/           27 route modules
+│       ├── services/         socket server, event bus, Plaid, Outlook, deposits, geocoding, assistant tools
 │       ├── middleware/       auth, tenant resolution, uploads, RFID device auth
-│       └── scripts/          tenant cloning, seeding, backfills
+│       └── scripts/          tenant cloning, seeding, backfills, job-address geocode
 ├── scripts/
 │   └── raspberry-pi/         RFID reader → API
 ├── docs/                     Developer documentation
@@ -492,7 +535,8 @@ Everything below is optional; each integration degrades gracefully when its vari
 | Microsoft Graph | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` |
 | Google Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_REFRESH_TOKEN` |
 | OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` — Paarth Help, Liminality answers, job summaries |
-| ElevenLabs | `ELEVENLABS_API_KEY` on the **API** host (not the frontend). Optional `ELEVENLABS_TTS_MODEL` (default `eleven_flash_v2_5`) |
+| ElevenLabs | `ELEVENLABS_API_KEY` on the **API** host (not the frontend). Optional `ELEVENLABS_TTS_MODEL` (default `eleven_flash_v2_5`). Voice replies stream from `POST /tts/speech-stream` |
+| Job map | `VITE_MAPBOX_ACCESS_TOKEN` on the **frontend**. Without it the map uses Esri satellite imagery. Geocoding needs no key |
 | RFID devices | `RFID_DEVICE_API_KEY`, `RFID_SHOP_TIMEZONE` |
 | Email (EmailJS) | `EMAILJS_PUBLIC_KEY`, `EMAILJS_PRIVATE_KEY`, `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` |
 
@@ -518,6 +562,7 @@ Started by the API process once MongoDB connects — no separate worker to deplo
 | Job | Schedule | Purpose |
 |-----|----------|---------|
 | SMS scheduler | Every minute | Send due scheduled messages, refresh delivery statuses |
+| Inbound SMS poll | Every 10 seconds | Pull recent inbound texts Twilio’s webhook may have missed, and record text clock-ins |
 | Outlook inbox sync | 90s after boot, then every 15 minutes | Pull worksheet emails into the team inbox |
 | Plaid refresh | Daily, Pacific time | Re-sync bank transactions and balances |
 
@@ -533,7 +578,7 @@ Documented honestly, because knowing where the edges are is part of running the 
 - **Dragging onto a calendar day.** Scheduling is done by clicking a day and filling the dialog; the day cells themselves are not drop targets.
 - **`read_only` role.** It is assignable and excluded from pipeline modification, but has no dedicated enforcement layer beyond that.
 - **Loading states** are spinners throughout; skeleton placeholders would make the heavier grids feel faster.
-- **Liminality voice** is Chrome/Edge on desktop only. Safari and phones have no wake listening. Spoken answers still depend on ElevenLabs being configured on the API.
+- **Liminality voice** is Chrome/Edge on desktop only. Safari and phones have no wake listening. Spoken answers need ElevenLabs configured on the API. Speech-to-text is still the browser’s, so shop names sometimes need a second try.
 
 ---
 
@@ -542,6 +587,7 @@ Documented honestly, because knowing where the edges are is part of running the 
 | Document | Contents |
 |----------|----------|
 | [docs/CODEBASE.md](docs/CODEBASE.md) | Architecture, authentication, tenancy, conventions |
+| [liminalVoice.md](liminalVoice.md) | How Liminality voice is wired: wake, tools, streamed speech |
 | [docs/PAGES.md](docs/PAGES.md) | Page-by-page reference: routes, APIs, key logic |
 | [docs/BACKEND.md](docs/BACKEND.md) | REST routes and controllers |
 | [docs/COMPONENTS.md](docs/COMPONENTS.md) | Shared UI building blocks |

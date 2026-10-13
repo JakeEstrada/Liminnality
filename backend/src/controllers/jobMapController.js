@@ -97,12 +97,14 @@ function isThisWeekJob(job, weekStart, weekEnd, weekJobIds) {
   return jobWindows(job).some((window) => overlaps(window.start, window.end, weekStart, weekEnd));
 }
 
-function isCompletedJob(job) {
-  return (
-    Boolean(job.isCompletedClosedOut) ||
-    job.stage === 'INSTALLED' ||
-    job.stage === 'FINAL_PAYMENT_CLOSED'
-  );
+/** Filed into Completed Jobs. Installed work is still active. */
+function isClosedHistoryJob(job) {
+  return Boolean(job.isCompletedClosedOut);
+}
+
+/** Still on the Final Payment Closed column, not filed into Completed Jobs yet. */
+function isFinalPaymentColumnJob(job) {
+  return job.stage === 'FINAL_PAYMENT_CLOSED' && !isClosedHistoryJob(job);
 }
 
 function isArchivedLike(job) {
@@ -115,16 +117,16 @@ function isEstimateJob(job) {
 
 function isContractedJob(job) {
   if (isEstimateJob(job)) return false;
-  return PIPELINE_BOARD_STAGES.includes(job.stage) || isCompletedJob(job);
+  return PIPELINE_BOARD_STAGES.includes(job.stage) || isClosedHistoryJob(job);
 }
 
 function isPipelineBoardJob(job) {
-  if (isArchivedLike(job) || Boolean(job.isCompletedClosedOut)) return false;
+  if (isArchivedLike(job) || isClosedHistoryJob(job)) return false;
   return PIPELINE_BOARD_STAGES.includes(job.stage);
 }
 
 function isScheduledJob(job) {
-  return SCHEDULED_STAGES.includes(job.stage) || isCompletedJob(job);
+  return SCHEDULED_STAGES.includes(job.stage) || isClosedHistoryJob(job);
 }
 
 function pinGroup(job) {
@@ -236,12 +238,12 @@ async function getJobMapPins(req, res) {
 
     await fillMissingCoords(jobs);
 
-    const liveJobs = jobs.filter((job) => isPipelineBoardJob(job));
+    const liveJobs = jobs.filter((job) => isPipelineBoardJob(job) && !isFinalPaymentColumnJob(job));
     const pipelineJobs = liveJobs;
     const currentJobs = liveJobs.filter((job) => isCurrentJob(job, today, tomorrow));
     const weekJobs = liveJobs.filter((job) => isThisWeekJob(job, weekStart, weekEnd, weekJobIds));
-    const completedJobs = jobs.filter((job) => !job.isDeadEstimate && isCompletedJob(job));
-    const archivedJobs = jobs.filter((job) => isArchivedLike(job) && !isCompletedJob(job));
+    const completedJobs = jobs.filter((job) => !job.isDeadEstimate && isClosedHistoryJob(job));
+    const archivedJobs = jobs.filter((job) => isArchivedLike(job) && !isClosedHistoryJob(job));
 
     return res.json({
       county: 'Orange County, CA',

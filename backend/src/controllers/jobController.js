@@ -369,6 +369,14 @@ async function updateJob(req, res) {
       delete jobUpdateData.geo;
     }
     Object.assign(job, jobUpdateData);
+    if (
+      Object.prototype.hasOwnProperty.call(jobUpdateData, 'stage') &&
+      job.stage !== 'FINAL_PAYMENT_CLOSED'
+    ) {
+      job.isCompletedClosedOut = false;
+      job.completedClosedOutAt = null;
+      job.completedClosedOutBy = null;
+    }
     if (jobUpdateData.takeoff !== undefined) {
       job.markModified('takeoff');
     }
@@ -710,6 +718,11 @@ async function moveJobStage(req, res) {
     }
     
     job.stage = toStage;
+    if (toStage !== 'FINAL_PAYMENT_CLOSED') {
+      job.isCompletedClosedOut = false;
+      job.completedClosedOutAt = null;
+      job.completedClosedOutBy = null;
+    }
     
     // ALWAYS log stage changes
     const User = require('../models/User');
@@ -900,13 +913,16 @@ async function getArchivedJobs(req, res) {
   }
 }
 
-// Get completed jobs (FINAL_PAYMENT_CLOSED)
+// Completed Jobs is the close-out history. Jobs still sitting in Final Payment Closed
+// stay on the pipeline until they are closed out, so they are not listed here too.
 async function getCompletedJobs(req, res) {
   try {
-    const jobs = await Job.find({ 
-      stage: 'FINAL_PAYMENT_CLOSED',
-      isDeadEstimate: { $ne: true }
-      // Note: We include archived jobs here to keep a permanent list
+    const jobs = await Job.find({
+      isDeadEstimate: { $ne: true },
+      $or: [
+        { isCompletedClosedOut: true },
+        { isArchived: true, stage: 'FINAL_PAYMENT_CLOSED' },
+      ],
     })
       .populate('customerId', CUSTOMER_CONTACT_FIELDS)
       .populate('assignedTo', 'name email')
@@ -1412,13 +1428,17 @@ async function unarchiveJob(req, res) {
       job.movedToDeadEstimateAt = undefined;
     }
 
-    // Completed close-out hides jobs from the active pipeline even when not archived
+    const wasClosed =
+      job.stage === 'FINAL_PAYMENT_CLOSED' || Boolean(job.isCompletedClosedOut);
+
+    // Restoring always returns the job to the working pipeline, including when it
+    // had been filed under Completed Jobs.
     job.isCompletedClosedOut = false;
-    job.completedClosedOutAt = undefined;
-    job.completedClosedOutBy = undefined;
+    job.completedClosedOutAt = null;
+    job.completedClosedOutBy = null;
 
     job.restoredFromArchiveAt = unarchiveDate;
-    job.stage = normalizeStageForPipelineRestore(job.stage);
+    job.stage = wasClosed ? 'INSTALLED' : normalizeStageForPipelineRestore(job.stage);
     
     // Handle createdBy for note and activity
     let createdBy = req.user?._id || job.createdBy;

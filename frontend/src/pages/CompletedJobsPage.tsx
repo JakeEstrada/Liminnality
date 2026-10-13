@@ -223,7 +223,7 @@ function CompletedJobsPage() {
             Completed Jobs
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Successfully completed projects with final payment closed
+            Jobs filed here after they are closed out from Final Payment Closed
           </Typography>
         </Box>
 
@@ -237,7 +237,7 @@ function CompletedJobsPage() {
               No completed jobs yet
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Jobs that reach Final Payment Closed will appear here
+              Close out jobs from the Final Payment Closed column to file them here
             </Typography>
           </Card>
         ) : (

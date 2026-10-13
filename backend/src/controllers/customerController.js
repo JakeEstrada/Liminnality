@@ -526,6 +526,14 @@ async function uploadCustomersCSV(req, res) {
 }
 
 function jobSearchDestination(job) {
+  if (job?.isCompletedClosedOut || (job?.isArchived && job?.stage === 'FINAL_PAYMENT_CLOSED')) {
+    return {
+      type: 'finished_job',
+      locationLabel: 'Completed Jobs',
+      subtitle: 'Completed job',
+      path: `/completed-jobs?jobId=${job._id}`,
+    };
+  }
   if (job?.isDeadEstimate) {
     return {
       type: 'dead_estimate',
@@ -540,14 +548,6 @@ function jobSearchDestination(job) {
       locationLabel: 'Job Archive',
       subtitle: 'Archived job',
       path: `/archive?jobId=${job._id}`,
-    };
-  }
-  if (job?.isCompletedClosedOut || job?.stage === 'FINAL_PAYMENT_CLOSED') {
-    return {
-      type: 'finished_job',
-      locationLabel: 'Completed Jobs',
-      subtitle: 'Completed job',
-      path: `/completed-jobs?jobId=${job._id}`,
     };
   }
   return {
