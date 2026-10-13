@@ -28,6 +28,19 @@ import {
   type LiminalityRegister,
   type PendingSend,
 } from '../voice/liminalityCommands';
+import {
+  createVoiceAppointment,
+  createVoiceTask,
+  lookupVoicePhone,
+  parseAppointmentSpeech,
+  parsePhoneSpeech,
+  parseReminderSpeech,
+  parseWhenSpeech,
+  parseYesNo,
+  reminderMessage,
+  scheduleVoiceReminder,
+  type ShopDraft,
+} from '../voice/shopVoice';
 
 export type LiminalityPhase =
   | 'off'
@@ -59,6 +72,7 @@ export function useLiminalityVoice({
   const endpointRef = useRef<number | null>(null);
   const deadlineRef = useRef(0);
   const pendingSendRef = useRef<PendingSend>({});
+  const pendingShopRef = useRef<ShopDraft | null>(null);
   const lastHandledRef = useRef('');
   const lastHandledAtRef = useRef(0);
   const networkFailsRef = useRef(0);
@@ -245,6 +259,7 @@ export function useLiminalityVoice({
     workGenRef.current += 1;
     interruptibleRef.current = false;
     pendingSendRef.current = {};
+    pendingShopRef.current = null;
     cancelSpeech();
     abortMapTour();
     closeJobOverlay();
@@ -296,6 +311,217 @@ export function useLiminalityVoice({
         if (isCancelCommand(stripped) || isCancelCommand(spoken)) {
           dismissWork();
           goWaiting({ chime: true });
+          return;
+        }
+
+        const speakShop = async (text: string) => {
+          await speakAndWait(text);
+          if (workGenRef.current !== workGen) return false;
+          listenForCommands();
+          return true;
+        };
+
+        const scheduleDraftReminder = async (draft: ShopDraft, sendAt: Date) => {
+          if (!draft.phone) return speakShop('What number?');
+          const booked = await scheduleVoiceReminder({
+            to: draft.phone,
+            message: reminderMessage(draft),
+            sendAt: sendAt.toISOString(),
+          });
+          pendingShopRef.current = null;
+          if (!booked.ok) return speakShop(booked.error || 'Could not schedule that text.');
+          return speakShop(
+            `I will text a reminder to ${booked.name} on ${booked.dayLabel} at ${booked.timeLabel}.`,
+          );
+        };
+
+        const offerReminder = async (draft: ShopDraft, preface: string) => {
+          pendingShopRef.current = { ...draft, step: 'ask_text' };
+          return speakShop(`${preface} Would you like me to text you a reminder?`);
+        };
+
+        const continueShop = async (draft: ShopDraft, text: string) => {
+          if (draft.step === 'ask_who') {
+            const spokenAppt = parseAppointmentSpeech(`schedule an appointment ${text}`) || {
+              title: text,
+            };
+            const title = spokenAppt.title || text;
+            if (!title) return speakShop('Who is the appointment for?');
+            const when = spokenAppt.when?.ok ? spokenAppt.when : parseWhenSpeech(text);
+            if (!when || !when.ok) {
+              pendingShopRef.current = { ...draft, title, step: 'ask_when' };
+              return speakShop(when && 'reason' in when && when.reason === 'past'
+                ? 'That time already passed. When should I book it?'
+                : 'When should I book it?');
+            }
+            const created = await createVoiceAppointment({
+              title,
+              date: when.at.toISOString(),
+              time: when.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            });
+            if (!created.ok) return speakShop(created.error || 'Could not create that appointment.');
+            return offerReminder(
+              {
+                kind: 'appointment',
+                step: 'ask_text',
+                title: created.title || title,
+                timeLabel: created.timeLabel,
+              },
+              `Okay I booked ${created.title} on ${created.dayLabel} at ${created.timeLabel}.`,
+            );
+          }
+
+          if (draft.step === 'ask_when') {
+            const when = parseWhenSpeech(text);
+            if (!when.ok) {
+              return speakShop(
+                when.reason === 'past'
+                  ? 'That time already passed. Give me a future time.'
+                  : 'Say something like tomorrow at 2.',
+              );
+            }
+            const created = await createVoiceAppointment({
+              title: draft.title,
+              date: when.at.toISOString(),
+              time: when.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            });
+            if (!created.ok) return speakShop(created.error || 'Could not create that appointment.');
+            return offerReminder(
+              {
+                kind: 'appointment',
+                step: 'ask_text',
+                title: created.title || draft.title,
+                timeLabel: created.timeLabel,
+              },
+              `Okay I booked ${created.title} on ${created.dayLabel} at ${created.timeLabel}.`,
+            );
+          }
+
+          if (draft.step === 'ask_text') {
+            const phone = parsePhoneSpeech(text);
+            const answer = parseYesNo(text);
+            if (answer === 'no') {
+              pendingShopRef.current = null;
+              return speakShop('Okay.');
+            }
+            if (phone || answer === 'yes') {
+              pendingShopRef.current = { ...draft, step: 'ask_number' };
+              if (phone) {
+                return continueShop(pendingShopRef.current, text);
+              }
+              return speakShop('What number?');
+            }
+            return speakShop('Would you like me to text you a reminder?');
+          }
+
+          if (draft.step === 'ask_number') {
+            const phone = parsePhoneSpeech(text);
+            if (!phone) return speakShop('What number?');
+            const found = await lookupVoicePhone(phone);
+            if (!found.found) {
+              return speakShop(
+                found.reason === 'no_mobile'
+                  ? 'Your number is not on file.'
+                  : 'That number is not on file.',
+              );
+            }
+            const next: ShopDraft = {
+              ...draft,
+              phone: found.mobile,
+              personName: found.name,
+              step: 'ask_remind_when',
+            };
+            pendingShopRef.current = next;
+            if (draft.when) {
+              return scheduleDraftReminder(next, new Date(draft.when));
+            }
+            return speakShop('Okay when do you want me to send you a reminder text?');
+          }
+
+          if (draft.step === 'ask_remind_when') {
+            const when = parseWhenSpeech(text);
+            if (!when.ok) {
+              return speakShop(
+                when.reason === 'past'
+                  ? 'That time already passed. Give me a future time.'
+                  : 'Say something like tonight at 9.',
+              );
+            }
+            return scheduleDraftReminder(draft, when.at);
+          }
+
+          return false;
+        };
+
+        if (pendingShopRef.current) {
+          setStatusLabel('Working');
+          await continueShop(pendingShopRef.current, stripped);
+          return;
+        }
+
+        const reminder = parseReminderSpeech(stripped);
+        if (reminder) {
+          setStatusLabel('Creating a task');
+          if (reminder.when && !reminder.when.ok && reminder.when.reason === 'past') {
+            await speakShop('That time already passed. What should I remind you to do?');
+            return;
+          }
+          const created = await createVoiceTask(reminder.title);
+          if (!created.ok) {
+            await speakShop(created.error || 'Could not create that task.');
+            return;
+          }
+          await offerReminder(
+            {
+              kind: 'task',
+              step: 'ask_text',
+              title: created.title || reminder.title,
+              when: reminder.when?.ok ? reminder.when.at.toISOString() : undefined,
+            },
+            'Okay I created a task to do that.',
+          );
+          return;
+        }
+
+        const appointment = parseAppointmentSpeech(stripped);
+        if (appointment) {
+          setStatusLabel('Creating an appointment');
+          if (!appointment.title) {
+            pendingShopRef.current = { kind: 'appointment', step: 'ask_who', title: '' };
+            await speakShop('Who is the appointment for?');
+            return;
+          }
+          if (!appointment.when?.ok) {
+            pendingShopRef.current = {
+              kind: 'appointment',
+              step: 'ask_when',
+              title: appointment.title,
+            };
+            await speakShop(
+              appointment.when?.reason === 'past'
+                ? 'That time already passed. When should I book it?'
+                : 'When should I book it?',
+            );
+            return;
+          }
+          const created = await createVoiceAppointment({
+            title: appointment.title,
+            date: appointment.when.at.toISOString(),
+            time: appointment.when.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          });
+          if (!created.ok) {
+            await speakShop(created.error || 'Could not create that appointment.');
+            return;
+          }
+          await offerReminder(
+            {
+              kind: 'appointment',
+              step: 'ask_text',
+              title: created.title || appointment.title,
+              timeLabel: created.timeLabel,
+            },
+            `Okay I booked ${created.title} on ${created.dayLabel} at ${created.timeLabel}.`,
+          );
           return;
         }
 
@@ -419,6 +645,7 @@ export function useLiminalityVoice({
         clearTimers();
         modeRef.current = 'off';
         pendingSendRef.current = {};
+        pendingShopRef.current = null;
         setHeard(raw);
         setPhase('listening');
         setStatusLabel('Listening');

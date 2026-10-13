@@ -28,7 +28,8 @@ const PRODUCTION_STAGES = [
 const INSTALLED_STAGES = ['INSTALLED', 'FINAL_PAYMENT_CLOSED'];
 
 type PipelineSlice = { label: string; value: number; color: string };
-type TrafficPoint = { date: string; pageViews?: number; visitors?: number; contactSubmits?: number };
+type TrafficPoint = { date: string; pageViews?: number; visitors?: number; contactSubmits?: number; adClicks?: number };
+type CampaignPoint = { date: string; adClicks?: number; conversions?: number };
 type TeamPoint = { date: string; logins?: number; pageViews?: number; clicks?: number };
 type ActivityRow = { type?: string; createdAt?: string };
 
@@ -44,6 +45,7 @@ export default function KioskDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [traffic, setTraffic] = useState<TrafficPoint[] | null>(null);
+  const [campaign, setCampaign] = useState<CampaignPoint[] | null>(null);
   const [teamActivity, setTeamActivity] = useState<TeamPoint[] | null>(null);
   const [pipeline, setPipeline] = useState(EMPTY_MIX);
 
@@ -76,6 +78,7 @@ export default function KioskDashboardPage() {
       const other = Math.max(0, activeJobs.length - estimate - production - installed);
       setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
       setTraffic(Array.isArray(trafficRes?.data?.series) ? trafficRes.data.series : null);
+      setCampaign(Array.isArray(trafficRes?.data?.campaignSeries) ? trafficRes.data.campaignSeries : []);
       setTeamActivity(Array.isArray(teamRes?.data?.series) ? teamRes.data.series : null);
       setPipeline([
         { label: 'Estimate', value: estimate, color: '#f59e0b' },
@@ -117,6 +120,7 @@ export default function KioskDashboardPage() {
         payments={[]}
         activities={activities}
         traffic={traffic}
+        campaign={campaign}
         teamActivity={teamActivity}
         pipeline={pipeline}
         canOpenFinance={false}

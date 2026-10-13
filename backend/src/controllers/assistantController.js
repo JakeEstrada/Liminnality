@@ -11,6 +11,10 @@ const {
   fetchUpcomingSchedule,
   listRolodexEmployees,
   sendCustomerInfoText,
+  createShopTask,
+  lookupStoredPhone,
+  scheduleReminderText,
+  createShopAppointment,
 } = require('../services/assistantDataService');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
@@ -256,6 +260,71 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'create_shop_task',
+      description:
+        'Create a standalone shop task. Use when they say remind me to, add a task, or create a task. After creating, ask if they want a reminder text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'What they need to do' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'lookup_stored_phone',
+      description:
+        'Check whether a mobile number is stored on a user or rolodex contact. Use after they give a number for a reminder text. Set me=true if they said text me / my number.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone: { type: 'string', description: 'Spoken or typed phone number' },
+          me: { type: 'boolean', description: 'True if they said text me or my number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_reminder_text',
+      description:
+        'Schedule a reminder SMS to a stored mobile. sendAt must be in the future. Do not send to a number that is not on file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Stored mobile number' },
+          message: { type: 'string', description: 'Reminder body' },
+          sendAt: { type: 'string', description: 'ISO datetime in the future' },
+        },
+        required: ['to', 'message', 'sendAt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_shop_appointment',
+      description:
+        'Create a calendar appointment. Use when they say create/book/schedule an appointment. Pass date as ISO and time as a spoken clock like 2:00 PM. After creating, ask if they want a reminder text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Customer or appointment name' },
+          date: { type: 'string', description: 'ISO datetime for the appointment' },
+          time: { type: 'string', description: 'Clock time such as 2:00 PM' },
+          customerQuery: { type: 'string', description: 'Customer name to attach if known' },
+        },
+        required: ['title', 'date'],
+      },
+    },
+  },
 ];
 
 function buildSystemPrompt(voice = false) {
@@ -264,6 +333,9 @@ function buildSystemPrompt(voice = false) {
         'You are Liminality, a short shop-floor voice. Plain and useful. No banter, no feelings, no “I know you are upset.”',
         'Answer in one short sentence. If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
         'If send_customer_info_text sent, confirm who received which customer.',
+        'If they ask to be reminded, create_shop_task first. Then ask if they want a text. Then ask what number. Then ask when. Confirm: I will text a reminder to [name] on [date] at [time].',
+        'If they ask to create an appointment, create_shop_appointment. Ask for the missing name or time. Then offer a reminder text the same way.',
+        'Tonight at 9pm is valid. Yesterday is not. Next week means 7 days from now at 9pm. Do not invent a phone number. lookup_stored_phone first.',
         'If the tool still returns several people, ask once. If they say "the user" or "the contact", call the tool again with employeeKind set. Do not keep asking the same question.',
         'They already said your name. Follow-ups may be just "the user", "Jake", or a job name. Use history. Do not tell them to repeat the whole command.',
         'Do not call show_jobs_on_map again unless they asked again to see the map or jobs in a place.',
@@ -291,6 +363,10 @@ function buildSystemPrompt(voice = false) {
     '- get_upcoming_schedule: appointments and jobs coming up on the calendar',
     '- send_customer_info_text: text a customer card to an employee on the rolodex ("send Hammer to Jake")',
     '- list_sms_employees: rolodex names that can receive texts',
+    '- create_shop_task: remind-me / add a task',
+    '- lookup_stored_phone: check a spoken number against stored mobiles',
+    '- schedule_reminder_text: schedule a reminder SMS to a stored number',
+    '- create_shop_appointment: book a calendar appointment',
     '',
     'For "send [customer] to [employee]", call send_customer_info_text. Do not invent a phone number. Do not send custom message bodies — only the customer card.',
     'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
@@ -301,6 +377,8 @@ function buildSystemPrompt(voice = false) {
     'For "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
     'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
+    'For "remind me to …", call create_shop_task, then ask about a reminder text.',
+    'For "create an appointment" / "book a meeting", call create_shop_appointment after you have a name and time.',
     'When deposit sources differ, prefer mostRecent (customer/job deposit). Ignore unlinkedBankInflows unless they asked about the bank register.',
     '',
     'Site map:',
@@ -410,6 +488,32 @@ function voiceReplyFromTools(roundTools) {
   if (name === 'send_customer_info_text') {
     if (content.sent) return `Sent ${content.customerName} to ${content.toName}.`;
     return null;
+  }
+
+  if (name === 'create_shop_task') {
+    if (content.ok) return 'Okay I created a task to do that. Would you like me to text you a reminder?';
+    return content.error || null;
+  }
+
+  if (name === 'lookup_stored_phone') {
+    if (content.found) return `Okay when do you want me to send you a reminder text?`;
+    if (content.reason === 'no_mobile') return 'Your number is not on file.';
+    if (content.reason === 'not_stored') return 'That number is not on file.';
+    return 'What number?';
+  }
+
+  if (name === 'schedule_reminder_text') {
+    if (content.ok) {
+      return `I will text a reminder to ${content.name} on ${content.dayLabel} at ${content.timeLabel}.`;
+    }
+    return content.error || null;
+  }
+
+  if (name === 'create_shop_appointment') {
+    if (content.ok) {
+      return `Okay I booked ${content.title} on ${content.dayLabel} at ${content.timeLabel}. Would you like me to text you a reminder?`;
+    }
+    return content.error || null;
   }
 
   if (name === 'get_upcoming_schedule') {
@@ -658,6 +762,29 @@ async function runAssistantChat(req, res) {
                   tenantId,
                 });
               }
+            } else if (fn.name === 'create_shop_task') {
+              toolContent = await createShopTask({ title: args.title, createdBy: req.user?._id });
+            } else if (fn.name === 'lookup_stored_phone') {
+              toolContent = await lookupStoredPhone({
+                phone: args.phone,
+                me: Boolean(args.me),
+                user: req.user,
+              });
+            } else if (fn.name === 'schedule_reminder_text') {
+              toolContent = await scheduleReminderText({
+                to: args.to,
+                message: args.message,
+                sendAt: args.sendAt,
+                createdBy: req.user?._id,
+              });
+            } else if (fn.name === 'create_shop_appointment') {
+              toolContent = await createShopAppointment({
+                title: args.title,
+                date: args.date,
+                time: args.time,
+                customerQuery: args.customerQuery,
+                createdBy: req.user?._id,
+              });
             } else {
               toolContent = { error: 'Unknown tool' };
             }
@@ -699,7 +826,51 @@ async function runAssistantChat(req, res) {
   }
 }
 
+async function runShopAction(req, res) {
+  const action = String(req.body?.action || '').trim();
+  try {
+    if (action === 'create_task') {
+      return res.json(await createShopTask({ title: req.body?.title, createdBy: req.user?._id }));
+    }
+    if (action === 'lookup_phone') {
+      return res.json(
+        await lookupStoredPhone({
+          phone: req.body?.phone,
+          me: Boolean(req.body?.me),
+          user: req.user,
+        }),
+      );
+    }
+    if (action === 'schedule_reminder') {
+      return res.json(
+        await scheduleReminderText({
+          to: req.body?.to,
+          message: req.body?.message,
+          sendAt: req.body?.sendAt,
+          createdBy: req.user?._id,
+        }),
+      );
+    }
+    if (action === 'create_appointment') {
+      return res.json(
+        await createShopAppointment({
+          title: req.body?.title,
+          date: req.body?.date,
+          time: req.body?.time,
+          customerQuery: req.body?.customerQuery,
+          createdBy: req.user?._id,
+        }),
+      );
+    }
+    return res.status(400).json({ error: 'Unknown shop action.' });
+  } catch (error) {
+    console.error('runShopAction:', error);
+    return res.status(500).json({ error: error.message || 'Shop action failed.' });
+  }
+}
+
 module.exports = {
   runAssistantChat,
   runMapShow,
+  runShopAction,
 };

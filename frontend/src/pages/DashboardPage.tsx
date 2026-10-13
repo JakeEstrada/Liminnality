@@ -435,6 +435,7 @@ function DashboardPage() {
   const [activities, setActivities] = useState([]);
   const [chartActivities, setChartActivities] = useState([]);
   const [trafficSeries, setTrafficSeries] = useState(null);
+  const [trafficCampaign, setTrafficCampaign] = useState(null);
   const [teamActivity, setTeamActivity] = useState(null);
   const [markedPaidPayments, setMarkedPaidPayments] = useState([]);
   const [sendingUnsentPaymentAlerts, setSendingUnsentPaymentAlerts] = useState(false);
@@ -597,6 +598,7 @@ function DashboardPage() {
       setActivities(sortedActivities);
       setChartActivities(Array.isArray(chartActivitiesRes.data) ? chartActivitiesRes.data : []);
       setTrafficSeries(Array.isArray(trafficRes?.data?.series) ? trafficRes.data.series : null);
+      setTrafficCampaign(Array.isArray(trafficRes?.data?.campaignSeries) ? trafficRes.data.campaignSeries : null);
       setTeamActivity(Array.isArray(teamRes?.data?.series) ? teamRes.data.series : null);
       setMarkedPaidPayments(mergeMarkedPaidPayments(paidActivities, jobs));
     } catch (error) {
@@ -1448,6 +1450,7 @@ function DashboardPage() {
         payments={markedPaidPayments}
         activities={chartActivities}
         traffic={trafficSeries}
+        campaign={trafficCampaign}
         teamActivity={teamActivity}
         pipeline={stats.pipelineMix}
         canOpenFinance={canOpenFinanceHub}

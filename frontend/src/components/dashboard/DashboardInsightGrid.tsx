@@ -51,6 +51,13 @@ type TrafficPoint = {
   pageViews?: number;
   visitors?: number;
   contactSubmits?: number;
+  adClicks?: number;
+};
+
+type CampaignPoint = {
+  date: string;
+  adClicks?: number;
+  conversions?: number;
 };
 
 type TeamPoint = {
@@ -123,6 +130,7 @@ export default function DashboardInsightGrid({
   payments,
   activities,
   traffic,
+  campaign,
   teamActivity,
   pipeline,
   canOpenFinance: _canOpenFinance,
@@ -133,6 +141,7 @@ export default function DashboardInsightGrid({
   payments: PaymentRow[];
   activities: ActivityRow[];
   traffic: TrafficPoint[] | null;
+  campaign?: CampaignPoint[] | null;
   teamActivity: TeamPoint[] | null;
   pipeline: PipelineSlice[];
   canOpenFinance: boolean;
@@ -181,15 +190,15 @@ export default function DashboardInsightGrid({
   }, [activities, days]);
 
   const trafficSeries = useMemo(() => {
-    if (!traffic?.length) return days.map((date) => ({ date, pageViews: 0, visitors: 0, contactSubmits: 0 }));
-    const bucket = new Map(traffic.map((row) => [row.date, row]));
+    const bucket = new Map((traffic || []).map((row) => [row.date, row]));
+    const ads = new Map((campaign || []).map((row) => [row.date, row]));
     return days.map((date) => ({
       date,
       pageViews: Number(bucket.get(date)?.pageViews) || 0,
-      visitors: Number(bucket.get(date)?.visitors) || 0,
+      adClicks: Number(bucket.get(date)?.adClicks) || Number(ads.get(date)?.adClicks) || 0,
       contactSubmits: Number(bucket.get(date)?.contactSubmits) || 0,
     }));
-  }, [days, traffic]);
+  }, [campaign, days, traffic]);
 
   const auditHasData = Boolean(
     teamActivity?.some((row) => (Number(row.pageViews) || 0) + (Number(row.clicks) || 0) + (Number(row.logins) || 0) > 0),
@@ -248,6 +257,7 @@ export default function DashboardInsightGrid({
     0,
   );
   const trafficTotal = trafficSeries.reduce((sum, row) => sum + row.pageViews, 0);
+  const campaignTotal = trafficSeries.reduce((sum, row) => sum + row.adClicks, 0);
   const money = (value: number) => (hideSensitive ? 'Locked' : formatMoney(value));
   const axisMoney = (value: number) => (hideSensitive ? String(Math.round(value)) : compactMoney(value));
 
@@ -320,7 +330,7 @@ export default function DashboardInsightGrid({
                   Website traffic
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Public site · {trafficTotal} page views
+                  Public site · {trafficTotal} page views · {campaignTotal} Google ad landings
                 </Typography>
               </Box>
               {!kiosk ? (
@@ -334,7 +344,7 @@ export default function DashboardInsightGrid({
               data={trafficSeries}
               series={[
                 { key: 'pageViews', label: 'Page views', color: '#60a5fa' },
-                { key: 'visitors', label: 'Visitors', color: '#c084fc' },
+                { key: 'adClicks', label: 'Campaign', color: '#c084fc' },
                 { key: 'contactSubmits', label: 'Messages', color: '#fb923c' },
               ]}
             />

@@ -2,6 +2,8 @@ const Activity = require('../models/Activity');
 const Job = require('../models/Job');
 const Customer = require('../models/Customer');
 const Appointment = require('../models/Appointment');
+const Task = require('../models/Task');
+const ScheduledSms = require('../models/ScheduledSms');
 const User = require('../models/User');
 const EmployeeContact = require('../models/EmployeeContact');
 const DepositAllocation = require('../models/DepositAllocation');
@@ -1023,6 +1025,124 @@ async function sendCustomerInfoText({ customerQuery, employeeQuery, createdBy, t
   };
 }
 
+function mobileDigits(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  if (digits.length >= 10) return digits.slice(-10);
+  return digits;
+}
+
+function toE164(value) {
+  const digits = mobileDigits(value);
+  return digits.length === 10 ? `+1${digits}` : '';
+}
+
+function formatShopTime(date) {
+  return new Date(date).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: SHOP_TIMEZONE,
+  });
+}
+
+function formatShopDay(date) {
+  return new Date(date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: SHOP_TIMEZONE,
+  });
+}
+
+async function createShopTask({ title, createdBy }) {
+  const clean = String(title || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return { error: 'Need a task title.' };
+  if (!createdBy) return { error: 'Need a signed-in user.' };
+  const task = await Task.create({
+    title: clean.slice(0, 200),
+    type: 'follow_up',
+    assignedTo: createdBy,
+    createdBy,
+  });
+  return { ok: true, taskId: String(task._id), title: task.title };
+}
+
+async function lookupStoredPhone({ phone, me, user } = {}) {
+  if (me) {
+    const mine = toE164(user?.mobile);
+    if (!mine) return { found: false, reason: 'no_mobile' };
+    return { found: true, name: user?.name || 'you', mobile: mine, me: true };
+  }
+  const digits = mobileDigits(phone);
+  if (digits.length !== 10) return { found: false, reason: 'invalid' };
+  const rows = await loadRolodexWithMobiles();
+  const hit = rows.find((row) => mobileDigits(row.mobile) === digits);
+  if (!hit) return { found: false, reason: 'not_stored', digits };
+  return {
+    found: true,
+    name: hit.name || 'that person',
+    mobile: toE164(hit.mobile),
+  };
+}
+
+async function scheduleReminderText({ to, message, sendAt, createdBy }) {
+  const e164 = toE164(to);
+  const body = String(message || '').replace(/\s+/g, ' ').trim();
+  const when = sendAt ? new Date(sendAt) : null;
+  if (!e164) return { error: 'Need a stored mobile number.' };
+  if (!body) return { error: 'Need a reminder message.' };
+  if (!when || Number.isNaN(when.getTime())) return { error: 'Need a send time.' };
+  if (when.getTime() <= Date.now()) return { error: 'That time already passed.' };
+  const stored = await lookupStoredPhone({ phone: e164 });
+  if (!stored.found) return { error: 'That number is not on file.', found: false };
+  const sms = await ScheduledSms.create({
+    to: stored.mobile,
+    message: body.slice(0, 400),
+    sendAt: when,
+    createdBy: createdBy || undefined,
+    status: 'scheduled',
+  });
+  return {
+    ok: true,
+    id: String(sms._id),
+    to: stored.mobile,
+    name: stored.name,
+    sendAt: sms.sendAt,
+    dayLabel: formatShopDay(when),
+    timeLabel: formatShopTime(when),
+  };
+}
+
+async function createShopAppointment({ title, date, time, customerQuery, createdBy }) {
+  const spoken = String(title || customerQuery || '').replace(/\s+/g, ' ').trim();
+  if (!spoken) return { error: 'Need a name or appointment title.' };
+  if (!createdBy) return { error: 'Need a signed-in user.' };
+  const when = date ? new Date(date) : null;
+  if (!when || Number.isNaN(when.getTime())) return { error: 'Need a date and time.' };
+  if (when.getTime() <= Date.now() - 60 * 1000) return { error: 'That time already passed.' };
+  const timeLabel = String(time || '').trim() || formatShopTime(when);
+  const regex = new RegExp(escapeRegex(spoken), 'i');
+  const customer = await Customer.findOne({ name: regex }).select('_id name').lean();
+  const appointment = await Appointment.create({
+    title: (customer?.name || spoken).slice(0, 200),
+    date: when,
+    time: timeLabel,
+    customerId: customer?._id,
+    customerName: customer?.name || spoken,
+    status: 'scheduled',
+    createdBy,
+  });
+  return {
+    ok: true,
+    appointmentId: String(appointment._id),
+    title: appointment.title,
+    customerName: appointment.customerName,
+    dayLabel: formatShopDay(when),
+    timeLabel,
+  };
+}
+
 module.exports = {
   fetchRecentPayments,
   fetchRecentDeposits,
@@ -1033,4 +1153,8 @@ module.exports = {
   fetchUpcomingSchedule,
   listRolodexEmployees,
   sendCustomerInfoText,
+  createShopTask,
+  lookupStoredPhone,
+  scheduleReminderText,
+  createShopAppointment,
 };

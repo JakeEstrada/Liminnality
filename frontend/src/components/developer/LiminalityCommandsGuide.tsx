@@ -109,6 +109,19 @@ export default function LiminalityCommandsGuide() {
       />
 
       <Section
+        title="Reminders and appointments"
+        body="She creates the task or appointment first, then asks if you want a reminder text. The number has to already be on a user or rolodex card. Yesterday is rejected. Next week means 7 days from now at 9 PM."
+        examples={[
+          { say: 'Remind me to call the lumber yard', does: 'Creates a task, then asks if you want a text reminder.' },
+          { say: 'Remind me to lock up tonight at 9', does: 'Creates the task and remembers 9 PM tonight for the text if you say yes.' },
+          { say: '949 838 5157', does: 'Checks whether that mobile is stored. If it is, she uses that person’s name.' },
+          { say: 'Tonight at 9', does: 'Schedules the text. Next week = 7 days at 9 PM. Yesterday is no.' },
+          { say: 'Create an appointment with Hammer tomorrow at 2', does: 'Books Hammer tomorrow at 2, then offers a reminder text the same way.' },
+          { say: 'Schedule an appointment', does: 'Asks who, then when, then offers the text.' },
+        ]}
+      />
+
+      <Section
         title="Ask about the shop"
         body="Anything that sounds like a question goes to Paarth Help with live tenant data. Keep it to one ask at a time. She answers out loud in a couple of short sentences."
         examples={[
