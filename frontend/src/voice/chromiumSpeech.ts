@@ -154,6 +154,19 @@ export async function primeChromiumMicrophone() {
   if (context?.state === 'suspended') await context.resume();
 }
 
+export function getPrimedMicStream() {
+  return liveStream(primedStream) ? primedStream : null;
+}
+
+export function getSharedAudioContext() {
+  return audioContext();
+}
+
+export function stopPrimedMicrophone() {
+  primedStream?.getTracks().forEach((track) => track.stop());
+  primedStream = null;
+}
+
 export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   let paused = true;
   let opening = false;
@@ -246,8 +259,6 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     analyser?.disconnect();
     source = null;
     analyser = null;
-    stream?.getTracks().forEach((track) => track.stop());
-    if (stream && stream === primedStream) primedStream = null;
     stream = null;
   }
 

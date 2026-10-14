@@ -1,46 +1,7 @@
 import { Box, Button, CircularProgress, LinearProgress, Typography } from '@mui/material';
 import { COMMAND_TIMEOUT_MS } from '../../voice/liminalityCommands';
 import type { LiminalityPhase } from '../../hooks/useLiminalityVoice';
-
-function FrequencyBars({ active }: { active: boolean }) {
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-end',
-        gap: '3px',
-        height: 22,
-        width: 28,
-        flexShrink: 0,
-        '& span': {
-          display: 'block',
-          width: 3,
-          borderRadius: 99,
-          bgcolor: 'primary.main',
-          transformOrigin: 'bottom',
-          animation: 'liminalityFreq 0.9s ease-in-out infinite',
-          opacity: active ? 1 : 0.45,
-        },
-        '@keyframes liminalityFreq': {
-          '0%, 100%': { transform: 'scaleY(0.35)' },
-          '50%': { transform: 'scaleY(1)' },
-        },
-      }}
-    >
-      {[0, 1, 2, 3, 4].map((index) => (
-        <Box
-          key={index}
-          component="span"
-          sx={{
-            height: active ? 22 : 12,
-            animationDelay: `${index * 0.12}s`,
-            animationDuration: active ? `${0.55 + index * 0.08}s` : '1.4s',
-          }}
-        />
-      ))}
-    </Box>
-  );
-}
+import LiveMicWaveform from './LiveMicWaveform';
 
 export default function LiminalityHud({
   enabled,
@@ -115,11 +76,7 @@ export default function LiminalityHud({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minHeight: 36 }}>
-          {working ? (
-            <CircularProgress size={22} thickness={5} />
-          ) : (
-            <FrequencyBars active={hearing || commandWindow} />
-          )}
+          {working ? <CircularProgress size={22} thickness={5} /> : null}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
               {title}
@@ -153,15 +110,16 @@ export default function LiminalityHud({
             </Button>
           ) : null}
         </Box>
+        <LiveMicWaveform />
         {commandWindow ? (
           <LinearProgress
             variant="determinate"
             value={progress}
             color={barColor}
-            sx={{ mt: 1.25, height: 8, borderRadius: 99 }}
+            sx={{ mt: 1, height: 6, borderRadius: 99 }}
           />
         ) : working ? (
-          <LinearProgress sx={{ mt: 1.25, height: 8, borderRadius: 99 }} />
+          <LinearProgress sx={{ mt: 1, height: 6, borderRadius: 99 }} />
         ) : null}
       </Box>
     </Box>

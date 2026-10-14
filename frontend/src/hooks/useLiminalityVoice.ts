@@ -8,7 +8,7 @@ import {
   prefetchLiminalitySpeech,
   speakText,
 } from '../voice/browserSpeech';
-import { primeChromiumMicrophone } from '../voice/chromiumSpeech';
+import { primeChromiumMicrophone, stopPrimedMicrophone } from '../voice/chromiumSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
@@ -779,6 +779,7 @@ export function useLiminalityVoice({
       clearTimers();
       cancelSpeech();
       destroyRecognition();
+      stopPrimedMicrophone();
       setHeard('');
       setPhase('off');
       setStatusLabel('Microphone off');
@@ -802,6 +803,7 @@ export function useLiminalityVoice({
       clearTimers();
       cancelSpeech();
       destroyRecognition();
+      stopPrimedMicrophone();
     };
     // Intentionally only bind to enabled/supported so a command session is not torn down mid-speech.
     // eslint-disable-next-line react-hooks/exhaustive-deps
