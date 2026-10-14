@@ -4,16 +4,16 @@ import { readMicWaveform, startMicWaveform, stopMicWaveform } from '../../voice/
 
 const SAMPLES = 120;
 
-export default function LiveMicWaveform() {
+export default function LiveMicWaveform({ color }: { color?: string }) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const valuesRef = useRef<number[]>(Array.from({ length: SAMPLES }, () => 0));
+  const stroke = color || theme.palette.primary.main;
 
   useEffect(() => {
     let frame = 0;
     let running = true;
     void startMicWaveform();
-    const color = theme.palette.primary.main;
     const draw = () => {
       if (!running) return;
       frame = window.requestAnimationFrame(draw);
@@ -34,7 +34,7 @@ export default function LiveMicWaveform() {
       readMicWaveform(values);
       ctx.beginPath();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = stroke;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       const mid = height / 2;
@@ -52,7 +52,7 @@ export default function LiveMicWaveform() {
       window.cancelAnimationFrame(frame);
       stopMicWaveform();
     };
-  }, [theme.palette.primary.main]);
+  }, [stroke]);
 
   return (
     <Box sx={{ width: '100%', height: 44, mt: 1.25 }}>

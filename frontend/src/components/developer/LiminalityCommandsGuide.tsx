@@ -77,7 +77,7 @@ export default function LiminalityCommandsGuide() {
 
       <Section
         title="Wake her up"
-        body="Say either name. You get a listen sound, not a spoken hello. Then she listens for 15 seconds. A different close sound plays when that window ends. You do not have to say the name again during those 15 seconds."
+        body="Say either name. You get a listen sound, not a spoken hello. The bar at the bottom lights up and slowly fades. When it chimes off, say her name again. You do not have to say the name again while the bar is still lit."
         examples={[
           { say: 'Liminnality', does: 'Primary wake. Liminality / liminal also work if speech-to-text mangles it.' },
           { say: 'Motherfucker', does: 'Backup wake. Chrome often censors it; mother trucker / mother father still count.' },
@@ -164,16 +164,17 @@ export default function LiminalityCommandsGuide() {
 
       <Section
         title="Stop listening"
-        body="Any of these closes the listen window and she goes back to waiting for a wake word."
+        body="Any of these is the same as the close chime: the bar dims, she stops, and you have to say Liminality again."
         examples={[
-          { say: 'Stop', does: 'Cancels the current listen window and any open job or map tour.' },
+          { say: 'Stop', does: 'Cancels the current listen window and any open job or map tour. Say her name to start again.' },
           { say: 'Never mind', does: 'Same. Cancel, that’s all, goodbye, thanks, and go to sleep also work.' },
+          { say: 'Cancel button', does: 'Same as the ending chime. She will not take another command until you say Liminality.' },
         ]}
       />
 
       <Section
         title="Tips that save you from repeating yourself"
-        body="The listen cue means she heard the wake. Speak the command after it. If she got the job but not the person, only say the person. If speech-to-text writes lemon ality, that still counts as her name. Voice replies use ElevenLabs — pick a voice under Account Settings → Liminality."
+        body="The listen cue means she heard the wake. Speak the command after it. The bottom bar fading out is the listen window — there is no countdown clock. If she got the job but not the person, only say the person. If speech-to-text writes lemon ality, that still counts as her name. Voice replies use ElevenLabs — pick a voice under Account Settings → Liminality."
       />
     </Box>
   );
