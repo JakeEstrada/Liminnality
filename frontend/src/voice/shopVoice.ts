@@ -247,3 +247,76 @@ export function reminderMessage(draft: ShopDraft) {
   }
   return `Reminder: ${draft.title}`;
 }
+
+function joinSpoken(items: string[]) {
+  if (items.length <= 1) return items[0] || '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+export async function listVoiceSmsEmployees() {
+  const { data } = await api.get('/users/employees-for-sms');
+  const rows = (data?.recipients || data?.employees || []) as Array<{
+    name?: string;
+    mobile?: string;
+    hasMobile?: boolean;
+  }>;
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const name = String(row?.name || '').trim();
+    if (!name) continue;
+    const mobile = String(row?.mobile || '').trim();
+    if (!mobile && row?.hasMobile !== true) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
+export function speakPeopleList(names: string[]) {
+  if (!names.length) return 'Nobody on the roster has a mobile number yet.';
+  const shown = names.slice(0, 20);
+  const extra = names.length - shown.length;
+  const spoken = joinSpoken(shown);
+  if (names.length === 1) return `You can text ${spoken}.`;
+  if (extra > 0) return `You can text ${names.length} people. ${spoken}, and ${extra} more.`;
+  return `You can text ${spoken}.`;
+}
+
+export type VoiceJobHit = {
+  jobId: string;
+  title?: string;
+  customerName?: string | null;
+  address?: string | null;
+  city?: string | null;
+};
+
+export async function lookupVoiceJobs(query: string) {
+  const { data } = await api.get('/assistant/jobs', { params: { q: query, limit: 12 } });
+  return (Array.isArray(data?.jobs) ? data.jobs : []) as VoiceJobHit[];
+}
+
+function describeJob(job: VoiceJobHit) {
+  const title = String(job.title || 'Untitled').trim();
+  const who = String(job.customerName || '').trim();
+  const place = String(job.address || job.city || '').trim();
+  const bits = [title];
+  if (who && who.toLowerCase() !== title.toLowerCase()) bits.push(`for ${who}`);
+  if (place) bits.push(`on ${place}`);
+  return bits.join(' ');
+}
+
+export function speakJobLookup(query: string, jobs: VoiceJobHit[]) {
+  if (!jobs.length) return `No pipeline job matches ${query}.`;
+  if (jobs.length === 1) return `That's ${describeJob(jobs[0])}.`;
+  const listed = jobs.slice(0, 6).map(describeJob);
+  const extra = jobs.length - listed.length;
+  const spoken = joinSpoken(listed);
+  if (extra > 0) {
+    return `I found ${jobs.length} pipeline jobs for ${query}. ${spoken}, and ${extra} more. Which one?`;
+  }
+  return `I found ${jobs.length} pipeline jobs for ${query}. ${spoken}. Which one?`;
+}

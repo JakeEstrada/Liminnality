@@ -504,10 +504,10 @@ async function listRolodexEmployees() {
     User.find({ isPending: false, isActive: true }).select('name mobile').sort({ name: 1 }).lean(),
     EmployeeContact.find({}).select('name mobile').sort({ name: 1 }).lean(),
   ]);
-  const employees = [
+  const employees = collapseDuplicatePeople([
     ...users.map((u) => ({ ...u, kind: 'user' })),
     ...contacts.map((c) => ({ ...c, kind: 'contact' })),
-  ]
+  ])
     .filter((row) => String(row.mobile || '').trim())
     .map(summarizeEmployee);
   return { employees, count: employees.length };

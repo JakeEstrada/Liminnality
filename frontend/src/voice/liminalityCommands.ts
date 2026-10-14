@@ -342,6 +342,57 @@ export function parseMapJobSpeech(raw: string): MapJobSpeech | null {
   return null;
 }
 
+export function parseEmployeeListSpeech(raw: string) {
+  const text = normalizeSpeech(raw);
+  if (!text) return false;
+  if (/\bwho can (i|you|we)\s+(send|text|message)\b/.test(text)) return true;
+  if (/\bwho (can|do) (i|you|we)\s+(send|text)\b/.test(text)) return true;
+  if (
+    /\b(who|what|which)\b.{0,60}\b(employees?|people|contacts?|rolodex|directory)\b/.test(text) &&
+    /\b(send|text|message|number|phone|mobile|sms)\b/.test(text)
+  ) {
+    return true;
+  }
+  if (/^(list|show|name)\s+(the\s+)?(employees?|contacts?|rolodex|people i can text)/.test(text)) {
+    return true;
+  }
+  if (/\bwho has a (phone|number|mobile)\b/.test(text)) return true;
+  return false;
+}
+
+const BLOCKED_JOB_QUERY =
+  /^(pipeline|calendar|customers?|contacts?|dashboard|map|finance|bills?|payroll|settings?|home|jobs?)$/;
+
+const FIND_JOB_PATTERNS = [
+  /^(?:which|what)\s+jobs?\s+(?:is|are)\s+(?:on|at|called|named)\s+(.+)$/,
+  /^(?:which|what)\s+jobs?\s+(?:is|are)\s+(.+)$/,
+  /^(?:which|what)\s+jobs?\s+on\s+(.+)$/,
+  /^(?:which|what)\s+(?:is\s+)?(?:the\s+)?(.+?)\s+jobs?$/,
+  /^(?:wheres|where is)\s+(?:the\s+)?jobs?\s+(?:on|at|called|named)\s+(.+)$/,
+  /^(?:wheres|where is)\s+(?:the\s+)?(.+?)\s+jobs?$/,
+  /^(?:wheres|where is)\s+(?:the\s+)?(.+)$/,
+  /^(?:find|open|show|bring up)\s+(?:me\s+)?(?:the\s+)?jobs?\s+(?:for|on|at|called|named)\s+(.+)$/,
+  /^(?:find|open|show|bring up)\s+(?:me\s+)?(?:the\s+)?(.+?)\s+jobs?$/,
+  /^(?:the\s+)?jobs?\s+(?:on|at|called|named)\s+(.+)$/,
+];
+
+export function parseFindJobSpeech(raw: string): string | null {
+  const text = normalizeSpeech(raw);
+  if (!text) return null;
+  for (const pattern of FIND_JOB_PATTERNS) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const query = match[1]
+      .replace(/^(the|a|an)\s+/, '')
+      .replace(/\bplease\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!query || query.length < 3 || BLOCKED_JOB_QUERY.test(query)) continue;
+    return query;
+  }
+  return null;
+}
+
 /** Returns one command when exactly one destination matches. Never guesses. */
 export function matchLiminalityCommand(raw: string): LiminalityCommand | null {
   const text = normalizeSpeech(raw);

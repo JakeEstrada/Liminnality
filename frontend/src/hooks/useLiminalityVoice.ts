@@ -22,6 +22,8 @@ import {
   isJunkTranscript,
   liminalityCommandRoute,
   matchLiminalityCommand,
+  parseEmployeeListSpeech,
+  parseFindJobSpeech,
   parseMapJobSpeech,
   parseSendSpeech,
   registerForWake,
@@ -34,6 +36,8 @@ import {
 import {
   createVoiceAppointment,
   createVoiceTask,
+  listVoiceSmsEmployees,
+  lookupVoiceJobs,
   lookupVoicePhone,
   parseAppointmentSpeech,
   parsePhoneSpeech,
@@ -42,6 +46,8 @@ import {
   parseYesNo,
   reminderMessage,
   scheduleVoiceReminder,
+  speakJobLookup,
+  speakPeopleList,
   type ShopDraft,
 } from '../voice/shopVoice';
 
@@ -623,6 +629,19 @@ export function useLiminalityVoice({
           }
         }
 
+        if (parseEmployeeListSpeech(stripped)) {
+          setStatusLabel('Checking the roster');
+          try {
+            const names = await listVoiceSmsEmployees();
+            await speakAndWait(speakPeopleList(names));
+          } catch {
+            await speakAndWait("Couldn't load the roster.");
+          }
+          if (workGenRef.current !== workGen) return;
+          listenForCommands();
+          return;
+        }
+
         const mapIntent = parseMapJobSpeech(stripped);
         if (mapIntent) {
           setStatusLabel('Opening the map');
@@ -649,6 +668,25 @@ export function useLiminalityVoice({
           } else {
             resetMapToPipeline();
             await speakAndWait(result.reply || 'No jobs in that area.');
+          }
+          if (workGenRef.current !== workGen) return;
+          listenForCommands();
+          return;
+        }
+
+        const jobQuery = parseFindJobSpeech(stripped);
+        if (jobQuery) {
+          setStatusLabel('Looking up that job');
+          try {
+            const jobs = await lookupVoiceJobs(jobQuery);
+            if (jobs.length === 1 && jobs[0].jobId) {
+              setPhase('executing');
+              setStatusLabel('Opening job');
+              openJobOverlay({ jobId: jobs[0].jobId, tab: 'files' });
+            }
+            await speakAndWait(speakJobLookup(jobQuery, jobs));
+          } catch {
+            await speakAndWait("Couldn't find that job.");
           }
           if (workGenRef.current !== workGen) return;
           listenForCommands();

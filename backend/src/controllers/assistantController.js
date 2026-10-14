@@ -228,7 +228,7 @@ const TOOLS = [
     function: {
       name: 'list_sms_employees',
       description:
-        'List employees on the rolodex who have a mobile number. Use before sending a text if the name is unclear.',
+        'List every person who can receive a shop text: login accounts and roster contacts without accounts, if they have a mobile. Use for "who can I send a number to", "what employees can I text", or before sending if the name is unclear.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -331,7 +331,10 @@ function buildSystemPrompt(voice = false) {
   const voiceLines = voice
     ? [
         'You are Liminality, a short shop-floor voice. Plain and useful. No banter, no feelings, no “I know you are upset.”',
-        'Answer in one short sentence. If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
+        'Answer in one short sentence, except when listing people or jobs — then name each match.',
+        'If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
+        'If they ask who they can text or send a number to, call list_sms_employees and speak every name. Include roster contacts that do not have a login.',
+        'If they ask which job is on a street, like Dewberry, call search_jobs with that street fragment, then open_job_card when there is one match. Do not use show_jobs_on_map for a street name unless they asked for the map.',
         'If send_customer_info_text sent, confirm who received which customer.',
         'If they ask to be reminded, create_shop_task first. Then ask if they want a text. Then ask what number. Then ask when. Confirm: I will text a reminder to [name] on [date] at [time].',
         'If they ask to create an appointment, create_shop_appointment. Ask for the missing name or time. Then offer a reminder text the same way.',
@@ -376,6 +379,8 @@ function buildSystemPrompt(voice = false) {
     'For "jobs near [city]", "around [city]", or "close to [city]", call show_jobs_on_map with near set to that city and radiusMiles 10. Do not use city= for near.',
     'For "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
     'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.',
+    'For "which job is [street]", "where is [street]", or a street fragment like Dewberry, call search_jobs then open_job_card if there is one pipeline match.',
+    'For "who can I send a number to" / "what employees can I text", call list_sms_employees and name everyone with a mobile, including rolodex contacts without logins.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
     'For "remind me to …", call create_shop_task, then ask about a reminder text.',
     'For "create an appointment" / "book a meeting", call create_shop_appointment after you have a name and time.',
@@ -431,6 +436,23 @@ async function openaiChat(payload) {
 function speakMoney(amount) {
   if (amount == null || !Number.isFinite(Number(amount))) return '';
   return `$${Number(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
+function joinSpoken(items) {
+  const names = (items || []).map((row) => String(row || '').trim()).filter(Boolean);
+  if (names.length <= 1) return names[0] || '';
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+function speakJobHit(job) {
+  const title = String(job?.title || 'Untitled').trim();
+  const who = String(job?.customerName || '').trim();
+  const place = String(job?.address || job?.city || '').trim();
+  const bits = [title];
+  if (who && who.toLowerCase() !== title.toLowerCase()) bits.push(`for ${who}`);
+  if (place) bits.push(`on ${place}`);
+  return bits.join(' ');
 }
 
 function voiceReplyFromTools(roundTools) {
@@ -522,6 +544,29 @@ function voiceReplyFromTools(roundTools) {
     const who = first.customerName || first.title || first.jobTitle || 'the next job';
     const date = first.date || first.startDate || '';
     return ['Next is', who, date].filter(Boolean).join(' ') + '.';
+  }
+
+  if (name === 'list_sms_employees') {
+    const names = (content.employees || []).map((row) => row?.name).filter(Boolean);
+    if (!names.length) return 'Nobody on the roster has a mobile number yet.';
+    if (names.length === 1) return `You can text ${names[0]}.`;
+    const shown = names.slice(0, 20);
+    const extra = names.length - shown.length;
+    if (extra > 0) return `You can text ${names.length} people. ${joinSpoken(shown)}, and ${extra} more.`;
+    return `You can text ${joinSpoken(shown)}.`;
+  }
+
+  if (name === 'search_jobs') {
+    const jobs = Array.isArray(content.jobs) ? content.jobs : [];
+    const query = String(content.query || 'that').trim() || 'that';
+    if (!jobs.length) return `No pipeline job matches ${query}.`;
+    if (jobs.length === 1) return `That's ${speakJobHit(jobs[0])}.`;
+    const listed = jobs.slice(0, 6).map(speakJobHit);
+    const extra = jobs.length - listed.length;
+    if (extra > 0) {
+      return `I found ${jobs.length} pipeline jobs for ${query}. ${joinSpoken(listed)}, and ${extra} more. Which one?`;
+    }
+    return `I found ${jobs.length} pipeline jobs for ${query}. ${joinSpoken(listed)}. Which one?`;
   }
 
   return null;
@@ -710,6 +755,10 @@ async function runAssistantChat(req, res) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
                 toolContent = await searchJobs({ query: args.query, limit: args.limit });
+                const only = toolContent?.jobs?.[0];
+                if (voice && toolContent?.jobs?.length === 1 && only?.jobId) {
+                  clientActions.push({ type: 'open_job', jobId: only.jobId, tab: 'files' });
+                }
               }
             } else if (fn.name === 'show_jobs_on_map') {
               if (!tenantId) {
@@ -826,6 +875,19 @@ async function runAssistantChat(req, res) {
   }
 }
 
+async function runJobLookup(req, res) {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'No organization context for this account.' });
+  }
+  try {
+    const result = await searchJobs({ query: req.query?.q || req.query?.query, limit: req.query?.limit });
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'Job lookup failed.' });
+  }
+}
+
 async function runShopAction(req, res) {
   const action = String(req.body?.action || '').trim();
   try {
@@ -873,4 +935,5 @@ module.exports = {
   runAssistantChat,
   runMapShow,
   runShopAction,
+  runJobLookup,
 };

@@ -122,6 +122,15 @@ export default function LiminalityCommandsGuide() {
       />
 
       <Section
+        title="Who you can text"
+        body="She names everyone with a mobile on file: login accounts and rolodex contacts that do not have an account yet. She does not read the numbers out loud."
+        examples={[
+          { say: 'What employees can I send a number to?', does: 'Lists every roster person and user account that has a mobile.' },
+          { say: 'Who can I text?', does: 'Same list. Who can I send a number to / list employees also work.' },
+        ]}
+      />
+
+      <Section
         title="Ask about the shop"
         body="Anything that sounds like a question goes to Paarth Help with live tenant data. Keep it to one ask at a time. She answers out loud in a couple of short sentences."
         examples={[
@@ -134,6 +143,8 @@ export default function LiminalityCommandsGuide() {
           { say: 'What jobs do we have near Fullerton?', does: 'Same map, 10-mile radius. She names each job while that pin highlights.' },
           { say: 'Show scheduled jobs over twenty thousand', does: 'Same map, filtered by scheduled + amount.' },
           { say: 'Jobs in Dana Point', does: 'Same map tour. You can also filter the map yourself by name, city, stage, scheduled, and amount.' },
+          { say: 'Which job is Dewberry?', does: 'Searches pipeline jobs by street, title, or customer. One match opens the job card. Several matches, she names them.' },
+          { say: 'Where’s the Dewberry job?', does: 'Same street lookup. Open the Dewberry job also works.' },
           { say: 'Open the Hammer job', does: 'Opens the job card here (does not switch to pipeline) on the Files tab so photos are visible.' },
           { say: 'Materials to order', does: 'Searches job notes and crew notes for supplies / hardware / cabinets.' },
           { say: 'Tell me about the Hammer job', does: 'Looks up that job and opens the card on Files.' },
