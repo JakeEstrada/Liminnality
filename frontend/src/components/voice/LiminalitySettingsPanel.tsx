@@ -12,7 +12,7 @@ import {
 import { RecordVoiceOver as RecordVoiceOverIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
-import { speakText } from '../../voice/browserSpeech';
+import { speakText, usesServerSpeechCapture } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { DEFAULT_NEURAL_VOICE_URI, ELEVEN_VOICES, neuralVoiceIdFromUri } from '../../voice/neuralVoices';
 
@@ -90,6 +90,10 @@ export default function LiminalitySettingsPanel() {
       {!supported ? (
         <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
           Use Chrome or Edge on desktop to enable voice.
+        </Typography>
+      ) : usesServerSpeechCapture() ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          Chromium sends the microphone to the server. Chrome and Edge still listen in the browser.
         </Typography>
       ) : null}
 

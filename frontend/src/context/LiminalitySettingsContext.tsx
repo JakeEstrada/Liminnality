@@ -11,6 +11,7 @@ import {
   isSpeechRecognitionSupported,
   listSelectableVoices,
   loadVoices,
+  usesServerSpeechCapture,
   voiceChoiceLabel,
   warmUpSpeechVoices,
 } from '../voice/browserSpeech';
@@ -20,6 +21,7 @@ import {
   writeLiminalityEnabled,
   writeLiminalityVoiceUri,
 } from '../voice/liminalitySettings';
+import { primeChromiumMicrophone } from '../voice/chromiumSpeech';
 import { unlockNeuralAudio } from '../voice/neuralSpeech';
 import { neuralVoiceIdFromUri } from '../voice/neuralVoices';
 import type { LiminalityPhase } from '../hooks/useLiminalityVoice';
@@ -71,7 +73,10 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
   }, []);
 
   const setEnabled = useCallback((next: boolean) => {
-    if (next) unlockNeuralAudio();
+    if (next) {
+      unlockNeuralAudio();
+      if (usesServerSpeechCapture()) void primeChromiumMicrophone().catch(() => {});
+    }
     writeLiminalityEnabled(next);
     setEnabledState(next);
   }, []);

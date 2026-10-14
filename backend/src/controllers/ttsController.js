@@ -1,4 +1,5 @@
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech';
+const OPENAI_TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const ELEVEN_SPEECH_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
 const MAX_TTS_CHARS = 800;
 
@@ -319,4 +320,51 @@ async function requestOpenAiSpeech(key, voice, text, tone = 'polite') {
   return Buffer.from(await response.arrayBuffer());
 }
 
-module.exports = { synthesizeSpeech, streamSpeech, catalog };
+async function requestTranscription(key, file, model) {
+  const form = new FormData();
+  const bytes = new Uint8Array(file.buffer);
+  form.append('file', new Blob([bytes], { type: file.mimetype || 'audio/wav' }), file.originalname || 'speech.wav');
+  form.append('model', model);
+  form.append('language', 'en');
+  form.append('prompt', 'Liminality');
+  const response = await fetch(OPENAI_TRANSCRIBE_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+  const raw = await response.text();
+  let payload = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = {};
+  }
+  return { ok: response.ok, status: response.status, payload };
+}
+
+async function transcribeSpeech(req, res) {
+  try {
+    const key = openaiKey();
+    if (!key) {
+      return res.status(503).json({ error: 'Speech transcription is not configured.' });
+    }
+    if (!req.file?.buffer?.length) {
+      return res.status(400).json({ error: 'No audio.' });
+    }
+    const preferred = String(process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe').trim();
+    let result = await requestTranscription(key, req.file, preferred);
+    if (!result.ok && preferred !== 'whisper-1' && (result.status === 400 || result.status === 404)) {
+      result = await requestTranscription(key, req.file, 'whisper-1');
+    }
+    if (!result.ok) {
+      console.error('Transcribe failed', result.status, String(result.payload?.error?.message || '').slice(0, 300));
+      return res.status(502).json({ error: 'Could not transcribe speech.' });
+    }
+    return res.json({ text: String(result.payload?.text || '').trim() });
+  } catch (error) {
+    console.error('Transcribe failed', error);
+    return res.status(500).json({ error: 'Could not transcribe speech.' });
+  }
+}
+
+module.exports = { synthesizeSpeech, streamSpeech, catalog, transcribeSpeech };

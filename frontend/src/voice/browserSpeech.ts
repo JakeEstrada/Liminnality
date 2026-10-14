@@ -1,3 +1,4 @@
+import { createChromiumSpeechRecognition } from './chromiumSpeech';
 import { liminalityPrefetchLines } from './liminalityCommands';
 import { readLiminalityVoiceUri } from './liminalitySettings';
 import { neuralVoiceIdFromUri } from './neuralVoices';
@@ -33,18 +34,43 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
+/** Chromium builds without Chrome's speech recognizer, including Raspberry Pi OS. */
+export function isChromiumBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/Edg\/|OPR\/|Opera|Firefox\/|SamsungBrowser/.test(ua)) return false;
+  const brands = (navigator as Navigator & {
+    userAgentData?: { brands?: Array<{ brand: string }> };
+  }).userAgentData?.brands;
+  if (brands?.length) {
+    return brands.some((brand) => brand.brand === 'Chromium' || brand.brand === 'Google Chrome');
+  }
+  return /Chromium\/|Chrome\//.test(ua);
+}
+
+/** Mic audio goes to the server only when this browser has no built-in recognizer. */
+export function usesServerSpeechCapture() {
+  if (getSpeechRecognitionCtor()) return false;
+  if (!navigator.mediaDevices?.getUserMedia) return false;
+  return isChromiumBrowser();
+}
+
 export function isSpeechRecognitionSupported() {
-  return Boolean(getSpeechRecognitionCtor() && window.speechSynthesis);
+  if (getSpeechRecognitionCtor() && window.speechSynthesis) return true;
+  return usesServerSpeechCapture();
 }
 
 export function createSpeechRecognition(): SpeechRecognitionLike | null {
   const Ctor = getSpeechRecognitionCtor();
-  if (!Ctor) return null;
-  const recognition = new Ctor();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-  return recognition;
+  if (Ctor) {
+    const recognition = new Ctor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    return recognition;
+  }
+  if (usesServerSpeechCapture()) return createChromiumSpeechRecognition();
+  return null;
 }
 
 const CUTE_VOICE_NAMES = [
