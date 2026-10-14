@@ -63,6 +63,7 @@ export function useLiminalityVoice({
   const [phase, setPhase] = useState<LiminalityPhase>('off');
   const [statusLabel, setStatusLabel] = useState('Microphone off');
   const [heard, setHeard] = useState('');
+  const [remainingMs, setRemainingMs] = useState(0);
 
   const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition>>(null);
   const modeRef = useRef<'off' | 'wake' | 'command'>('off');
@@ -98,6 +99,8 @@ export function useLiminalityVoice({
     tickRef.current = null;
     endpointRef.current = null;
   }, []);
+
+  const deadlineLeft = () => Math.max(0, deadlineRef.current - Date.now());
 
   const commitHeard = useCallback((raw: string) => {
     const spoken = String(raw || '').trim();
@@ -140,9 +143,37 @@ export function useLiminalityVoice({
       return;
     }
 
-    const recognition = createSpeechRecognition();
+    const recognition = createSpeechRecognition() as ReturnType<typeof createSpeechRecognition> & {
+      onhearing?: (() => void) | null;
+      ontranscribing?: (() => void) | null;
+      onidle?: (() => void) | null;
+    };
     if (!recognition) return;
     recognitionRef.current = recognition;
+
+    recognition.onhearing = () => {
+      if (speakingRef.current || !enabledRef.current) return;
+      setStatusLabel(modeRef.current === 'wake' ? 'Hearing you' : 'Hearing you · keep talking');
+    };
+    recognition.ontranscribing = () => {
+      if (speakingRef.current || !enabledRef.current) return;
+      setPhase('processing');
+      setStatusLabel(modeRef.current === 'wake' ? 'Heard you — checking' : 'Heard you — working on it');
+    };
+    recognition.onidle = () => {
+      if (!enabledRef.current || speakingRef.current) return;
+      if (modeRef.current === 'command') {
+        const left = deadlineLeft();
+        setPhase('listening');
+        setRemainingMs(left);
+        setStatusLabel(`Listening · ${Math.ceil(left / 1000)}s`);
+        return;
+      }
+      if (modeRef.current === 'wake') {
+        setPhase('waiting');
+        setStatusLabel('Waiting');
+      }
+    };
 
     recognition.onresult = (event) => {
       if (speakingRef.current || !enabledRef.current) return;
@@ -218,6 +249,7 @@ export function useLiminalityVoice({
     if (!enabledRef.current) {
       modeRef.current = 'off';
       setHeard('');
+      setRemainingMs(0);
       setPhase('off');
       setStatusLabel('Microphone off');
       return;
@@ -226,13 +258,12 @@ export function useLiminalityVoice({
     modeRef.current = 'wake';
     lastHandledRef.current = '';
     setHeard('');
+    setRemainingMs(0);
     setPhase('waiting');
     setStatusLabel('Waiting');
     startRecognition();
     if (opts?.chime) void playListeningCue('close');
   }, [clearTimers, startRecognition]);
-
-  const remainingMs = () => Math.max(0, deadlineRef.current - Date.now());
 
   const listenForCommands = useCallback(() => {
     clearTimers();
@@ -240,7 +271,7 @@ export function useLiminalityVoice({
       goWaiting();
       return;
     }
-    const left = remainingMs();
+    const left = deadlineLeft();
     if (left <= 0) {
       goWaiting({ chime: true });
       return;
@@ -249,16 +280,18 @@ export function useLiminalityVoice({
     modeRef.current = 'command';
     lastHandledRef.current = '';
     setPhase('listening');
+    setRemainingMs(left);
     setStatusLabel(`Listening · ${Math.ceil(left / 1000)}s`);
     startRecognition();
     timeoutRef.current = window.setTimeout(() => {
       goWaiting({ chime: true });
     }, left);
     tickRef.current = window.setInterval(() => {
-      const ms = remainingMs();
+      const ms = deadlineLeft();
+      setRemainingMs(ms);
       if (ms <= 0) return;
       setStatusLabel(`Listening · ${Math.ceil(ms / 1000)}s`);
-    }, 1000);
+    }, 200);
   }, [clearTimers, goWaiting, startRecognition]);
 
   const dismissWork = useCallback(() => {
@@ -307,7 +340,8 @@ export function useLiminalityVoice({
         modeRef.current = 'off';
         setHeard(spoken);
         setPhase('processing');
-        setStatusLabel('Processing');
+        setRemainingMs(deadlineLeft());
+        setStatusLabel('Working on it');
         const workGen = workGenRef.current;
         if (hasWakeWord(spoken) && !stripWakeWord(spoken)) {
           listenForCommands();
@@ -754,5 +788,6 @@ export function useLiminalityVoice({
     phase,
     statusLabel,
     heard,
+    remainingMs,
   };
 }

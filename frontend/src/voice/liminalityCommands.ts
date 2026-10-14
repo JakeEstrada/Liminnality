@@ -119,7 +119,7 @@ export const BACKUP_WAKE_RESPONSES = [
   "Alright captain. Deck's yours.",
   "I contain a pipeline, a calendar, and a short fuse. Pick one.",
 ];
-export const COMMAND_TIMEOUT_MS = 30_000;
+export const COMMAND_TIMEOUT_MS = 15_000;
 export const RESET_TO_WAITING_MS = 2_000;
 export const COMMAND_ENDPOINT_MS = 900;
 

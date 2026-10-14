@@ -73,7 +73,7 @@ export default function LiminalitySettingsPanel() {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Voice on desktop. Call “Liminnality” or “Motherfucker” — listen cue, then 30 seconds of
+        Voice on desktop. Call “Liminnality” or “Motherfucker” — listen cue, then 15 seconds of
         commands. The same cue plays when that window ends. “Send Hammer to Jake” texts that customer
         card to someone on the employee rolodex. Nothing is recorded while this is off.
       </Typography>

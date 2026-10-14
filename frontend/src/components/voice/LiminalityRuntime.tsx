@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
 import { useLiminalityVoice } from '../../hooks/useLiminalityVoice';
+import LiminalityHud from './LiminalityHud';
 
 export default function LiminalityRuntime() {
   const navigate = useNavigate();
@@ -16,8 +17,17 @@ export default function LiminalityRuntime() {
       phase: voice.phase,
       statusLabel: voice.statusLabel,
       heard: voice.heard,
+      remainingMs: voice.remainingMs,
     });
-  }, [setRuntime, voice.heard, voice.phase, voice.statusLabel]);
+  }, [setRuntime, voice.heard, voice.phase, voice.remainingMs, voice.statusLabel]);
 
-  return null;
+  return (
+    <LiminalityHud
+      enabled={enabled}
+      phase={voice.phase}
+      statusLabel={voice.statusLabel}
+      heard={voice.heard}
+      remainingMs={voice.remainingMs}
+    />
+  );
 }

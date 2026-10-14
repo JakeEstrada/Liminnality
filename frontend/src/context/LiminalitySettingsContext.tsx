@@ -30,6 +30,7 @@ export type LiminalityRuntimeStatus = {
   phase: LiminalityPhase;
   statusLabel: string;
   heard: string;
+  remainingMs: number;
 };
 
 type LiminalitySettingsContextValue = {
@@ -47,6 +48,7 @@ const defaultRuntime: LiminalityRuntimeStatus = {
   phase: 'off',
   statusLabel: 'Off',
   heard: '',
+  remainingMs: 0,
 };
 
 const LiminalitySettingsContext = createContext<LiminalitySettingsContextValue | undefined>(

@@ -198,7 +198,10 @@ function TopBar({ onMenuClick }) {
               size="small"
               variant="outlined"
               color={
-                liminality.runtime.phase === 'listening' || liminality.runtime.phase === 'speaking'
+                liminality.runtime.phase === 'listening' ||
+                liminality.runtime.phase === 'speaking' ||
+                liminality.runtime.phase === 'processing' ||
+                liminality.runtime.phase === 'executing'
                   ? 'primary'
                   : 'default'
               }

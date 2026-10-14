@@ -15,15 +15,19 @@ type SpeechRecognitionLike = {
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
+  onhearing: (() => void) | null;
+  ontranscribing: (() => void) | null;
+  onidle: (() => void) | null;
   start: () => void;
   stop: () => void;
   abort: () => void;
 };
 
 const TARGET_RATE = 16000;
-const SILENCE_MS = 700;
-const MIN_SPEECH_MS = 240;
-const MAX_SPEECH_MS = 12000;
+const SILENCE_MS = 380;
+const MIN_SPEECH_MS = 220;
+const MAX_SPEECH_MS = 8000;
+const POLL_MS = 50;
 
 let primedStream: MediaStream | null = null;
 let priming: Promise<MediaStream> | null = null;
@@ -115,7 +119,7 @@ function encodeWav(samples: Float32Array, sampleRate: number) {
 async function transcribeBlob(blob: Blob, filename: string) {
   const body = new FormData();
   body.append('audio', blob, filename);
-  const response = await api.post('/tts/transcribe', body);
+  const response = await api.post('/tts/transcribe', body, { timeout: 12_000 });
   return String(response.data?.text || '').trim();
 }
 
@@ -157,7 +161,6 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   let stream: MediaStream | null = null;
   let analyser: AnalyserNode | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
-  let mute: GainNode | null = null;
   let timer = 0;
   let recorder: MediaRecorder | null = null;
   let recorderBlobs: Blob[] = [];
@@ -177,6 +180,9 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     onresult: null,
     onerror: null,
     onend: null,
+    onhearing: null,
+    ontranscribing: null,
+    onidle: null,
     start() {
       paused = false;
       if (polling && liveStream(stream)) return;
@@ -225,10 +231,8 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     discardUtterance();
     source?.disconnect();
     analyser?.disconnect();
-    mute?.disconnect();
     source = null;
     analyser = null;
-    mute = null;
     stream?.getTracks().forEach((track) => track.stop());
     if (stream && stream === primedStream) primedStream = null;
     stream = null;
@@ -246,20 +250,16 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
       if (paused) return;
       source = context.createMediaStreamSource(stream);
       analyser = context.createAnalyser();
-      analyser.fftSize = 2048;
-      mute = context.createGain();
-      mute.gain.value = 0;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
-      analyser.connect(mute);
-      mute.connect(context.destination);
       polling = true;
       const samples = new Float32Array(analyser.fftSize);
-      const frameMs = (analyser.fftSize / context.sampleRate) * 1000;
       timer = window.setInterval(() => {
         if (!analyser || paused) return;
         analyser.getFloatTimeDomainData(samples);
-        onLevel(samples, frameMs, context.sampleRate);
-      }, Math.max(30, Math.round(frameMs)));
+        onLevel(samples, POLL_MS, context.sampleRate);
+      }, POLL_MS);
     } catch (error) {
       const name = error instanceof DOMException ? error.name : '';
       recognition.onerror?.({
@@ -292,9 +292,10 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   function beginUtterance() {
     pcmChunks = [];
     recorderBlobs = [];
+    recognition.onhearing?.();
     if (!stream || !mime) return;
     try {
-      recorder = new MediaRecorder(stream, { mimeType: mime });
+      recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 24_000 });
       recorder.ondataavailable = (event) => {
         if (event.data?.size) recorderBlobs.push(event.data);
       };
@@ -346,6 +347,7 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   }
 
   function queueSend(blob: Blob, filename: string) {
+    recognition.ontranscribing?.();
     if (sending) {
       queued = { blob, filename };
       return;
@@ -355,6 +357,7 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
 
   async function send(blob: Blob, filename: string) {
     sending = true;
+    recognition.ontranscribing?.();
     try {
       const text = await transcribeBlob(blob, filename);
       if (text) {
@@ -362,9 +365,12 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
           resultIndex: 0,
           results: [{ isFinal: true, 0: { transcript: text } }],
         });
+      } else {
+        recognition.onidle?.();
       }
     } catch {
       recognition.onerror?.({ error: 'network' });
+      recognition.onidle?.();
     } finally {
       sending = false;
       if (!paused && queued) {

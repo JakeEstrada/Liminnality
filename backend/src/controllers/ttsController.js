@@ -351,9 +351,9 @@ async function transcribeSpeech(req, res) {
     if (!req.file?.buffer?.length) {
       return res.status(400).json({ error: 'No audio.' });
     }
-    const preferred = String(process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe').trim();
+    const preferred = String(process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1').trim();
     let result = await requestTranscription(key, req.file, preferred);
-    if (!result.ok && preferred !== 'whisper-1' && (result.status === 400 || result.status === 404)) {
+    if (!result.ok && preferred !== 'whisper-1') {
       result = await requestTranscription(key, req.file, 'whisper-1');
     }
     if (!result.ok) {
