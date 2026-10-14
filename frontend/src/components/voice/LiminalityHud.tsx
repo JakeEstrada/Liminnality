@@ -1,16 +1,7 @@
 import { Box, Button, Typography } from '@mui/material';
-import { keyframes } from '@mui/material/styles';
 import { COMMAND_TIMEOUT_MS } from '../../voice/liminalityCommands';
 import type { LiminalityPhase } from '../../hooks/useLiminalityVoice';
 import LiveMicWaveform from './LiveMicWaveform';
-
-const sheen = keyframes`
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-`;
-
-const IRIDESCENT =
-  'linear-gradient(90deg, #4cc9f0 0%, #7c5cff 18%, #f72585 38%, #ffd166 52%, #4cc9f0 68%, #7209b7 84%, #4cc9f0 100%)';
 
 export default function LiminalityHud({
   enabled,
@@ -34,20 +25,16 @@ export default function LiminalityHud({
   const working = phase === 'processing' || phase === 'executing';
   const speaking = phase === 'speaking';
   const life = commandWindow
-    ? Math.max(0.22, Math.min(1, remainingMs / COMMAND_TIMEOUT_MS))
-    : 0.85;
-  const title = working
-    ? 'Working on it'
-    : speaking
-      ? 'Speaking'
-      : 'Listening';
+    ? Math.max(0.18, Math.min(1, remainingMs / COMMAND_TIMEOUT_MS))
+    : 0.9;
+  const title = working ? 'Working' : speaking ? 'Speaking' : 'Listening';
   const detail = working
-    ? heard || 'Calculating that command'
+    ? heard || 'Looking that up'
     : speaking
       ? heard || statusLabel
       : waiting
         ? 'Say Liminality'
-        : heard || 'Say a command. You do not need her name again.';
+        : heard || 'Go ahead';
 
   return (
     <Box
@@ -58,8 +45,8 @@ export default function LiminalityHud({
         bottom: 0,
         zIndex: 1400,
         pointerEvents: 'none',
-        px: { xs: 1.5, sm: 3 },
-        pb: { xs: 1.5, sm: 2 },
+        px: 2,
+        pb: 2,
       }}
     >
       <Box
@@ -67,56 +54,45 @@ export default function LiminalityHud({
           position: 'relative',
           overflow: 'hidden',
           mx: 'auto',
-          maxWidth: 520,
-          px: 2.5,
-          py: 1.5,
-          borderRadius: 3,
-          boxShadow: 8,
+          width: '100%',
+          maxWidth: 340,
+          px: 1.75,
+          pt: 1,
+          pb: 0.75,
+          borderRadius: '22px',
           color: '#fff',
-          border: '1px solid',
-          borderColor: waiting ? 'rgba(59,130,246,0.55)' : 'rgba(255,255,255,0.28)',
+          background: waiting
+            ? '#1976D2'
+            : `linear-gradient(180deg, #1565C0 0%, #0D47A1 100%)`,
+          boxShadow: waiting
+            ? '0 8px 20px rgba(25, 118, 210, 0.28)'
+            : `0 8px 24px rgba(13, 71, 161, ${0.18 + life * 0.22})`,
+          outline: waiting ? 'none' : `1px solid rgba(255,255,255,${0.1 + life * 0.22})`,
+          transition: 'box-shadow 200ms linear, outline-color 200ms linear',
         }}
       >
-        {waiting ? (
+        {!waiting ? (
           <Box
             aria-hidden
             sx={{
               position: 'absolute',
               inset: 0,
-              background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
-            }}
-          />
-        ) : (
-          <Box
-            aria-hidden
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              background: IRIDESCENT,
-              backgroundSize: '220% 100%',
-              animation: `${sheen} 7s linear infinite`,
+              background:
+                'linear-gradient(105deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 42%, rgba(144,202,249,0.28) 100%)',
               opacity: life,
-              filter: `saturate(${0.85 + life * 0.5}) brightness(${0.7 + life * 0.45})`,
-              transition: 'opacity 180ms linear, filter 180ms linear',
+              transition: 'opacity 200ms linear',
             }}
           />
-        )}
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            background: waiting
-              ? 'linear-gradient(180deg, rgba(15,23,42,0.08) 0%, rgba(15,23,42,0.22) 100%)'
-              : 'linear-gradient(180deg, rgba(15,23,42,0.12) 0%, rgba(15,23,42,0.32) 100%)',
-          }}
-        />
-        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 1.5, minHeight: 36 }}>
+        ) : null}
+        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 1, minHeight: 28 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
+            <Typography
+              sx={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.01em', lineHeight: 1.2 }}
+              noWrap
+            >
               {title}
             </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.9 }} noWrap>
+            <Typography sx={{ fontSize: 11, fontWeight: 400, opacity: 0.78, lineHeight: 1.3 }} noWrap>
               {detail}
             </Typography>
           </Box>
@@ -124,7 +100,6 @@ export default function LiminalityHud({
             <Button
               size="small"
               color="inherit"
-              variant="outlined"
               data-liminality-cancel=""
               onPointerDown={(event) => event.stopPropagation()}
               onClick={onCancel}
@@ -132,16 +107,24 @@ export default function LiminalityHud({
                 pointerEvents: 'auto',
                 textTransform: 'none',
                 flexShrink: 0,
-                borderColor: 'rgba(255,255,255,0.5)',
-                color: '#fff',
+                minWidth: 0,
+                px: 1,
+                py: 0.25,
+                fontSize: 12,
+                fontWeight: 500,
+                lineHeight: 1.4,
+                borderRadius: '999px',
+                color: 'rgba(255,255,255,0.92)',
+                bgcolor: 'rgba(255,255,255,0.12)',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
               }}
             >
               Cancel
             </Button>
           ) : null}
         </Box>
-        <Box sx={{ position: 'relative' }}>
-          <LiveMicWaveform color="rgba(255,255,255,0.92)" />
+        <Box sx={{ position: 'relative', opacity: waiting ? 0.45 : 0.55 + life * 0.4 }}>
+          <LiveMicWaveform color="rgba(255,255,255,0.88)" height={22} />
         </Box>
       </Box>
     </Box>

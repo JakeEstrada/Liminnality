@@ -4,7 +4,7 @@ import { readMicWaveform, startMicWaveform, stopMicWaveform } from '../../voice/
 
 const SAMPLES = 120;
 
-export default function LiveMicWaveform({ color }: { color?: string }) {
+export default function LiveMicWaveform({ color, height = 44 }: { color?: string; height?: number }) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const valuesRef = useRef<number[]>(Array.from({ length: SAMPLES }, () => 0));
@@ -55,7 +55,7 @@ export default function LiveMicWaveform({ color }: { color?: string }) {
   }, [stroke]);
 
   return (
-    <Box sx={{ width: '100%', height: 44, mt: 1.25 }}>
+    <Box sx={{ width: '100%', height, mt: 0.5 }}>
       <canvas
         ref={canvasRef}
         style={{ display: 'block', width: '100%', height: '100%' }}
