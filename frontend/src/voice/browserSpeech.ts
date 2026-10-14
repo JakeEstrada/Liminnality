@@ -34,24 +34,47 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
-/** Chromium builds without Chrome's speech recognizer, including Raspberry Pi OS. */
+function browserBrands() {
+  const brands = (navigator as Navigator & {
+    userAgentData?: { brands?: Array<{ brand: string }> };
+  }).userAgentData?.brands;
+  return brands?.map((brand) => brand.brand) || [];
+}
+
+/** Real Google Chrome. Raspberry Pi Chromium does not report this brand. */
+export function isGoogleChrome() {
+  if (typeof navigator === 'undefined') return false;
+  return browserBrands().includes('Google Chrome');
+}
+
+/** Chromium, including Raspberry Pi OS. Excludes Edge, Opera, and Firefox. */
 export function isChromiumBrowser() {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
   if (/Edg\/|OPR\/|Opera|Firefox\/|SamsungBrowser/.test(ua)) return false;
-  const brands = (navigator as Navigator & {
-    userAgentData?: { brands?: Array<{ brand: string }> };
-  }).userAgentData?.brands;
-  if (brands?.length) {
-    return brands.some((brand) => brand.brand === 'Chromium' || brand.brand === 'Google Chrome');
-  }
+  const brands = browserBrands();
+  if (brands.length) return brands.includes('Chromium') || brands.includes('Google Chrome');
   return /Chromium\/|Chrome\//.test(ua);
 }
 
-/** Mic audio goes to the server only when this browser has no built-in recognizer. */
+function isPiOrArmLinux() {
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  if (/CrOS/.test(ua)) return false;
+  return /aarch64|armv7l|armv6l|raspberry/i.test(`${ua} ${platform}`);
+}
+
+/**
+ * Chromium has a speech recognizer object, but on the Pi it only grabs the mic
+ * and never returns words. Chrome and Edge keep the built-in recognizer.
+ */
 export function usesServerSpeechCapture() {
-  if (getSpeechRecognitionCtor()) return false;
+  if (typeof navigator === 'undefined') return false;
   if (!navigator.mediaDevices?.getUserMedia) return false;
+  const ua = navigator.userAgent || '';
+  if (/Edg\/|OPR\/|Opera|Firefox\/|SamsungBrowser/.test(ua)) return false;
+  if (isPiOrArmLinux()) return isChromiumBrowser() || /Chrome\/|Chromium\//.test(ua);
+  if (isGoogleChrome()) return false;
   return isChromiumBrowser();
 }
 
@@ -61,16 +84,14 @@ export function isSpeechRecognitionSupported() {
 }
 
 export function createSpeechRecognition(): SpeechRecognitionLike | null {
-  const Ctor = getSpeechRecognitionCtor();
-  if (Ctor) {
-    const recognition = new Ctor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    return recognition;
-  }
   if (usesServerSpeechCapture()) return createChromiumSpeechRecognition();
-  return null;
+  const Ctor = getSpeechRecognitionCtor();
+  if (!Ctor) return null;
+  const recognition = new Ctor();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+  return recognition;
 }
 
 const CUTE_VOICE_NAMES = [

@@ -4,9 +4,11 @@ import {
   collectTranscript,
   createSpeechRecognition,
   isSpeechRecognitionSupported,
+  usesServerSpeechCapture,
   prefetchLiminalitySpeech,
   speakText,
 } from '../voice/browserSpeech';
+import { primeChromiumMicrophone } from '../voice/chromiumSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
@@ -179,6 +181,10 @@ export function useLiminalityVoice({
       }
       if (error === 'network') {
         networkFailsRef.current += 1;
+        if (usesServerSpeechCapture()) {
+          setStatusLabel('Mic is on, but speech did not reach the server');
+          return;
+        }
         if (networkFailsRef.current >= 3) {
           setStatusLabel('Speech service busy — toggle the mic');
         }
@@ -701,8 +707,14 @@ export function useLiminalityVoice({
     networkFailsRef.current = 0;
     unlockListeningCue();
     prefetchLiminalitySpeech();
+    const armMic = () => {
+      if (usesServerSpeechCapture()) void primeChromiumMicrophone().catch(() => {});
+    };
+    armMic();
+    window.addEventListener('pointerdown', armMic);
     goWaiting();
     return () => {
+      window.removeEventListener('pointerdown', armMic);
       enabledRef.current = false;
       speakingRef.current = false;
       modeRef.current = 'off';

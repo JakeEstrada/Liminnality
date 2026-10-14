@@ -21,13 +21,13 @@ type SpeechRecognitionLike = {
 };
 
 const TARGET_RATE = 16000;
-const SPEECH_RMS = 0.02;
-const SILENCE_MS = 800;
-const MIN_SPEECH_MS = 280;
+const SILENCE_MS = 700;
+const MIN_SPEECH_MS = 240;
 const MAX_SPEECH_MS = 12000;
 
 let primedStream: MediaStream | null = null;
 let priming: Promise<MediaStream> | null = null;
+let sharedContext: AudioContext | null = null;
 
 function ensureStream() {
   if (liveStream(primedStream) && primedStream) return Promise.resolve(primedStream);
@@ -112,9 +112,9 @@ function encodeWav(samples: Float32Array, sampleRate: number) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-async function transcribeWav(blob: Blob) {
+async function transcribeBlob(blob: Blob, filename: string) {
   const body = new FormData();
-  body.append('audio', blob, 'speech.wav');
+  body.append('audio', blob, filename);
   const response = await api.post('/tts/transcribe', body);
   return String(response.data?.text || '').trim();
 }
@@ -122,30 +122,53 @@ async function transcribeWav(blob: Blob) {
 function micConstraints(): MediaStreamConstraints {
   return {
     audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
+      echoCancellation: false,
+      noiseSuppression: false,
       autoGainControl: true,
       channelCount: 1,
     },
   };
 }
 
+function audioContext() {
+  const AudioCtx = window.AudioContext
+    || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!sharedContext || sharedContext.state === 'closed') sharedContext = new AudioCtx();
+  return sharedContext;
+}
+
+function recorderMime() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
 export async function primeChromiumMicrophone() {
   await ensureStream();
+  const context = audioContext();
+  if (context?.state === 'suspended') await context.resume();
 }
 
 export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   let paused = true;
   let opening = false;
-  let context: AudioContext | null = null;
-  let processor: ScriptProcessorNode | null = null;
+  let polling = false;
   let stream: MediaStream | null = null;
-  let chunks: Float32Array[] = [];
+  let analyser: AnalyserNode | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let mute: GainNode | null = null;
+  let timer = 0;
+  let recorder: MediaRecorder | null = null;
+  let recorderBlobs: Blob[] = [];
+  let pcmChunks: Float32Array[] = [];
   let speechMs = 0;
   let silenceMs = 0;
   let inSpeech = false;
+  let noise = 0.004;
   let sending = false;
-  let queued: Float32Array | null = null;
+  let queued: { blob: Blob; filename: string } | null = null;
+  const mime = recorderMime();
 
   const recognition: SpeechRecognitionLike = {
     continuous: true,
@@ -156,18 +179,14 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     onend: null,
     start() {
       paused = false;
-      if (context && stream && liveStream(stream)) return;
+      if (polling && liveStream(stream)) return;
       if (opening) return;
       void open();
     },
     stop() {
       const teardown = recognition.onend == null;
       paused = true;
-      chunks = [];
-      speechMs = 0;
-      silenceMs = 0;
-      inSpeech = false;
-      queued = null;
+      discardUtterance();
       if (teardown) {
         release();
         return;
@@ -181,42 +200,66 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     },
   };
 
-  function release() {
-    processor?.disconnect();
-    processor = null;
-    if (context) {
-      void context.close().catch(() => {});
-      context = null;
+  function discardUtterance() {
+    speechMs = 0;
+    silenceMs = 0;
+    inSpeech = false;
+    pcmChunks = [];
+    queued = null;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      try {
+        recorder.stop();
+      } catch {
+        /* already stopped */
+      }
     }
+    recorder = null;
+    recorderBlobs = [];
+  }
+
+  function release() {
+    if (timer) window.clearInterval(timer);
+    timer = 0;
+    polling = false;
+    discardUtterance();
+    source?.disconnect();
+    analyser?.disconnect();
+    mute?.disconnect();
+    source = null;
+    analyser = null;
+    mute = null;
     stream?.getTracks().forEach((track) => track.stop());
     if (stream && stream === primedStream) primedStream = null;
     stream = null;
-    chunks = [];
-    inSpeech = false;
-    queued = null;
   }
 
   async function open() {
     opening = true;
     try {
-      if (!liveStream(primedStream)) {
-        await ensureStream();
-      }
+      if (!liveStream(primedStream)) await ensureStream();
       if (paused) return;
       stream = primedStream;
-      const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) throw new Error('AudioContext unavailable');
-      context = new AudioCtx();
+      const context = audioContext();
+      if (!context || !stream) throw new Error('AudioContext unavailable');
       if (context.state === 'suspended') await context.resume();
-      if (paused || !stream) return;
-      const source = context.createMediaStreamSource(stream);
-      processor = context.createScriptProcessor(4096, 1, 1);
-      const mute = context.createGain();
+      if (paused) return;
+      source = context.createMediaStreamSource(stream);
+      analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      mute = context.createGain();
       mute.gain.value = 0;
-      processor.onaudioprocess = (event) => onAudio(event.inputBuffer.getChannelData(0));
-      source.connect(processor);
-      processor.connect(mute);
+      source.connect(analyser);
+      analyser.connect(mute);
       mute.connect(context.destination);
+      polling = true;
+      const samples = new Float32Array(analyser.fftSize);
+      const frameMs = (analyser.fftSize / context.sampleRate) * 1000;
+      timer = window.setInterval(() => {
+        if (!analyser || paused) return;
+        analyser.getFloatTimeDomainData(samples);
+        onLevel(samples, frameMs, context.sampleRate);
+      }, Math.max(30, Math.round(frameMs)));
     } catch (error) {
       const name = error instanceof DOMException ? error.name : '';
       recognition.onerror?.({
@@ -227,59 +270,107 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     }
   }
 
-  function onAudio(input: Float32Array) {
-    if (paused || !context) return;
-    const frameMs = (input.length / context.sampleRate) * 1000;
-    const level = rms(input);
-    if (level >= SPEECH_RMS) {
+  function onLevel(samples: Float32Array, frameMs: number, sampleRate: number) {
+    const level = rms(samples);
+    const threshold = Math.max(0.006, noise * 2.8);
+    if (!inSpeech) noise = noise * 0.96 + level * 0.04;
+    if (level >= threshold) {
+      if (!inSpeech) beginUtterance();
       inSpeech = true;
       silenceMs = 0;
       speechMs += frameMs;
-      chunks.push(new Float32Array(input));
-      if (speechMs >= MAX_SPEECH_MS) flush();
+      if (!recorder) pcmChunks.push(new Float32Array(samples));
+      if (speechMs >= MAX_SPEECH_MS) finishUtterance(sampleRate);
       return;
     }
     if (!inSpeech) return;
     silenceMs += frameMs;
-    chunks.push(new Float32Array(input));
-    if (silenceMs >= SILENCE_MS) flush();
+    if (!recorder) pcmChunks.push(new Float32Array(samples));
+    if (silenceMs >= SILENCE_MS) finishUtterance(sampleRate);
   }
 
-  function flush() {
-    const sampleRate = context?.sampleRate || TARGET_RATE;
-    const captured = chunks;
+  function beginUtterance() {
+    pcmChunks = [];
+    recorderBlobs = [];
+    if (!stream || !mime) return;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: mime });
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) recorderBlobs.push(event.data);
+      };
+      recorder.start();
+    } catch {
+      recorder = null;
+    }
+  }
+
+  function finishUtterance(sampleRate: number) {
     const spokenFor = speechMs;
-    chunks = [];
+    const active = recorder;
+    const pcm = pcmChunks;
+    inSpeech = false;
     speechMs = 0;
     silenceMs = 0;
-    inSpeech = false;
-    if (spokenFor < MIN_SPEECH_MS || !captured.length) return;
-    const samples = downsample(mergeSamples(captured), sampleRate, TARGET_RATE);
-    if (sending) {
-      queued = samples;
+    pcmChunks = [];
+    recorder = null;
+    if (spokenFor < MIN_SPEECH_MS) {
+      if (active && active.state !== 'inactive') {
+        active.onstop = null;
+        try {
+          active.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+      recorderBlobs = [];
       return;
     }
-    void send(samples);
+    if (active && active.state !== 'inactive') {
+      active.onstop = () => {
+        const type = active.mimeType || mime || 'audio/webm';
+        const ext = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm';
+        const blob = new Blob(recorderBlobs, { type });
+        recorderBlobs = [];
+        if (blob.size > 800) queueSend(blob, `speech.${ext}`);
+      };
+      try {
+        active.stop();
+      } catch {
+        /* already stopped */
+      }
+      return;
+    }
+    if (!pcm.length) return;
+    const samples = downsample(mergeSamples(pcm), sampleRate, TARGET_RATE);
+    queueSend(encodeWav(samples, TARGET_RATE), 'speech.wav');
   }
 
-  async function send(samples: Float32Array) {
+  function queueSend(blob: Blob, filename: string) {
+    if (sending) {
+      queued = { blob, filename };
+      return;
+    }
+    void send(blob, filename);
+  }
+
+  async function send(blob: Blob, filename: string) {
     sending = true;
     try {
-      const text = await transcribeWav(encodeWav(samples, TARGET_RATE));
-      if (!paused && text) {
+      const text = await transcribeBlob(blob, filename);
+      if (text) {
         recognition.onresult?.({
           resultIndex: 0,
           results: [{ isFinal: true, 0: { transcript: text } }],
         });
       }
     } catch {
-      if (!paused) recognition.onerror?.({ error: 'network' });
+      recognition.onerror?.({ error: 'network' });
     } finally {
       sending = false;
       if (!paused && queued) {
         const next = queued;
         queued = null;
-        void send(next);
+        void send(next.blob, next.filename);
       }
     }
   }
