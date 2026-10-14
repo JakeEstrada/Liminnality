@@ -116,10 +116,10 @@ function encodeWav(samples: Float32Array, sampleRate: number) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-async function transcribeBlob(blob: Blob, filename: string) {
+async function transcribeBlob(blob: Blob, filename: string, signal?: AbortSignal) {
   const body = new FormData();
   body.append('audio', blob, filename);
-  const response = await api.post('/tts/transcribe', body, { timeout: 12_000 });
+  const response = await api.post('/tts/transcribe', body, { timeout: 12_000, signal });
   return String(response.data?.text || '').trim();
 }
 
@@ -171,6 +171,7 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   let noise = 0.004;
   let sending = false;
   let queued: { blob: Blob; filename: string } | null = null;
+  let transcribeAbort: AbortController | null = null;
   const mime = recorderMime();
 
   const recognition: SpeechRecognitionLike = {
@@ -206,7 +207,19 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
     },
   };
 
+  function abortTranscribe() {
+    try {
+      transcribeAbort?.abort();
+    } catch {
+      /* ignore */
+    }
+    transcribeAbort = null;
+    queued = null;
+    sending = false;
+  }
+
   function discardUtterance() {
+    abortTranscribe();
     speechMs = 0;
     silenceMs = 0;
     inSpeech = false;
@@ -347,6 +360,7 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   }
 
   function queueSend(blob: Blob, filename: string) {
+    if (paused) return;
     recognition.ontranscribing?.();
     if (sending) {
       queued = { blob, filename };
@@ -356,10 +370,16 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
   }
 
   async function send(blob: Blob, filename: string) {
+    const ac = new AbortController();
+    transcribeAbort = ac;
     sending = true;
-    recognition.ontranscribing?.();
+    if (!paused) recognition.ontranscribing?.();
     try {
-      const text = await transcribeBlob(blob, filename);
+      const text = await transcribeBlob(blob, filename, ac.signal);
+      if (ac.signal.aborted || paused || transcribeAbort !== ac) {
+        if (!paused) recognition.onidle?.();
+        return;
+      }
       if (text) {
         recognition.onresult?.({
           resultIndex: 0,
@@ -368,10 +388,16 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
       } else {
         recognition.onidle?.();
       }
-    } catch {
+    } catch (error) {
+      if (ac.signal.aborted || paused) return;
+      const canceled = (error as { code?: string; name?: string })?.code === 'ERR_CANCELED'
+        || (error as { name?: string })?.name === 'CanceledError'
+        || (error as { name?: string })?.name === 'AbortError';
+      if (canceled) return;
       recognition.onerror?.({ error: 'network' });
       recognition.onidle?.();
     } finally {
+      if (transcribeAbort === ac) transcribeAbort = null;
       sending = false;
       if (!paused && queued) {
         const next = queued;

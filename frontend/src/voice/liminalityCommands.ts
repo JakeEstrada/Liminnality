@@ -156,6 +156,21 @@ export function isCloseWorkCommand(raw: string) {
   return CLOSE_WORK_COMMAND.test(normalizeSpeech(raw));
 }
 
+/** Whisper often invents ads, URLs, and sign-offs on silence or room noise. */
+export function isJunkTranscript(raw: string) {
+  const compact = String(raw || '').toLowerCase();
+  if (!compact.trim()) return true;
+  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b|\.io\b/.test(compact)) return true;
+  if (
+    /\b(subscribe|thank you for watching|like and subscribe|for all my .{0,40} needs|shop now|add to cart)\b/.test(
+      compact,
+    )
+  ) {
+    return true;
+  }
+  return normalizeSpeech(raw).split(' ').filter(Boolean).length > 24;
+}
+
 const recentBanter: string[] = [];
 
 function pickUnused(pool: string[]) {

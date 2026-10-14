@@ -28,6 +28,7 @@ export default function LiminalityRuntime() {
       statusLabel={voice.statusLabel}
       heard={voice.heard}
       remainingMs={voice.remainingMs}
+      onCancel={voice.cancelSession}
     />
   );
 }

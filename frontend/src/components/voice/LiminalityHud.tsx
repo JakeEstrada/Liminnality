@@ -1,4 +1,4 @@
-import { Box, CircularProgress, LinearProgress, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, LinearProgress, Typography } from '@mui/material';
 import { COMMAND_TIMEOUT_MS } from '../../voice/liminalityCommands';
 import type { LiminalityPhase } from '../../hooks/useLiminalityVoice';
 
@@ -8,12 +8,14 @@ export default function LiminalityHud({
   statusLabel,
   heard,
   remainingMs,
+  onCancel,
 }: {
   enabled: boolean;
   phase: LiminalityPhase;
   statusLabel: string;
   heard: string;
   remainingMs: number;
+  onCancel?: () => void;
 }) {
   if (!enabled || phase === 'off') return null;
 
@@ -114,6 +116,17 @@ export default function LiminalityHud({
             >
               {seconds}
             </Typography>
+          ) : null}
+          {onCancel && phase !== 'waiting' ? (
+            <Button
+              size="small"
+              color="inherit"
+              variant="outlined"
+              onClick={onCancel}
+              sx={{ pointerEvents: 'auto', textTransform: 'none', flexShrink: 0 }}
+            >
+              Cancel
+            </Button>
           ) : null}
         </Box>
         {listening ? (

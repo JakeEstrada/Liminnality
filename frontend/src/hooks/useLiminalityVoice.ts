@@ -19,6 +19,7 @@ import {
   hasWakeWord,
   isCancelCommand,
   isCloseWorkCommand,
+  isJunkTranscript,
   liminalityCommandRoute,
   matchLiminalityCommand,
   parseMapJobSpeech,
@@ -85,8 +86,10 @@ export function useLiminalityVoice({
   const assistantHistoryRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const workGenRef = useRef(0);
   const interruptibleRef = useRef(false);
+  const closedUntilRef = useRef(0);
   const dismissWorkRef = useRef(() => {});
   const listenForCommandsRef = useRef(() => {});
+  const cancelSessionRef = useRef(() => {});
 
   enabledRef.current = enabled;
   onNavigateRef.current = onNavigate;
@@ -105,6 +108,9 @@ export function useLiminalityVoice({
   const commitHeard = useCallback((raw: string) => {
     const spoken = String(raw || '').trim();
     if (!spoken || !enabledRef.current || speakingRef.current) return;
+    if (Date.now() < closedUntilRef.current) return;
+    if (modeRef.current === 'command' && deadlineLeft() <= 0) return;
+    if (isJunkTranscript(spoken) && !hasWakeWord(spoken)) return;
     const key = spoken.toLowerCase();
     if (lastHandledRef.current === key && Date.now() - lastHandledAtRef.current < 1600) return;
     lastHandledRef.current = key;
@@ -243,9 +249,18 @@ export function useLiminalityVoice({
   }, [commitHeard, destroyRecognition]);
 
   const goWaiting = useCallback((opts?: { chime?: boolean }) => {
+    workGenRef.current += 1;
+    closedUntilRef.current = Date.now() + 1400;
     clearTimers();
     deadlineRef.current = 0;
     pendingSendRef.current = {};
+    pendingShopRef.current = null;
+    interruptibleRef.current = false;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     if (!enabledRef.current) {
       modeRef.current = 'off';
       setHeard('');
@@ -254,7 +269,6 @@ export function useLiminalityVoice({
       setStatusLabel('Microphone off');
       return;
     }
-    interruptibleRef.current = false;
     modeRef.current = 'wake';
     lastHandledRef.current = '';
     setHeard('');
@@ -307,6 +321,12 @@ export function useLiminalityVoice({
   dismissWorkRef.current = dismissWork;
   listenForCommandsRef.current = listenForCommands;
 
+  const cancelSession = useCallback(() => {
+    dismissWork();
+    goWaiting({ chime: true });
+  }, [dismissWork, goWaiting]);
+  cancelSessionRef.current = cancelSession;
+
   const speakAndWait = useCallback(async (text: string) => {
     interruptibleRef.current = true;
     speakingRef.current = true;
@@ -336,7 +356,10 @@ export function useLiminalityVoice({
           return;
         }
 
-        clearTimers();
+        if (endpointRef.current) {
+          window.clearTimeout(endpointRef.current);
+          endpointRef.current = null;
+        }
         modeRef.current = 'off';
         setHeard(spoken);
         setPhase('processing');
@@ -344,6 +367,12 @@ export function useLiminalityVoice({
         setStatusLabel('Working on it');
         const workGen = workGenRef.current;
         if (hasWakeWord(spoken) && !stripWakeWord(spoken)) {
+          listenForCommands();
+          return;
+        }
+
+        if (isJunkTranscript(stripped) && !matchLiminalityCommand(stripped)) {
+          if (workGenRef.current !== workGen) return;
           listenForCommands();
           return;
         }
@@ -680,6 +709,7 @@ export function useLiminalityVoice({
 
     handleWakeRef.current = (raw: string) => {
       if (!hasWakeWord(raw) || !enabledRef.current) return;
+      if (Date.now() < closedUntilRef.current) return;
       const remainder = stripWakeWord(raw);
       void (async () => {
         clearTimers();
@@ -706,7 +736,7 @@ export function useLiminalityVoice({
           goWaiting();
           return;
         }
-        if (remainder) {
+        if (remainder && !isJunkTranscript(remainder)) {
           handleCommandRef.current(remainder);
           return;
         }
@@ -763,16 +793,27 @@ export function useLiminalityVoice({
   useEffect(() => {
     if (!enabled || !supported) return undefined;
     const onInterrupt = (event: Event) => {
-      if (!interruptibleRef.current || !enabledRef.current) return;
+      if (!enabledRef.current) return;
       if (event instanceof KeyboardEvent) {
         if (event.repeat) return;
+        if (event.key === 'Escape') {
+          cancelSessionRef.current();
+          return;
+        }
+        if (!interruptibleRef.current) return;
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') {
           return;
         }
+      } else if (!interruptibleRef.current) {
+        return;
       }
       dismissWorkRef.current();
       setHeard('Closed');
+      if (deadlineLeft() <= 0) {
+        cancelSessionRef.current();
+        return;
+      }
       listenForCommandsRef.current();
     };
     window.addEventListener('pointerdown', onInterrupt, true);
@@ -789,5 +830,6 @@ export function useLiminalityVoice({
     statusLabel,
     heard,
     remainingMs,
+    cancelSession,
   };
 }
