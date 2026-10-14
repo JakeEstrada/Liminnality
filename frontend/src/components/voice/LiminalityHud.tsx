@@ -2,6 +2,46 @@ import { Box, Button, CircularProgress, LinearProgress, Typography } from '@mui/
 import { COMMAND_TIMEOUT_MS } from '../../voice/liminalityCommands';
 import type { LiminalityPhase } from '../../hooks/useLiminalityVoice';
 
+function FrequencyBars({ active }: { active: boolean }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: '3px',
+        height: 22,
+        width: 28,
+        flexShrink: 0,
+        '& span': {
+          display: 'block',
+          width: 3,
+          borderRadius: 99,
+          bgcolor: 'primary.main',
+          transformOrigin: 'bottom',
+          animation: 'liminalityFreq 0.9s ease-in-out infinite',
+          opacity: active ? 1 : 0.45,
+        },
+        '@keyframes liminalityFreq': {
+          '0%, 100%': { transform: 'scaleY(0.35)' },
+          '50%': { transform: 'scaleY(1)' },
+        },
+      }}
+    >
+      {[0, 1, 2, 3, 4].map((index) => (
+        <Box
+          key={index}
+          component="span"
+          sx={{
+            height: active ? 22 : 12,
+            animationDelay: `${index * 0.12}s`,
+            animationDuration: active ? `${0.55 + index * 0.08}s` : '1.4s',
+          }}
+        />
+      ))}
+    </Box>
+  );
+}
+
 export default function LiminalityHud({
   enabled,
   phase,
@@ -19,33 +59,34 @@ export default function LiminalityHud({
 }) {
   if (!enabled || phase === 'off') return null;
 
-  const listening = phase === 'listening';
+  const listening = phase === 'listening' || phase === 'waiting';
+  const commandWindow = phase === 'listening';
   const working = phase === 'processing' || phase === 'executing';
-  const hearing = statusLabel.startsWith('Hearing you');
+  const hearing = statusLabel.startsWith('Hearing you') || statusLabel === 'Listening';
   const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  const progress = listening
+  const progress = commandWindow
     ? Math.max(0, Math.min(100, (remainingMs / COMMAND_TIMEOUT_MS) * 100))
     : 0;
-  const low = listening && remainingMs > 0 && remainingMs <= 5000;
+  const low = commandWindow && remainingMs > 0 && remainingMs <= 5000;
   const barColor = remainingMs <= 3000 ? 'error' : low ? 'warning' : 'primary';
   const title = working
     ? 'Working on it'
-    : hearing
-      ? 'Hearing you'
-      : listening
+    : phase === 'speaking'
+      ? 'Speaking'
+      : commandWindow
         ? `Listening · ${seconds}s`
-        : statusLabel;
+        : 'Listening';
   const detail = working
     ? heard || 'Calculating that command'
-    : hearing
+    : hearing && commandWindow
       ? 'Keep talking. This sends when you pause.'
-      : listening
+      : commandWindow
         ? low
           ? 'Time is running out — say the command now'
           : 'Say a command. You do not need her name again.'
-        : heard && phase === 'speaking'
-          ? heard
-          : statusLabel;
+        : phase === 'speaking'
+          ? heard || statusLabel
+          : 'Say Liminality when you need her.';
 
   return (
     <Box
@@ -77,24 +118,7 @@ export default function LiminalityHud({
           {working ? (
             <CircularProgress size={22} thickness={5} />
           ) : (
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                bgcolor:
-                  phase === 'speaking'
-                    ? 'secondary.main'
-                    : listening
-                      ? 'primary.main'
-                      : 'success.main',
-                animation: listening || phase === 'waiting' ? 'liminalityPulse 1.2s ease-in-out infinite' : 'none',
-                '@keyframes liminalityPulse': {
-                  '0%, 100%': { opacity: 1, transform: 'scale(1)' },
-                  '50%': { opacity: 0.45, transform: 'scale(0.85)' },
-                },
-              }}
-            />
+            <FrequencyBars active={hearing || commandWindow} />
           )}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
@@ -104,7 +128,7 @@ export default function LiminalityHud({
               {detail}
             </Typography>
           </Box>
-          {listening ? (
+          {commandWindow ? (
             <Typography
               variant="h5"
               sx={{
@@ -129,7 +153,7 @@ export default function LiminalityHud({
             </Button>
           ) : null}
         </Box>
-        {listening ? (
+        {commandWindow ? (
           <LinearProgress
             variant="determinate"
             value={progress}

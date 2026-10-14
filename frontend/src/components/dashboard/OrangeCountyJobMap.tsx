@@ -366,7 +366,6 @@ export default function OrangeCountyJobMap({
         setView('pipeline');
         setFilters(EMPTY_FILTERS);
         setFeaturedJobId(null);
-        setFullScreen(false);
       },
     });
   }, []);

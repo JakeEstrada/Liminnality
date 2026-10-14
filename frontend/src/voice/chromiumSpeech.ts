@@ -285,7 +285,7 @@ export function createChromiumSpeechRecognition(): SpeechRecognitionLike {
 
   function onLevel(samples: Float32Array, frameMs: number, sampleRate: number) {
     const level = rms(samples);
-    const threshold = Math.max(0.006, noise * 2.8);
+    const threshold = Math.max(0.014, noise * 3.6);
     if (!inSpeech) noise = noise * 0.96 + level * 0.04;
     if (level >= threshold) {
       if (!inSpeech) beginUtterance();

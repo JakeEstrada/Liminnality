@@ -12,7 +12,7 @@ import { primeChromiumMicrophone } from '../voice/chromiumSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
-import { abortMapTour, applyMapShow, narrateMapTour } from '../voice/mapCommandBus';
+import { abortMapTour, applyMapShow, narrateMapTour, resetMapToPipeline } from '../voice/mapCommandBus';
 import {
   COMMAND_ENDPOINT_MS,
   COMMAND_TIMEOUT_MS,
@@ -159,12 +159,24 @@ export function useLiminalityVoice({
 
     recognition.onhearing = () => {
       if (speakingRef.current || !enabledRef.current) return;
-      setStatusLabel(modeRef.current === 'wake' ? 'Hearing you' : 'Hearing you · keep talking');
+      if (modeRef.current === 'command') {
+        setPhase('listening');
+        setStatusLabel('Listening');
+        return;
+      }
+      if (modeRef.current === 'wake') setStatusLabel('Listening');
     };
     recognition.ontranscribing = () => {
       if (speakingRef.current || !enabledRef.current) return;
-      setPhase('processing');
-      setStatusLabel(modeRef.current === 'wake' ? 'Heard you — checking' : 'Heard you — working on it');
+      if (modeRef.current === 'command') {
+        setPhase('listening');
+        setStatusLabel('Listening');
+        return;
+      }
+      if (modeRef.current === 'wake') {
+        setPhase('waiting');
+        setStatusLabel('Listening');
+      }
     };
     recognition.onidle = () => {
       if (!enabledRef.current || speakingRef.current) return;
@@ -620,7 +632,8 @@ export function useLiminalityVoice({
             { role: 'user', content: stripped },
             { role: 'assistant', content: result.reply },
           ].slice(-8);
-          if (result.mapShow) {
+          const mapJobs = result.mapShow?.jobs?.length || result.mapShow?.jobIds?.length || 0;
+          if (result.mapShow && mapJobs > 0) {
             setPhase('executing');
             applyMapShow(result.mapShow);
             if (result.path) {
@@ -634,7 +647,8 @@ export function useLiminalityVoice({
             if (workGenRef.current !== workGen) return;
             await narrateMapTour(result.mapShow, speakAndWait);
           } else {
-            await speakAndWait(result.reply || 'No jobs on the map.');
+            resetMapToPipeline();
+            await speakAndWait(result.reply || 'No jobs in that area.');
           }
           if (workGenRef.current !== workGen) return;
           listenForCommands();
@@ -668,16 +682,19 @@ export function useLiminalityVoice({
             setStatusLabel('Opening job');
             openJobOverlay(result.openJob);
           }
-          if (result.mapShow) {
+          const mapJobs = result.mapShow?.jobs?.length || result.mapShow?.jobIds?.length || 0;
+          if (result.mapShow && mapJobs > 0) {
             setPhase('executing');
             setStatusLabel('Opening the map');
             applyMapShow(result.mapShow);
+          } else if (result.mapShow) {
+            resetMapToPipeline();
           }
           if (result.path) {
             setPhase('executing');
-            setStatusLabel(result.mapShow ? 'Opening the map' : 'Opening page');
+            setStatusLabel(result.mapShow && mapJobs > 0 ? 'Opening the map' : 'Opening page');
             onNavigateRef.current(result.path);
-            if (result.mapShow) {
+            if (result.mapShow && mapJobs > 0) {
               await new Promise((resolve) => window.setTimeout(resolve, 450));
               applyMapShow(result.mapShow);
             }
@@ -687,7 +704,7 @@ export function useLiminalityVoice({
           }
           if (workGenRef.current !== workGen) return;
           interruptibleRef.current = true;
-          if (result.mapShow && (result.mapShow.jobs.length || result.mapShow.jobIds.length)) {
+          if (result.mapShow && mapJobs > 0) {
             await new Promise((resolve) => window.setTimeout(resolve, 400));
             if (workGenRef.current !== workGen) return;
             await narrateMapTour(result.mapShow, speakAndWait);

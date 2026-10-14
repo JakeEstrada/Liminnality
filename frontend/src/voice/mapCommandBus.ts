@@ -112,8 +112,11 @@ export async function narrateMapTour(
       ? command.jobs
       : command.jobIds.filter(Boolean).map((id) => ({ id }));
   if (!jobs.length) {
-    if (!tourAborted) await speak(mapTourIntro(command));
-    if (!tourAborted) resetMapToPipeline();
+    resetMapToPipeline();
+    if (!tourAborted) {
+      const place = command.near || command.city;
+      await speak(place ? `No jobs in ${place}.` : 'No jobs in that area.');
+    }
     return;
   }
   try {
