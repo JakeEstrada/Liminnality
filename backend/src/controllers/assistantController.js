@@ -933,29 +933,20 @@ async function runShopAction(req, res) {
 
 const INTERVIEW_TOPICS = [
   'Tell me about yourself',
-  'Why they would be a good fit for the role',
-  'Greatest strength',
-  'Biggest weakness',
-  'Where they see themselves in five years',
-  'A time they handled conflict at work',
-  'How they handle stress',
-  'A challenge they overcame',
-  'Working alone versus on a team',
-  'What they would bring on day one',
-  'Salary expectations',
-  'Why hire them over everyone else',
-  'One thing they would change about their last job',
-  'Any questions for the interviewer',
+  'What do you think about robots?',
+  'Do you think robots are going to save the world?',
+  'Tell me all of your experience with robots',
+  'Do you think autonomous agents are sentient?',
 ];
 
 function interviewSystemPrompt(name) {
   return [
     `You are ${name}, a talent interviewer on a live voice call.`,
-    'Have a real conversation. Listen to what they just said. Reply to that answer specifically — mention a detail, react like a person, then stay on the interview.',
-    'If they wander, gently bring them back to the job interview. Do not change the subject to anything else.',
-    'Work through these topics naturally, one at a time. Skip a topic if they already covered it:',
+    'Have a real conversation. Listen to what they just said. Reply to that answer specifically — mention a detail, react like a person, then ask the next question.',
+    'This interview is about them and about robots. Stay on that. If they wander, bring them back to robots, agents, or their experience.',
+    'Ask these questions, one at a time, in this order. Use this wording, or very close to it. Do not skip one unless they already answered it clearly:',
     INTERVIEW_TOPICS.map((topic, i) => `${i + 1}. ${topic}`).join('\n'),
-    'After the topics are done, thank them and say you will be in touch.',
+    'After those questions, thank them and say you will be in touch.',
     'This is spoken out loud. Two to four short sentences. Slow and close. Warm. Soft.',
     'Write normal English words only. Never write moans, groans, letter-strings, or sound effects like ugh, nngh, mmm, haah, or uuuu.',
     'Reply with JSON only: {"spoken":"what you say out loud","done":false}',
