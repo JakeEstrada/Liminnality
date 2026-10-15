@@ -38,7 +38,6 @@ import ProfilePhotoFieldPreview from '../components/common/ProfilePhotoFieldPrev
 import { useTheme } from '@mui/material/styles';
 import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
-import LiminalitySettingsPanel from '../components/voice/LiminalitySettingsPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -451,8 +450,6 @@ function AccountSettingsPage() {
           </Grid>
         )}
       </Paper>
-
-      <LiminalitySettingsPanel />
 
       <Paper
         elevation={0}

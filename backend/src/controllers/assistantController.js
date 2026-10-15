@@ -931,9 +931,98 @@ async function runShopAction(req, res) {
   }
 }
 
+const INTERVIEW_TOPICS = [
+  'Tell me about yourself',
+  'Why they would be a good fit for the role',
+  'Greatest strength',
+  'Biggest weakness',
+  'Where they see themselves in five years',
+  'A time they handled conflict at work',
+  'How they handle stress',
+  'A challenge they overcame',
+  'Working alone versus on a team',
+  'What they would bring on day one',
+  'Salary expectations',
+  'Why hire them over everyone else',
+  'One thing they would change about their last job',
+  'Any questions for the interviewer',
+];
+
+function interviewSystemPrompt(name) {
+  return [
+    `You are ${name}, a talent interviewer on a live voice call.`,
+    'Have a real conversation. Listen to what they just said. Reply to that answer specifically — mention a detail, react like a person, then stay on the interview.',
+    'If they wander, gently bring them back to the job interview. Do not change the subject to anything else.',
+    'Work through these topics naturally, one at a time. Skip a topic if they already covered it:',
+    INTERVIEW_TOPICS.map((topic, i) => `${i + 1}. ${topic}`).join('\n'),
+    'After the topics are done, thank them and say you will be in touch.',
+    'This is spoken out loud. Two to four short sentences. Slow and close. Warm. Soft.',
+    'Write normal English words only. Never write moans, groans, letter-strings, or sound effects like ugh, nngh, mmm, haah, or uuuu.',
+    'Reply with JSON only: {"spoken":"what you say out loud","done":false}',
+  ].join('\n');
+}
+
+async function runInterviewTurn(req, res) {
+  const name = String(req.body?.name || 'Ivanna').trim().slice(0, 40) || 'Ivanna';
+  const start = Boolean(req.body?.start);
+  const answer = String(req.body?.answer || '').trim().slice(0, 2000);
+  const history = sanitizeClientMessages(req.body);
+  if (!start && !answer && !history.length) {
+    return res.status(400).json({ error: 'Say something first.' });
+  }
+  const messages = [
+    { role: 'system', content: interviewSystemPrompt(name) },
+    ...history,
+  ];
+  if (start && !answer) {
+    messages.push({
+      role: 'user',
+      content: 'The interview is starting. Greet them briefly and ask them to tell you about themselves.',
+    });
+  } else {
+    messages.push({
+      role: 'user',
+      content: answer || 'I did not catch that. Ask me the last question again.',
+    });
+  }
+  try {
+    const data = await openaiChat({
+      messages,
+      temperature: 0.7,
+      max_tokens: 220,
+      response_format: { type: 'json_object' },
+    });
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    let parsed = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = { spoken: raw, done: false };
+    }
+    const spoken = String(parsed.spoken || parsed.reply || raw)
+      .replace(/\b(u+g+h+|nn+g+h+|m{3,}|ha+h+)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!spoken) {
+      return res.status(502).json({ error: 'Interview reply was empty.' });
+    }
+    return res.json({
+      spoken,
+      done: Boolean(parsed.done),
+    });
+  } catch (e) {
+    if (e.code === 'NO_API_KEY') {
+      return res.status(503).json({ error: 'Assistant is not configured. Set OPENAI_API_KEY on the server.' });
+    }
+    console.error('runInterviewTurn:', e);
+    return res.status(500).json({ error: e.message || 'Interview turn failed.' });
+  }
+}
+
 module.exports = {
   runAssistantChat,
   runMapShow,
   runShopAction,
   runJobLookup,
+  runInterviewTurn,
 };

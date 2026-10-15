@@ -17,6 +17,8 @@ export const ELEVEN_VOICES: NeuralVoice[] = [
   { id: 'kaori', name: 'Kaori', description: 'Japanese woman', uri: 'eleven:kaori' },
   { id: 'sakura', name: 'Sakura', description: 'gentle Japanese woman', uri: 'eleven:sakura' },
   { id: 'cassius', name: 'Cassius', description: 'man', uri: 'eleven:cassius' },
+  { id: 'ivanna', name: 'Ivanna', description: 'interview', uri: 'eleven:ivanna' },
+  { id: 'crystal', name: 'Crystal', description: 'interview', uri: 'eleven:crystal' },
 ];
 
 export const DEFAULT_NEURAL_VOICE_URI = 'eleven:sarah';

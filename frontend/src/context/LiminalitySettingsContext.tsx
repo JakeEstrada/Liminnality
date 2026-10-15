@@ -16,9 +16,12 @@ import {
   warmUpSpeechVoices,
 } from '../voice/browserSpeech';
 import {
+  clampLiminalitySpeed,
   readLiminalityEnabled,
+  readLiminalitySpeechSpeed,
   readLiminalityVoiceUri,
   writeLiminalityEnabled,
+  writeLiminalitySpeechSpeed,
   writeLiminalityVoiceUri,
 } from '../voice/liminalitySettings';
 import { primeChromiumMicrophone } from '../voice/chromiumSpeech';
@@ -38,6 +41,8 @@ type LiminalitySettingsContextValue = {
   setEnabled: (next: boolean) => void;
   voiceUri: string;
   setVoiceUri: (uri: string) => void;
+  speechSpeed: number;
+  setSpeechSpeed: (next: number) => void;
   voices: SpeechSynthesisVoice[];
   supported: boolean;
   runtime: LiminalityRuntimeStatus;
@@ -58,6 +63,7 @@ const LiminalitySettingsContext = createContext<LiminalitySettingsContextValue |
 export function LiminalitySettingsProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(readLiminalityEnabled);
   const [voiceUri, setVoiceUriState] = useState(() => neuralVoiceIdFromUri(readLiminalityVoiceUri()));
+  const [speechSpeed, setSpeechSpeedState] = useState(readLiminalitySpeechSpeed);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [runtime, setRuntime] = useState<LiminalityRuntimeStatus>(defaultRuntime);
   const supported = isSpeechRecognitionSupported();
@@ -89,18 +95,26 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
     setVoiceUriState(next);
   }, []);
 
+  const setSpeechSpeed = useCallback((next: number) => {
+    const speed = clampLiminalitySpeed(next);
+    writeLiminalitySpeechSpeed(speed);
+    setSpeechSpeedState(speed);
+  }, []);
+
   const value = useMemo(
     () => ({
       enabled,
       setEnabled,
       voiceUri,
       setVoiceUri,
+      speechSpeed,
+      setSpeechSpeed,
       voices,
       supported,
       runtime,
       setRuntime,
     }),
-    [enabled, setEnabled, voiceUri, setVoiceUri, voices, supported, runtime]
+    [enabled, setEnabled, voiceUri, setVoiceUri, speechSpeed, setSpeechSpeed, voices, supported, runtime]
   );
 
   return (

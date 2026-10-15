@@ -1,4 +1,5 @@
 import api from '../utils/axios';
+import { readLiminalitySpeechSpeed } from './liminalitySettings';
 import { neuralVoiceIdFromUri, isNeuralVoiceUri } from './neuralVoices';
 
 const clipCache = new Map<string, Blob>();
@@ -61,8 +62,8 @@ export function cancelNeuralSpeech() {
   stopCurrentAudio();
 }
 
-function cacheKey(voice: string, text: string, tone = 'polite') {
-  return `${voice}::${tone}::${text}`;
+function cacheKey(voice: string, text: string, tone = 'polite', speed = 1) {
+  return `${voice}::${tone}::${speed}::${text}`;
 }
 
 function rememberClip(key: string, blob: Blob) {
@@ -93,15 +94,16 @@ async function fetchSpeechBlob(
   voice: string,
   signal: AbortSignal,
   tone = 'polite',
+  speed = 1,
 ) {
-  const key = cacheKey(voice, text, tone);
+  const key = cacheKey(voice, text, tone, speed);
   const cached = clipCache.get(key);
   if (cached) return cached;
 
   try {
     const response = await api.post(
       '/tts/speech',
-      { text, voice, tone },
+      { text, voice, tone, speed },
       { responseType: 'blob', signal }
     );
     const blob = response.data as Blob;
@@ -163,13 +165,14 @@ export async function prefetchNeuralSpeech(
 ) {
   if (!isNeuralVoiceUri(voiceUri)) return;
   const voice = neuralVoiceIdFromUri(voiceUri);
+  const speed = readLiminalitySpeechSpeed();
   const unique = [...new Set(texts.map((line) => String(line || '').trim()).filter(Boolean))];
-  const pending = unique.filter((text) => !clipCache.has(cacheKey(voice, text, tone)));
+  const pending = unique.filter((text) => !clipCache.has(cacheKey(voice, text, tone, speed)));
   for (let i = 0; i < pending.length; i += PREFETCH_BATCH) {
     const batch = pending.slice(i, i + PREFETCH_BATCH);
     await Promise.all(
       batch.map((text) =>
-        fetchSpeechBlob(text, voice, new AbortController().signal, tone).catch(() => null),
+        fetchSpeechBlob(text, voice, new AbortController().signal, tone, speed).catch(() => null),
       ),
     );
   }
@@ -287,11 +290,12 @@ async function streamSpeech(
   voice: string,
   signal: AbortSignal,
   tone = 'polite',
+  speed = 1,
 ) {
   const response = await fetch(ttsStreamUrl(), {
     method: 'POST',
     headers: ttsAuthHeaders(),
-    body: JSON.stringify({ text, voice, tone }),
+    body: JSON.stringify({ text, voice, tone, speed }),
     signal,
   });
   const type = String(response.headers.get('content-type') || '');
@@ -314,16 +318,17 @@ export async function speakNeural(
   const controller = new AbortController();
   speakAbort = controller;
   const voice = neuralVoiceIdFromUri(voiceUri);
-  const cached = clipCache.get(cacheKey(voice, text, tone));
+  const speed = readLiminalitySpeechSpeed();
+  const cached = clipCache.get(cacheKey(voice, text, tone, speed));
   if (cached) {
     await playBlob(cached, controller.signal);
     return;
   }
   try {
-    await streamSpeech(text, voice, controller.signal, tone);
+    await streamSpeech(text, voice, controller.signal, tone, speed);
   } catch {
     if (controller.signal.aborted) return;
-    const blob = await fetchSpeechBlob(text, voice, controller.signal, tone);
+    const blob = await fetchSpeechBlob(text, voice, controller.signal, tone, speed);
     if (controller.signal.aborted) return;
     await playBlob(blob, controller.signal);
   }

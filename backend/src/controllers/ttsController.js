@@ -13,6 +13,8 @@ const ELEVEN_VOICES = {
   kaori: { id: 'mDxkcO3nsRCNeB4si9qg', label: 'Kaori — Japanese woman' },
   sakura: { id: 'gHBfNp2PWSyFgpPlzCOd', label: 'Sakura — gentle Japanese woman' },
   cassius: { id: 'ktrGUw7rURIQyMrQZqCu', label: 'Cassius — man' },
+  ivanna: { id: 'tQ4MEZFJOzsahSEEZtHK', label: 'Ivanna' },
+  crystal: { id: 'gllMMawbYGTja23oQ3Vu', label: 'Crystal' },
 };
 
 const DEFAULT_ELEVEN_VOICE = 'sarah';
@@ -43,6 +45,8 @@ const OPENAI_FALLBACK = {
   kaori: 'nova',
   sakura: 'shimmer',
   cassius: 'cedar',
+  ivanna: 'coral',
+  crystal: 'shimmer',
 };
 
 const LIMINALITY_INSTRUCTIONS =
@@ -93,6 +97,10 @@ function parseVoice(raw) {
   }
   const [prefix, rest] = requested.includes(':') ? requested.split(':', 2) : ['', requested];
   const name = String(rest || prefix || requested).trim().toLowerCase();
+  const rawId = String(rest || requested).trim();
+  if (/^[A-Za-z0-9]{16,32}$/.test(rawId) && !ELEVEN_VOICES[name]) {
+    return { provider: 'eleven', key: 'custom', elevenId: rawId };
+  }
   if (prefix === 'eleven' || ELEVEN_VOICES[name]) {
     const voice = ELEVEN_VOICES[name] || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE];
     const key = ELEVEN_VOICES[name] ? name : DEFAULT_ELEVEN_VOICE;
@@ -134,9 +142,12 @@ function prepareSpeechRequest(req) {
   const parsed = parseVoice(req.body?.voice);
   const rawTone = String(req.body?.tone || '').toLowerCase();
   const tone = rawTone === 'candid' || rawTone === 'asmr' ? rawTone : 'polite';
+  const speedRaw = Number(req.body?.speed);
+  const speed = Number.isFinite(speedRaw) ? Math.min(1.2, Math.max(0.7, speedRaw)) : 1;
   return {
     text,
     tone,
+    speed,
     elevenId: parsed.elevenId || ELEVEN_VOICES[DEFAULT_ELEVEN_VOICE].id,
     key: elevenKey(),
   };
@@ -147,7 +158,7 @@ async function synthesizeSpeech(req, res) {
   if (ready.error) return res.status(ready.status).json({ error: ready.error });
 
   try {
-    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'mp3');
+    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'mp3', ready.speed);
     if (audio.ok) return sendAudio(res, audio.buffer);
     return res.status(502).json({ error: audio.error });
   } catch {
@@ -160,7 +171,7 @@ async function streamSpeech(req, res) {
   if (ready.error) return res.status(ready.status || 400).json({ error: ready.error });
 
   try {
-    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'pcm');
+    const audio = await requestElevenSpeech(ready.key, ready.elevenId, ready.text, ready.tone, 'pcm', ready.speed);
     if (!audio.ok || !audio.body) {
       return res.status(502).json({ error: audio.error || 'Could not stream ElevenLabs speech.' });
     }
@@ -217,13 +228,14 @@ function elevenModelChain() {
   return [preferred, ...FAST_ELEVEN_MODELS.filter((model) => model !== preferred)];
 }
 
-function voiceSettingsFor(model, tone) {
+function voiceSettingsFor(model, tone, speed = 1) {
   const asmr = tone === 'asmr';
   const candid = tone === 'candid';
   const settings = {
     stability: asmr ? 0.16 : candid ? 0.3 : 0.42,
     similarity_boost: asmr ? 0.72 : 0.85,
     use_speaker_boost: true,
+    speed: Number.isFinite(Number(speed)) ? Math.min(1.2, Math.max(0.7, Number(speed))) : 1,
   };
   if (model.includes('multilingual_v2') && !model.startsWith('eleven_v3')) {
     settings.style = asmr ? 0.82 : candid ? 0.58 : 0.28;
@@ -250,7 +262,7 @@ function parseElevenError(raw, status) {
   return friendlyElevenError(detail);
 }
 
-async function requestElevenSpeech(key, voiceId, text, tone = 'polite', format = 'mp3') {
+async function requestElevenSpeech(key, voiceId, text, tone = 'polite', format = 'mp3', speed = 1) {
   const models = elevenModelChain();
   let lastError = 'ElevenLabs could not generate speech.';
   const stream = format === 'pcm';
@@ -270,7 +282,7 @@ async function requestElevenSpeech(key, voiceId, text, tone = 'polite', format =
       body: JSON.stringify({
         text,
         model_id: model,
-        voice_settings: voiceSettingsFor(model, tone),
+        voice_settings: voiceSettingsFor(model, tone, speed),
       }),
     });
     if (response.ok) {

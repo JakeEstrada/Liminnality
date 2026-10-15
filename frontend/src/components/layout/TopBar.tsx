@@ -32,7 +32,7 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuthenticatedProfilePhotoUrl } from '../../hooks/useAuthenticatedProfilePhotoUrl';
-import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
+import LiminalityMenu from '../voice/LiminalityMenu';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -49,7 +49,6 @@ function TopBar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useTheme();
   const profilePhotoUrl = useAuthenticatedProfilePhotoUrl(user);
-  const liminality = useLiminalitySettings();
   const navigate = useNavigate();
   const theme = useMuiTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -193,28 +192,7 @@ function TopBar({ onMenuClick }) {
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {!isMobile && liminality.enabled ? (
-            <Chip
-              size="small"
-              variant="outlined"
-              color={
-                liminality.runtime.phase === 'listening' ||
-                liminality.runtime.phase === 'speaking' ||
-                liminality.runtime.phase === 'processing' ||
-                liminality.runtime.phase === 'executing'
-                  ? 'primary'
-                  : 'default'
-              }
-              label="Liminality"
-              onClick={() => navigate('/account-settings')}
-              title={liminality.runtime.heard || liminality.runtime.statusLabel}
-              sx={{
-                height: 24,
-                fontSize: 11,
-                '& .MuiChip-label': { px: 1 },
-              }}
-            />
-          ) : null}
+          {!isMobile ? <LiminalityMenu /> : null}
           {!isMobile && (
             <IconButton
               onClick={toggleColorMode}
