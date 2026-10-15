@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import {
   Alert,
   Box,
@@ -14,9 +13,8 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import axios from 'axios';
-import { jsPDF } from 'jspdf';
 import toast from 'react-hot-toast';
-import { captureHtmlToPng } from '../../utils/captureHtmlToPng';
+import { buildContractCoverPdf } from '../../utils/buildContractCoverPdf';
 import {
   formatMoney,
   getContractBase,
@@ -308,39 +306,20 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     };
   }, [open, job?._id]);
 
-  const capturePage = async (el) => {
-    if (!el) throw new Error('Cover page not ready');
-    return captureHtmlToPng(el, { width: PAGE_SX.width, height: PAGE_SX.height, scale: 2 });
-  };
-
-  const renderPdf = async () => {
-    flushSync(() => {});
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (!page1Ref.current || !page2Ref.current) {
-      throw new Error('Cover page not ready');
-    }
-    const page1 = await capturePage(page1Ref.current);
-    const page2 = await capturePage(page2Ref.current);
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    doc.addImage(page1.dataUrl, page1.format, 0, 0, 612, 792, undefined, 'FAST');
-    doc.addPage();
-    doc.addImage(page2.dataUrl, page2.format, 0, 0, 612, 792, undefined, 'FAST');
-    return doc;
-  };
-
   const persistPdf = async (doc, filename) => {
-    if (!job?._id) return;
+    if (!job?._id) return null;
     const blob = doc.output('blob');
     const formData = new FormData();
     formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
     formData.append('jobId', String(job._id));
     formData.append('fileType', 'contract');
     formData.append('description', `Contract packet cover pages for ${job.title || 'job'}`);
-    await axios.post(`${API_URL}/files/upload`, formData, {
+    const { data } = await axios.post(`${API_URL}/files/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     invalidateJobFilesCache(job._id);
     onSaved?.();
+    return data?._id ? String(data._id) : null;
   };
 
   const handleContinue = () => {
@@ -357,29 +336,38 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     setStep('preview');
   };
 
-  const handleDownload = async () => {
+  const handleOpenPdf = async () => {
     try {
       setExporting(true);
-      const doc = await renderPdf();
+      const doc = await buildContractCoverPdf({
+        customerName: customerName.trim(),
+        street: street.trim(),
+        cityStateDisplay,
+        contractDate: formatContractDate(docDate),
+        estimateNumber: estimateNumber.trim(),
+        totalLabel: formatMoney(total),
+        inspectionParagraph,
+        paymentLines: paymentDisplay.lines,
+        paymentNotes: paymentDisplay.notes,
+      });
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `Contract-Packet-${jobCardNumber(job) || 'job'}-${stamp}.pdf`;
-      const blob = doc.output('blob');
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.rel = 'noopener';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+      let fileId = null;
       try {
-        await persistPdf(doc, filename);
-        toast.success('Contract cover saved to this job');
+        fileId = await persistPdf(doc, filename);
       } catch (persistError) {
         console.error('Contract cover save to job failed:', persistError);
-        toast.error('PDF downloaded, but saving to the job failed');
       }
+      if (fileId) {
+        window.open(`/pdf/${fileId}`, '_blank', 'noopener,noreferrer');
+        toast.success('Contract cover saved to this job');
+        onClose();
+        return;
+      }
+      const url = URL.createObjectURL(doc.output('blob'));
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast.error('Opened the PDF, but saving to the job failed');
     } catch (error) {
       console.error('Contract cover PDF failed:', error);
       toast.error(error?.message || 'Failed to create contract cover');
@@ -715,8 +703,8 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
             <Button onClick={() => setStep('details')} disabled={exporting}>
               Back
             </Button>
-            <Button variant="contained" onClick={handleDownload} disabled={exporting}>
-              {exporting ? 'Creating…' : 'Download PDF & save to job'}
+            <Button variant="contained" onClick={handleOpenPdf} disabled={exporting}>
+              {exporting ? 'Opening…' : 'Save and open'}
             </Button>
           </>
         )}
