@@ -319,12 +319,12 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     if (!page1Ref.current || !page2Ref.current) {
       throw new Error('Cover page not ready');
     }
-    const img1 = await capturePage(page1Ref.current);
-    const img2 = await capturePage(page2Ref.current);
+    const page1 = await capturePage(page1Ref.current);
+    const page2 = await capturePage(page2Ref.current);
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    doc.addImage(img1, 'PNG', 0, 0, 612, 792, undefined, 'FAST');
+    doc.addImage(page1.dataUrl, page1.format, 0, 0, 612, 792, undefined, 'FAST');
     doc.addPage();
-    doc.addImage(img2, 'PNG', 0, 0, 612, 792, undefined, 'FAST');
+    doc.addImage(page2.dataUrl, page2.format, 0, 0, 612, 792, undefined, 'FAST');
     return doc;
   };
 

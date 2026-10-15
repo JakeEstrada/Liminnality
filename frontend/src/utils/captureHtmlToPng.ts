@@ -86,6 +86,10 @@ async function waitForImages(root: HTMLElement) {
   );
 }
 
+function dataUrlLooksEmpty(dataUrl: string) {
+  return !dataUrl || dataUrl === 'data:,' || dataUrl.length < 2000;
+}
+
 export async function captureHtmlToPng(
   el: HTMLElement,
   {
@@ -102,39 +106,51 @@ export async function captureHtmlToPng(
   host.setAttribute('data-pdf-capture-host', '1');
   Object.assign(host.style, {
     position: 'fixed',
-    left: '-20000px',
+    left: '0',
     top: '0',
     width: `${width}px`,
     height: `${height}px`,
     overflow: 'visible',
     background: '#ffffff',
-    zIndex: '0',
+    zIndex: '2147483646',
     pointerEvents: 'none',
+    opacity: '0.02',
+    colorScheme: 'light',
   });
 
-  const clone = el.cloneNode(true) as HTMLElement;
-  clone.style.width = `${width}px`;
-  clone.style.height = `${height}px`;
-  clone.style.maxWidth = `${width}px`;
-  clone.style.margin = '0';
-  clone.style.transform = 'none';
-  clone.style.position = 'relative';
-  host.appendChild(clone);
+  const parent = el.parentNode;
+  const nextSibling = el.nextSibling;
+  const prev = {
+    width: el.style.width,
+    height: el.style.height,
+    maxWidth: el.style.maxWidth,
+    margin: el.style.margin,
+    transform: el.style.transform,
+    position: el.style.position,
+  };
+  el.style.width = `${width}px`;
+  el.style.height = `${height}px`;
+  el.style.maxWidth = `${width}px`;
+  el.style.margin = '0';
+  el.style.transform = 'none';
+  el.style.position = 'relative';
+  host.appendChild(el);
   document.body.appendChild(host);
 
   try {
-    await waitForImages(clone);
+    await waitForImages(el);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const canvas = await html2canvas(clone, {
+    const canvas = await html2canvas(el, {
       backgroundColor: '#ffffff',
       scale,
       useCORS: true,
       allowTaint: true,
       logging: false,
+      foreignObjectRendering: false,
       scrollX: 0,
       scrollY: 0,
-      windowWidth: width,
-      windowHeight: height,
+      windowWidth: Math.max(width, document.documentElement.clientWidth || width),
+      windowHeight: Math.max(height, document.documentElement.clientHeight || height),
       width,
       height,
       x: 0,
@@ -144,10 +160,25 @@ export async function captureHtmlToPng(
       },
     });
     if (canvasLooksBlank(canvas)) {
-      throw new Error('Cover page rendered blank. Try again, or use Chrome if another browser is open.');
+      throw new Error('Cover page rendered blank in this browser. Try the download again.');
     }
-    return canvas.toDataURL('image/png');
+    const jpeg = canvas.toDataURL('image/jpeg', 0.93);
+    if (dataUrlLooksEmpty(jpeg)) {
+      const png = canvas.toDataURL('image/png');
+      if (dataUrlLooksEmpty(png)) {
+        throw new Error('Cover page rendered blank in this browser. Try the download again.');
+      }
+      return { dataUrl: png, format: 'PNG' as const };
+    }
+    return { dataUrl: jpeg, format: 'JPEG' as const };
   } finally {
+    el.style.width = prev.width;
+    el.style.height = prev.height;
+    el.style.maxWidth = prev.maxWidth;
+    el.style.margin = prev.margin;
+    el.style.transform = prev.transform;
+    el.style.position = prev.position;
+    if (parent) parent.insertBefore(el, nextSibling);
     host.remove();
   }
 }
