@@ -12,6 +12,7 @@
     "seed-website-projects": "node src/scripts/seedWebsiteProjects.js",
     "seed-website-homepage": "node src/scripts/seedWebsiteHomepage.js",
     "seed-vendor-order-items": "node src/scripts/seedVendorOrderItems.js",
+    "seed-demo-showcase": "node src/scripts/seedDemoShowcase.js",
     "create-super-admin": "node createSuperAdmin.js",
     "test-task-activities": "node src/scripts/testTaskActivityLogging.js",
     "backfill-task-activities": "node src/scripts/testTaskActivityLogging.js --backfill",

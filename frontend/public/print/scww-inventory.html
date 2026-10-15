@@ -1,0 +1,44 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SCWW Inventory Sheet</title><style>
+@page{size:letter landscape;margin:.25in}
+*{box-sizing:border-box}
+:root{--ink:#20394b;--muted:#60798b;--line:#cbd9e1;--accent:#087d9b;--pale:#eaf5f8;--panel:#f5f9fb}
+body{margin:0;background:#eaf0f3;color:var(--ink);font:10px "Segoe UI",Arial,sans-serif}
+.page{width:10.5in;height:8in;background:white;margin:18px auto;padding:8px 12px;box-shadow:0 8px 32px #16354b22;position:relative}
+.page:before{content:"";position:absolute;left:15px;right:15px;top:0;height:4px;background:linear-gradient(90deg,#087d9b 0%,#53afbc 48%,#c8e5e9 100%)}
+header{display:flex;justify-content:space-between;align-items:end;border-bottom:1.5px solid #92b4c2;padding:3px 0 5px;margin-bottom:5px}
+h1{margin:0;font-size:20px;letter-spacing:1.2px;color:#133a50;font-weight:800}h1 span{font-weight:400;letter-spacing:1.7px;color:#4d778a;font-size:15px}
+header p{margin:3px 0 0;color:#668394;font-size:9px;letter-spacing:.8px;text-transform:uppercase}
+.meta{display:flex;gap:14px;font-size:10px;font-weight:600;color:#456678}.blank{display:inline-block;width:85px;border-bottom:1px solid #8aa6b5;margin-left:4px}
+.section{border:1px solid #b8ccd6;break-inside:avoid;border-radius:3px;overflow:hidden;background:#fff}
+.section h2{margin:0;background:#e9f3f7;color:#16546b;font-size:9.5px;padding:4px 6px;letter-spacing:1.1px;border-left:4px solid var(--accent);border-bottom:1px solid #b8ccd6;font-weight:800}
+.section table{border-collapse:collapse;width:100%;table-layout:fixed}
+.section th{font-size:8.5px;text-align:left;background:#f4f8fa;border-bottom:1px solid #c8d7df;padding:3px;color:#587486;text-transform:uppercase;letter-spacing:.3px;font-weight:700}
+.section td{border-bottom:1px solid #dce6eb;padding:2px 4px;vertical-align:middle}
+.section tbody tr:nth-child(even){background:#f8fbfc}
+.section tr:last-child td{border-bottom:0}
+.rail-section{margin-bottom:5px}.rail-section td{height:20px}.rail-code{width:68px;font-size:12px;font-weight:800;color:#145a73;letter-spacing:.5px}
+.rail-write{height:20px;background:repeating-linear-gradient(to bottom,transparent 0,transparent 16px,#d4e1e7 17px,transparent 18px)}
+.layout{display:grid;grid-template-columns:1.05fr 1.04fr 1.17fr;gap:6px;align-items:start}
+.column{display:flex;flex-direction:column;gap:4px}
+.posts td{height:19px}.posts .space{border-left:1px solid #d3e0e6}
+.status{width:21px;text-align:center!important;border-left:1px solid #d8e4e9}
+.check{display:inline-block;width:11px;height:11px;border:1.3px solid #6e9aab;border-radius:2px;background:white}
+.compact td{padding:1px 3px;height:16px}.compact th{padding:3px 3px}.code{font-weight:700;white-space:nowrap;color:#245e76}
+.footer{border-top:1px solid #c8dbe4;margin-top:5px;padding-top:3px;color:#678394;font-size:8px;display:flex;justify-content:space-between;letter-spacing:.3px}
+@media print{html,body{width:11in;height:8.5in;overflow:hidden} body{background:white;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{margin:0;padding:0;width:10.5in;height:8in;min-height:0;box-shadow:none;overflow:hidden}.page:before{left:0;right:0;top:-4px}header{margin-bottom:4px}.rail-section{margin-bottom:4px}.layout,.column{gap:4px}}
+@media screen and (max-width:850px){.page{width:100%;min-height:0}.layout{grid-template-columns:1fr}}
+</style></head><body><main class="page"><header><div><h1>SCWW <span>| INVENTORY SHEET</span></h1><p>Staircase materials • Shop stock check</p></div><div class="meta"><span>Date: <span class="blank"></span></span><span>Counted by: <span class="blank"></span></span></div></header>
+<section class="section rail-section"><h2>RAIL PROFILES — RECORD QUANTITY × LENGTH FOR EACH PIECE GROUP</h2><table><thead><tr><th style="width:68px">Profile</th><th>Lengths (example: 2 × 9' &nbsp; 1 × 4' &nbsp; 3 × 8' 6")</th></tr></thead><tbody id="rails"></tbody></table></section>
+<div class="layout"><div class="column"><section class="section"><h2>NEWEL POSTS — RECORD SIZE & QUANTITY</h2><table class="posts"><thead><tr><th style="width:25%">Style</th><th style="width:25%">Wood</th><th>Size / Qty (e.g. 3½″ × 2)</th></tr></thead><tbody id="posts"></tbody></table></section><section class="section"><h2>BALUSTERS</h2><table class="compact"><thead><tr><th>Style</th><th style="width:30%">Qty</th></tr></thead><tbody id="balusters"></tbody></table></section></div>
+<div class="column"><section class="section"><h2>IRON NEWEL POSTS — QUANTITY</h2><table class="compact"><thead><tr><th>Style</th><th style="width:30%">Qty</th></tr></thead><tbody id="ironposts"></tbody></table></section><section class="section compact"><h2>WOOD & DOWELS — STOCK LEVEL</h2><table><thead><tr><th style="width:25%">Code</th><th>Material</th><th class="status">Good</th><th class="status">Med</th><th class="status">Low</th></tr></thead><tbody id="wood"></tbody></table></section></div>
+<div class="column"><section class="section compact"><h2>HARDWARE & PARTS — STOCK LEVEL</h2><table><thead><tr><th style="width:23%">Code</th><th>Description</th><th class="status">Good</th><th class="status">Med</th><th class="status">Low</th></tr></thead><tbody id="hardware"></tbody></table></section></div></div>
+<div class="footer"><span>SCWW • Physical inventory reference</span><span>Mark one stock level per hardware / wood item</span></div></main><script>
+const td=(v,cls='')=>`<td${cls?` class="${cls}"`:''}>${v}</td>`;const fill=(id,rows)=>document.getElementById(id).innerHTML=rows.map(r=>'<tr>'+r.map(x=>td(x)).join('')+'</tr>').join('');
+document.getElementById('rails').innerHTML=['6084','9100','6010','7084','5060','',''].map(x=>`<tr>${td(x,'rail-code')}${td('<div class="rail-write"></div>')}</tr>`).join('');
+const posts=[...['SC-9','SC-10','SC-7'].flatMap(x=>[[x,'Poplar',''],[x,'White Oak','']]),['Shadow Cap','White Oak',''],['','',''],['','','']];document.getElementById('posts').innerHTML=posts.map(r=>'<tr>'+r.map((x,i)=>td(x,i===2?'space':'' )).join('')+'</tr>').join('');
+fill('ironposts',['1 3/16″ Round Iron Newel Post','1 3/16″ Square Iron Newel Post'].map(x=>[x,'']));
+fill('balusters',['1/2″ Square STB','5/8″ Round STB','5/8″ Square STB','Split Ovals STB','Single Knuckle STB','Double Knuckle STB','1 1/4″ Primed Wood Baluster','White Oak Tapered Baluster'].map(x=>[x,'']));
+const statuses=rows=>rows.map(([code,desc])=>`<tr>${td(code,'code')}${td(desc)}${[0,1,2].map(()=>td('<span class="check"></span>','status')).join('')}</tr>`).join('');
+document.getElementById('wood').innerHTML=statuses([['1″ W-O','1″ White Oak'],['.65″ W-O','5/8″ White Oak'],['1″ P','1″ Poplar'],['.65″ P','5/8″ Poplar'],['1″ M','1″ Maple'],['.65″ M','5/8″ Maple'],['.35 DW','3/8″ Dowel'],['.5 DW','1/2″ Dowel'],['DP','Dowel Pins']]);
+document.getElementById('hardware').innerHTML=statuses([['L.A.','3/8″ × 5″ Hanger bolts'],['S.A.','5/16″ × 5″ Hanger'],['L.B.','3/8″ × 4½″, 9/16″ hex lags'],['R.C.','5/16″ × 3½″ Hanger bolts'],['R.D.','1/4″ × 3½″, 3/8″ hex lags'],['R.W.','3/4″ Washer'],['P.W.','7/8″ Washer'],['1.65 BFS','1/8″ × 1⅝″ Black finish screw'],['2.5 BFS','1/8″ × 2½″ Black finish screw'],['.5N','1/2″ Nut'],['.57N','9/16″ Nut'],['1.5″ CC Pins','1½″ Concrete pins'],['2″ CC Pins','2″ Concrete pins'],['2.5″ CC Pin','2½″ Concrete pins'],['.35 CA','3/8″ × 5″ Concrete anchors'],['GLUE','Glue sticks']]);
+</script></body></html>
