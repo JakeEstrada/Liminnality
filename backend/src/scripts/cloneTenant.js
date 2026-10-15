@@ -479,7 +479,7 @@ async function main() {
           tenantId: targetTenantId,
           name: 'Demo Admin',
           password: hash,
-          role: 'admin',
+          role: 'super_admin',
           isActive: true,
           isPending: false,
           createdAt: now,
