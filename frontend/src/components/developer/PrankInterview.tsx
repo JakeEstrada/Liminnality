@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, FormControl, MenuItem, Paper, Select, Typography } from '@mui/material';
+import { Box, Button, Paper, Typography } from '@mui/material';
 import api from '../../utils/axios';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
 import {
@@ -204,21 +204,23 @@ export default function PrankInterview() {
           </Box>
         </Box>
 
-        <FormControl size="small" sx={{ mb: 2, minWidth: 180 }}>
-          <Select
-            value={voice.uri}
-            onChange={(event) => {
-              unlockNeuralAudio();
-              setVoiceUri(String(event.target.value));
-            }}
-          >
-            {ELEVEN_VOICES.map((row) => (
-              <MenuItem key={row.uri} value={row.uri}>
-                {row.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+          {ELEVEN_VOICES.map((row) => (
+            <Button
+              key={row.uri}
+              type="button"
+              size="small"
+              variant={row.uri === voice.uri ? 'contained' : 'outlined'}
+              onClick={() => {
+                unlockNeuralAudio();
+                setVoiceUri(row.uri);
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              {row.name}
+            </Button>
+          ))}
+        </Box>
 
         <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
           {label}

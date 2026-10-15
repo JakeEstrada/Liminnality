@@ -1,12 +1,9 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import {
   Box,
-  Chip,
-  FormControl,
+  Button,
   FormControlLabel,
-  MenuItem,
-  Popover,
-  Select,
+  Menu,
   Slider,
   Switch,
   Typography,
@@ -25,41 +22,60 @@ export default function LiminalityMenu() {
     useLiminalitySettings();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const selectedUri = neuralVoiceIdFromUri(voiceUri);
+  const speed = Number(speechSpeed) || LIMINALITY_SPEED_DEFAULT;
   const live =
     runtime.phase === 'listening' ||
     runtime.phase === 'speaking' ||
     runtime.phase === 'processing' ||
     runtime.phase === 'executing';
 
+  const openMenu = (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchor(event.currentTarget);
+  };
+
   return (
     <>
-      <Chip
+      <Button
+        type="button"
         size="small"
-        variant="outlined"
-        color={live ? 'primary' : enabled ? 'default' : 'default'}
-        label="Liminality"
-        onClick={(event) => setAnchor(event.currentTarget)}
-        title={runtime.heard || runtime.statusLabel || 'Liminality settings'}
+        variant={live || enabled ? 'outlined' : 'text'}
+        color={live ? 'primary' : 'inherit'}
+        onClick={openMenu}
+        onMouseDown={(event) => event.stopPropagation()}
         sx={{
-          height: 24,
-          fontSize: 11,
-          opacity: enabled ? 1 : 0.7,
-          '& .MuiChip-label': { px: 1 },
+          textTransform: 'none',
+          minWidth: 0,
+          px: 1,
+          py: 0.25,
+          fontSize: 12,
+          fontWeight: 600,
+          opacity: enabled ? 1 : 0.72,
         }}
-      />
-      <Popover
+      >
+        Liminality
+      </Button>
+      <Menu
         open={Boolean(anchor)}
         anchorEl={anchor}
         onClose={() => setAnchor(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { p: 2, width: 280, mt: 1 } } }}
+        disableScrollLock
+        slotProps={{
+          paper: {
+            sx: { width: 300, p: 1.5, mt: 0.5 },
+            onClick: (event) => event.stopPropagation(),
+          },
+        }}
+        MenuListProps={{ sx: { p: 0 }, onKeyDown: (event) => event.stopPropagation() }}
       >
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.25 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
           Liminality
         </Typography>
         <FormControlLabel
-          sx={{ mx: 0, mb: 1.5, width: '100%', justifyContent: 'space-between' }}
+          sx={{ mx: 0, mb: 1.25, width: '100%', justifyContent: 'space-between' }}
           labelPlacement="start"
           control={
             <Switch
@@ -71,39 +87,50 @@ export default function LiminalityMenu() {
           }
           label={<Typography variant="body2">{enabled ? 'On' : 'Off'}</Typography>}
         />
-        {!supported ? (
-          <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1.5 }}>
-            Use Chrome or Edge on desktop.
-          </Typography>
-        ) : null}
         <Typography variant="caption" color="text.secondary">
           Voice
         </Typography>
-        <FormControl fullWidth size="small" sx={{ mt: 0.5, mb: 2 }}>
-          <Select
-            value={selectedUri}
-            onChange={(event) => {
-              unlockNeuralAudio();
-              setVoiceUri(String(event.target.value));
-            }}
-          >
-            {ELEVEN_VOICES.map((voice) => (
-              <MenuItem key={voice.uri} value={voice.uri}>
+        <Box
+          sx={{
+            mt: 0.75,
+            mb: 1.5,
+            maxHeight: 220,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.5,
+          }}
+        >
+          {ELEVEN_VOICES.map((voice) => {
+            const selected = voice.uri === selectedUri;
+            return (
+              <Button
+                key={voice.uri}
+                type="button"
+                size="small"
+                variant={selected ? 'contained' : 'text'}
+                onClick={() => {
+                  unlockNeuralAudio();
+                  setVoiceUri(voice.uri);
+                }}
+                sx={{
+                  justifyContent: 'flex-start',
+                  textTransform: 'none',
+                  fontWeight: selected ? 700 : 500,
+                  px: 1,
+                }}
+              >
                 {voice.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              </Button>
+            );
+          })}
+        </Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
           <Typography variant="caption" color="text.secondary">
             Speed
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {speechSpeed === LIMINALITY_SPEED_DEFAULT
-              ? 'Normal'
-              : speechSpeed < 1
-                ? 'Slower'
-                : 'Faster'}
+            {speed === LIMINALITY_SPEED_DEFAULT ? 'Normal' : speed < 1 ? 'Slower' : 'Faster'}
           </Typography>
         </Box>
         <Slider
@@ -111,16 +138,14 @@ export default function LiminalityMenu() {
           min={LIMINALITY_SPEED_MIN}
           max={LIMINALITY_SPEED_MAX}
           step={0.05}
-          value={speechSpeed}
+          value={speed}
           onChange={(_event, value) => setSpeechSpeed(Number(value))}
           marks={[
             { value: LIMINALITY_SPEED_MIN, label: 'Slow' },
-            { value: LIMINALITY_SPEED_DEFAULT, label: '' },
             { value: LIMINALITY_SPEED_MAX, label: 'Fast' },
           ]}
-          sx={{ mt: 0.5, mb: 0 }}
         />
-      </Popover>
+      </Menu>
     </>
   );
 }
