@@ -244,7 +244,7 @@ function softenSpokenText(text: string) {
 
 export async function speakText(
   text: string,
-  options?: { tone?: 'polite' | 'candid' },
+  options?: { tone?: 'polite' | 'candid' | 'asmr' },
 ): Promise<void> {
   const spoken = softenSpokenText(text);
   if (!spoken) return;

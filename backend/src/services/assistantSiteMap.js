@@ -65,7 +65,7 @@ Main app routes (path → purpose):
 - /completed-jobs — finished closed-out jobs
 - /website — customer website homepage CMS (developer tab, super admin only)
 - /developer/analytics — Google campaign tag and first-party website traffic log (developer tab, super admin only)
-- /developer — developer page with tabs for tasks, voice, finance hub, activity log, website, analytics, and RFID
+- /developer — developer page with tabs for tasks, voice, interview, finance hub, activity log, website, analytics, and RFID
 - /payroll — payroll (Manual tab + Payroll tab for RFID hours)
 - /bills — bills (super admin only)
 - /finance — finance hub (hidden from typical nav; developer tab, super admin only)

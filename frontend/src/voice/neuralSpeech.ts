@@ -305,7 +305,7 @@ async function streamSpeech(
 export async function speakNeural(
   text: string,
   voiceUri: string,
-  tone: 'polite' | 'candid' = 'polite',
+  tone: 'polite' | 'candid' | 'asmr' = 'polite',
 ) {
   if (!isNeuralVoiceUri(voiceUri)) {
     throw new Error('Not a studio voice');

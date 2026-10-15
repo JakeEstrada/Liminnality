@@ -132,7 +132,8 @@ function prepareSpeechRequest(req) {
   const keyProblem = elevenKeyProblem();
   if (keyProblem) return { error: keyProblem, status: 503 };
   const parsed = parseVoice(req.body?.voice);
-  const tone = String(req.body?.tone || '').toLowerCase() === 'candid' ? 'candid' : 'polite';
+  const rawTone = String(req.body?.tone || '').toLowerCase();
+  const tone = rawTone === 'candid' || rawTone === 'asmr' ? rawTone : 'polite';
   return {
     text,
     tone,
@@ -217,14 +218,15 @@ function elevenModelChain() {
 }
 
 function voiceSettingsFor(model, tone) {
+  const asmr = tone === 'asmr';
   const candid = tone === 'candid';
   const settings = {
-    stability: candid ? 0.3 : 0.42,
-    similarity_boost: 0.85,
+    stability: asmr ? 0.16 : candid ? 0.3 : 0.42,
+    similarity_boost: asmr ? 0.72 : 0.85,
     use_speaker_boost: true,
   };
   if (model.includes('multilingual_v2') && !model.startsWith('eleven_v3')) {
-    settings.style = candid ? 0.58 : 0.28;
+    settings.style = asmr ? 0.82 : candid ? 0.58 : 0.28;
   }
   return settings;
 }
