@@ -9,6 +9,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useLiminalitySettings } from '../../context/LiminalitySettingsContext';
+import { speakText } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import {
   LIMINALITY_SPEED_DEFAULT,
@@ -17,12 +18,29 @@ import {
 } from '../../voice/liminalitySettings';
 import { ELEVEN_VOICES, neuralVoiceIdFromUri } from '../../voice/neuralVoices';
 
+const TEST_LINE = 'Hi. This is how I sound.';
+
 export default function LiminalityMenu() {
   const { enabled, setEnabled, voiceUri, setVoiceUri, speechSpeed, setSpeechSpeed, supported, runtime } =
     useLiminalitySettings();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const selectedUri = neuralVoiceIdFromUri(voiceUri);
   const speed = Number(speechSpeed) || LIMINALITY_SPEED_DEFAULT;
+  const selectedVoice = ELEVEN_VOICES.find((voice) => voice.uri === selectedUri) || ELEVEN_VOICES[0];
+
+  const playTest = (uri = selectedUri) => {
+    unlockNeuralAudio();
+    setVoiceUri(uri);
+    setPreviewing(true);
+    setPreviewError('');
+    void speakText(TEST_LINE)
+      .catch((error) => {
+        setPreviewError(error instanceof Error ? error.message : 'Could not play that voice.');
+      })
+      .finally(() => setPreviewing(false));
+  };
   const live =
     runtime.phase === 'listening' ||
     runtime.phase === 'speaking' ||
@@ -112,6 +130,7 @@ export default function LiminalityMenu() {
                 onClick={() => {
                   unlockNeuralAudio();
                   setVoiceUri(voice.uri);
+                  playTest(voice.uri);
                 }}
                 sx={{
                   justifyContent: 'flex-start',
@@ -145,6 +164,22 @@ export default function LiminalityMenu() {
             { value: LIMINALITY_SPEED_MAX, label: 'Fast' },
           ]}
         />
+        <Button
+          type="button"
+          fullWidth
+          variant="contained"
+          size="small"
+          disabled={previewing}
+          onClick={() => playTest()}
+          sx={{ mt: 1.25, textTransform: 'none' }}
+        >
+          {previewing ? 'Playing…' : `Hear ${selectedVoice.name}`}
+        </Button>
+        {previewError ? (
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+            {previewError}
+          </Typography>
+        ) : null}
       </Menu>
     </>
   );
