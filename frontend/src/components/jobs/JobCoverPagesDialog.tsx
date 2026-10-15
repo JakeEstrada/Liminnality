@@ -13,8 +13,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import axios from 'axios';
-import toast from 'react-hot-toast';
-import { buildContractCoverPdf } from '../../utils/buildContractCoverPdf';
+import ContractCoverSheets, { writeContractCoverPrintData } from './ContractCoverSheets';
 import {
   formatMoney,
   getContractBase,
@@ -23,41 +22,10 @@ import {
   inferDueTypeFromLabel,
   matchesStandard4060Template,
   resolvePaymentSchedule,
-  roundMoney,
   sumChangeOrdersForFinal,
 } from '../../utils/paymentSchedule';
-import { invalidateJobFilesCache } from '../../utils/fileListCache';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-
-const COVER_LOGO = '/scww.png';
-const ZELLE_QR = '/contract-zelle-qr.png?v=3';
-
-const OWNER_NAME = 'Edward T. Estrada';
-const OWNER_PHONE = '949-498-4397';
-const LICENSE_NUMBER = '# C-6 753246';
-const CSLB_ADDRESS = '9835 Goethe Road';
-const STAINER_REFERRALS = '*Jesus (949)616-2038 | *Carlos Jimenez (714)678-7072';
-const SHOP_ADDRESS_1 = '1030 Calle Sombra, F';
-const SHOP_ADDRESS_2 = 'San Clemente, CA 92673';
-
-const PAGE_SX = {
-  width: 816,
-  height: 1056,
-  mx: 'auto',
-  bgcolor: '#fff',
-  color: '#000',
-  boxSizing: 'border-box',
-  fontFamily: 'Arial, Helvetica, sans-serif',
-  '& .MuiTypography-root': { color: '#000' },
-};
-
-const NOTICE_TEXT =
-  'Under the Mechanics’ Lien law, any contractor, subcontractor, laborer, material man or other person who helps to improve your property and is not paid for his labor, services or materials has a right to enforce his claim against your property. Under the law you may protect yourself against such claims by filing, before commencing such work of improvement, an original contract for the work of improvement or a modification thereof, in the office of the county recorder of the county where the property is situated and requiring that a contractor’s payment bond be recorded in such office. Said bond shall be in an amount not less than fifty percent (50%) of the contract price and shall, in addition to any conditions for the performance of the contract, be conditioned for the payment in full of the claims of all persons furnishing labor, services, equipment or materials for the work described in said contract. Owner has a 3 day right of rescission to cancel contract after date of signing.';
-
-function jobCardNumber(job) {
-  return job?._id ? String(job._id).slice(-6).toUpperCase() : '';
-}
 
 function customerDisplayName(job) {
   const cust = job?.customerId && typeof job.customerId === 'object' ? job.customerId : null;
@@ -216,37 +184,15 @@ function buildPaymentDisplay(rows, cityStateLine, trackNo) {
   };
 }
 
-function ContractSection({ number, title, children }) {
-  return (
-    <Box sx={{ mt: 2.15 }}>
-      <Typography
-        sx={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          mb: 0.55,
-        }}
-      >
-        {number}. {title}
-      </Typography>
-      {children}
-    </Box>
-  );
-}
-
 function buildInspectionParagraph(estimateNumber, total) {
   const num = String(estimateNumber || '').trim() || '______';
   const words = amountToContractWords(total);
   return `Estimate No. ${num} is based on a visual inspection only. It does not include any unseen issues that may arise during demolition and require a change order and or additional fees and costs. All of the above work is to be completed in a substantial and workmanlike manner according to standard practices for the sum of ${words}.`;
 }
 
-export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
-  const page1Ref = useRef(null);
-  const page2Ref = useRef(null);
+export default function JobCoverPagesDialog({ open, onClose, job }) {
   const estimateInputRef = useRef(null);
   const [step, setStep] = useState('details');
-  const [exporting, setExporting] = useState(false);
 
   const [docDate, setDocDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customerName, setCustomerName] = useState('');
@@ -270,6 +216,30 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
   );
   const cityStateDisplay = [city, state, zip].filter(Boolean).join(', ');
   const showTrackField = isStandard4060(rows);
+  const coverData = useMemo(
+    () => ({
+      customerName: customerName.trim(),
+      street: street.trim(),
+      cityStateDisplay,
+      contractDate: formatContractDate(docDate),
+      estimateNumber: estimateNumber.trim(),
+      totalLabel: formatMoney(total),
+      inspectionParagraph,
+      paymentLines: paymentDisplay.lines,
+      paymentNotes: paymentDisplay.notes,
+    }),
+    [
+      customerName,
+      street,
+      cityStateDisplay,
+      docDate,
+      estimateNumber,
+      total,
+      inspectionParagraph,
+      paymentDisplay.lines,
+      paymentDisplay.notes,
+    ],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -306,22 +276,6 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     };
   }, [open, job?._id]);
 
-  const persistPdf = async (doc, filename) => {
-    if (!job?._id) return null;
-    const blob = doc.output('blob');
-    const formData = new FormData();
-    formData.append('file', new File([blob], filename, { type: 'application/pdf' }));
-    formData.append('jobId', String(job._id));
-    formData.append('fileType', 'contract');
-    formData.append('description', `Contract packet cover pages for ${job.title || 'job'}`);
-    const { data } = await axios.post(`${API_URL}/files/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    invalidateJobFilesCache(job._id);
-    onSaved?.();
-    return data?._id ? String(data._id) : null;
-  };
-
   const handleContinue = () => {
     if (!String(estimateNumber || '').trim()) {
       setFormError('Enter the estimate number from QuickBooks.');
@@ -336,48 +290,9 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     setStep('preview');
   };
 
-  const handleOpenPdf = async () => {
-    try {
-      setExporting(true);
-      const doc = await buildContractCoverPdf({
-        customerName: customerName.trim(),
-        street: street.trim(),
-        cityStateDisplay,
-        contractDate: formatContractDate(docDate),
-        estimateNumber: estimateNumber.trim(),
-        totalLabel: formatMoney(total),
-        inspectionParagraph,
-        paymentLines: paymentDisplay.lines,
-        paymentNotes: paymentDisplay.notes,
-      });
-      const stamp = new Date().toISOString().slice(0, 10);
-      const filename = `Contract-Packet-${jobCardNumber(job) || 'job'}-${stamp}.pdf`;
-      let fileId = null;
-      try {
-        fileId = await persistPdf(doc, filename);
-      } catch (persistError) {
-        console.error('Contract cover save to job failed:', persistError);
-      }
-      if (fileId) {
-        window.open(`/pdf/${fileId}`, '_blank', 'noopener,noreferrer');
-        toast.success('Contract cover saved to this job');
-        onClose();
-        return;
-      }
-      const url = URL.createObjectURL(doc.output('blob'));
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast.error('Opened the PDF, but saving to the job failed');
-    } catch (error) {
-      console.error('Contract cover PDF failed:', error);
-      toast.error(error?.message || 'Failed to create contract cover');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleClose = () => {
-    if (exporting) return;
+  const handleOpen = () => {
+    writeContractCoverPrintData(coverData);
+    window.open('/print/contract-cover', '_blank', 'noopener,noreferrer');
     onClose();
   };
 
@@ -386,7 +301,7 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={onClose}
       maxWidth={false}
       fullWidth
       scroll="paper"
@@ -394,7 +309,7 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
         {step === 'details' ? 'Contract details' : 'Cover page'}
-        <IconButton size="small" onClick={handleClose} disabled={exporting} aria-label="Close">
+        <IconButton size="small" onClick={onClose} aria-label="Close">
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -496,215 +411,24 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
             </Box>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center', py: 1 }}>
-            <Box ref={page1Ref} sx={{ ...PAGE_SX, p: '32px' }}>
-              <Box
-                sx={{
-                  height: '100%',
-                  border: '4px solid #000',
-                  boxSizing: 'border-box',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  px: '48px',
-                  py: '40px',
-                }}
-              >
-                <Box sx={{ width: '100%' }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: 34, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                    Contract. Packet
-                  </Typography>
-                  <Typography sx={{ fontWeight: 700, fontSize: 18, mt: 2.25, letterSpacing: '0.1em' }}>
-                    CUSTOMER
-                  </Typography>
-                  <Typography sx={{ fontWeight: 700, fontSize: 24, mt: 0.85, lineHeight: 1.25 }}>
-                    {customerName}
-                  </Typography>
-                  {street ? (
-                    <Typography sx={{ fontWeight: 700, fontSize: 20, mt: 0.25, lineHeight: 1.25 }}>
-                      {street}
-                    </Typography>
-                  ) : null}
-                  {cityStateDisplay ? (
-                    <Typography sx={{ fontWeight: 700, fontSize: 20, mt: 0.25, lineHeight: 1.25 }}>
-                      {cityStateDisplay}
-                    </Typography>
-                  ) : null}
-                </Box>
-
-                <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Box
-                    component="img"
-                    src={COVER_LOGO}
-                    alt="San Clemente Woodworking"
-                    sx={{ width: 156, height: 156, objectFit: 'contain', display: 'block' }}
-                  />
-                  <Box
-                    sx={{
-                      mt: 2.5,
-                      border: '1.5px solid #000',
-                      px: 4,
-                      py: 1.25,
-                      minWidth: 300,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <Typography sx={{ fontWeight: 700, fontSize: 16, textDecoration: 'underline' }}>
-                      San Clemente Woodworking
-                    </Typography>
-                    <Typography sx={{ fontSize: 14.5, mt: 0.4 }}>{SHOP_ADDRESS_1}</Typography>
-                    <Typography sx={{ fontSize: 14.5 }}>{SHOP_ADDRESS_2}</Typography>
-                  </Box>
-                </Box>
-
-                <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Typography sx={{ fontStyle: 'italic', fontSize: 14, maxWidth: 460, lineHeight: 1.45 }}>
-                    We appreciate the opportunity to work with you and look forward to completing your
-                    project.
-                  </Typography>
-                  <Typography sx={{ fontStyle: 'italic', fontWeight: 600, fontSize: 13.5, mt: 2.25 }}>
-                    Stainer Referrals:
-                  </Typography>
-                  <Typography sx={{ fontSize: 13, mt: 0.3, maxWidth: 480 }}>
-                    {STAINER_REFERRALS}
-                  </Typography>
-                  <Box
-                    component="img"
-                    src={ZELLE_QR}
-                    alt="Pay with Zelle"
-                    sx={{
-                      width: 240,
-                      height: 'auto',
-                      display: 'block',
-                      mt: 2,
-                    }}
-                  />
-                </Box>
-              </Box>
-            </Box>
-
-            <Box
-              ref={page2Ref}
-              sx={{
-                ...PAGE_SX,
-                px: '56px',
-                py: '44px',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <Typography sx={{ fontWeight: 700, fontSize: 20, textAlign: 'center', letterSpacing: '0.06em' }}>
-                Contract
-              </Typography>
-
-              <ContractSection number="1" title="Agreement">
-                <Typography sx={{ fontSize: 13.5, lineHeight: 1.55 }}>
-                  This agreement is made and entered into on {formatContractDate(docDate)}, by and between
-                  owner or manager {OWNER_NAME}, phone {OWNER_PHONE}. San Clemente Woodworking proposes to
-                  complete the following as per attached Estimate #{estimateNumber || '______'} with owner’s
-                  signature, for a total of {formatMoney(total)}.
-                </Typography>
-              </ContractSection>
-
-              <ContractSection number="2" title="Scope of work">
-                <Typography sx={{ fontSize: 13.5, lineHeight: 1.55 }}>
-                  {inspectionParagraph}
-                </Typography>
-              </ContractSection>
-
-              <ContractSection number="3" title="Payment">
-                <Typography sx={{ fontSize: 13.5, lineHeight: 1.55, mb: 0.75 }}>
-                  Payments are due as follows:
-                </Typography>
-                <Box sx={{ pl: 1.5 }}>
-                  {paymentDisplay.lines.map((line) => (
-                    <Typography key={line} sx={{ fontSize: 13.5, lineHeight: 1.5, fontWeight: 600 }}>
-                      {line}
-                    </Typography>
-                  ))}
-                </Box>
-                {paymentDisplay.notes.map((line) => (
-                  <Typography key={line} sx={{ fontSize: 13.5, lineHeight: 1.5, mt: 0.65 }}>
-                    {line}
-                  </Typography>
-                ))}
-              </ContractSection>
-
-              <ContractSection number="4" title="Notice to owner">
-                <Box sx={{ border: '1.5px solid #000', px: 1.5, py: 1 }}>
-                  <Typography sx={{ fontSize: 10.5, fontWeight: 700, mb: 0.45, letterSpacing: '0.02em' }}>
-                    SECTION 7019 — CONTRACTORS LICENSE LAW
-                  </Typography>
-                  <Typography sx={{ fontSize: 10, lineHeight: 1.4 }}>
-                    {NOTICE_TEXT}
-                  </Typography>
-                </Box>
-              </ContractSection>
-
-              <ContractSection number="5" title="License">
-                <Typography sx={{ fontSize: 13.5, lineHeight: 1.5 }}>
-                  Contractors are required by law to be licensed and regulated by the Contractors’ State
-                  License Board. Any questions concerning a contractor may be referred to the registrar of
-                  the board whose address is:
-                </Typography>
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    mt: 1.25,
-                    columnGap: 3,
-                  }}
-                >
-                  <Box>
-                    <Typography sx={{ fontWeight: 700, fontSize: 13 }}>Contractors’ State License Board</Typography>
-                    <Typography sx={{ fontSize: 13, mt: 0.25 }}>{CSLB_ADDRESS}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography sx={{ fontWeight: 700, fontSize: 13 }}>State Contractors’ License</Typography>
-                    <Typography sx={{ fontSize: 13, mt: 0.25 }}>{LICENSE_NUMBER}</Typography>
-                  </Box>
-                </Box>
-              </ContractSection>
-
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  columnGap: 5,
-                  mt: 7,
-                  pt: 2.5,
-                }}
-              >
-                <Typography sx={{ fontSize: 14, display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                  Sign here
-                  <Box component="span" sx={{ flex: 1, borderBottom: '1px solid #000', height: 16 }} />
-                </Typography>
-                <Typography sx={{ fontSize: 14, display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                  Date
-                  <Box component="span" sx={{ flex: 1, borderBottom: '1px solid #000', height: 16 }} />
-                </Typography>
-              </Box>
-            </Box>
+          <Box sx={{ py: 1 }}>
+            <ContractCoverSheets data={coverData} />
           </Box>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         {step === 'details' ? (
           <>
-            <Button onClick={handleClose}>Cancel</Button>
+            <Button onClick={onClose}>Cancel</Button>
             <Button variant="contained" onClick={handleContinue}>
               Continue
             </Button>
           </>
         ) : (
           <>
-            <Button onClick={() => setStep('details')} disabled={exporting}>
-              Back
-            </Button>
-            <Button variant="contained" onClick={handleOpenPdf} disabled={exporting}>
-              {exporting ? 'Opening…' : 'Save and open'}
+            <Button onClick={() => setStep('details')}>Back</Button>
+            <Button variant="contained" onClick={handleOpen}>
+              Open
             </Button>
           </>
         )}

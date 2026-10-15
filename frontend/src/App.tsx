@@ -43,6 +43,7 @@ import DashboardPage from './pages/DashboardPage';
 import KioskDashboardPage from './pages/KioskDashboardPage';
 import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
+import ContractCoverPrintPage from './pages/ContractCoverPrintPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
 import VendorsPage from './pages/VendorsPage';
@@ -161,6 +162,14 @@ function App(): JSX.Element | null {
           element={
             <ProtectedRoute>
               <PictureViewerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/print/contract-cover"
+          element={
+            <ProtectedRoute>
+              <ContractCoverPrintPage />
             </ProtectedRoute>
           }
         />

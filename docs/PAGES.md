@@ -182,6 +182,10 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **Route:** `/picture/:fileId`
 - **Purpose:** Full-page image viewer.
 
+### ContractCoverPrintPage.tsx
+- **Route:** `/print/contract-cover`
+- **Purpose:** Printable HTML contract cover (letter, two pages). Opened from the job Cover page dialog. Does not save a file to the job.
+
 ---
 
 ## Route map (quick)
@@ -210,6 +214,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/pipeline-view` | PipelinePage (tvMode) |
 | `/calendar-view` | CalendarPage (tvMode) |
 | `/customers-view` | CustomersPage (viewMode) |
+| `/print/contract-cover` | ContractCoverPrintPage |
 
 Defined in `frontend/src/App.tsx`.
 

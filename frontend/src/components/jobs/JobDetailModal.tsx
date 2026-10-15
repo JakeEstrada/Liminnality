@@ -2266,9 +2266,6 @@ function JobDetailModal({
         open={coverPagesOpen}
         onClose={() => setCoverPagesOpen(false)}
         job={job}
-        onSaved={() => {
-          fetchJobFiles({ force: true });
-        }}
       />
 
       <JobCannedSmsDialog
