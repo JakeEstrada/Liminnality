@@ -46,7 +46,11 @@ async function nextInterviewLine(input: {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 }) {
   const { data } = await api.post('/assistant/interview', input);
-  return data as { spoken: string; done?: boolean };
+  return data as { spoken: string; done?: boolean; showRobot?: boolean };
+}
+
+function mentionsThisRobot(text: string) {
+  return /this robot|look at (this |the )?robot/i.test(text || '');
 }
 
 function listenOnce(
@@ -140,6 +144,7 @@ export default function PrankInterview() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [heard, setHeard] = useState('');
   const [spoken, setSpoken] = useState('');
+  const [showRobot, setShowRobot] = useState(false);
   const runRef = useRef(0);
   const deadRef = useRef({ dead: false });
   const voice = ELEVEN_VOICES.find((row) => row.uri === neuralVoiceIdFromUri(voiceUri)) || ELEVEN_VOICES[0];
@@ -163,6 +168,7 @@ export default function PrankInterview() {
     setPhase('idle');
     setHeard('');
     setSpoken('');
+    setShowRobot(false);
   };
 
   const start = () => {
@@ -175,6 +181,7 @@ export default function PrankInterview() {
     setHoldMic(true);
     setHeard('');
     setSpoken('');
+    setShowRobot(false);
     setPhase('asking');
     void (async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 200));
@@ -182,6 +189,7 @@ export default function PrankInterview() {
         const opening = await nextInterviewLine({ name: voiceRef.current.name, start: true, messages });
         if (runRef.current !== run || deadRef.current.dead) return;
         setSpoken(opening.spoken);
+        if (opening.showRobot || mentionsThisRobot(opening.spoken)) setShowRobot(true);
         messages.push({ role: 'assistant', content: opening.spoken });
         await speakInterview(opening.spoken, voiceRef.current.uri);
         if (runRef.current !== run || deadRef.current.dead) return;
@@ -204,6 +212,7 @@ export default function PrankInterview() {
           messages.push({ role: 'assistant', content: turn.spoken });
           if (messages.length > 16) messages.splice(0, messages.length - 16);
           setSpoken(turn.spoken);
+          if (turn.showRobot || mentionsThisRobot(turn.spoken)) setShowRobot(true);
           setPhase('reacting');
           await speakInterview(turn.spoken, voiceRef.current.uri);
           if (turn.done) {
@@ -235,7 +244,7 @@ export default function PrankInterview() {
             : 'Speaking';
 
   return (
-    <Box sx={{ maxWidth: 640, mx: 'auto' }}>
+    <Box sx={{ maxWidth: showRobot ? 720 : 640, mx: 'auto' }}>
       <Paper
         sx={{
           p: { xs: 2.5, sm: 3.5 },
@@ -273,11 +282,28 @@ export default function PrankInterview() {
         <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
           {label}
         </Typography>
-        <Typography sx={{ mt: 0.5, mb: 2, fontSize: 18, fontWeight: 500, lineHeight: 1.45 }}>
+        <Typography sx={{ mt: 0.5, mb: showRobot ? 1.5 : 2, fontSize: 18, fontWeight: 500, lineHeight: 1.45 }}>
           {phase === 'idle'
             ? 'Sit down and answer out loud. Change her voice from the Liminality chip.'
             : spoken}
         </Typography>
+
+        {showRobot ? (
+          <Box
+            component="img"
+            src="/interview-robot.png"
+            alt="This robot"
+            sx={{
+              display: 'block',
+              width: '100%',
+              maxHeight: 420,
+              objectFit: 'contain',
+              borderRadius: 2,
+              bgcolor: '#f4f1ec',
+              mb: 2,
+            }}
+          />
+        ) : null}
 
         {phase === 'listening' || heard ? (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>

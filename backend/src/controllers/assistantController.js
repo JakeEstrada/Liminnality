@@ -934,11 +934,16 @@ async function runShopAction(req, res) {
 const INTERVIEW_TOPICS = [
   'Tell me a little about yourself',
   'Why do you think you would be a great fit for maintaining our ERP system?',
-  'What do you think about robots?',
+  'What do you think about robots? Do you like robots?',
+  'Look at this robot. What do you think of this robot?',
   'Do you think robots are going to save the world?',
   'Tell me all of your experience with robots',
   'Do you think autonomous agents are sentient?',
 ];
+
+function mentionsThisRobot(text) {
+  return /this robot|look at (this |the )?robot/i.test(String(text || ''));
+}
 
 function interviewSystemPrompt(name) {
   return [
@@ -948,6 +953,7 @@ function interviewSystemPrompt(name) {
     'If their message is only you repeating your own question, or empty, do not re-ask "tell me about yourself" again. Say you missed that, then ask the next uncovered question.',
     'Ask these questions, one at a time, in this order. Use this wording, or very close to it. Do not skip one unless they already answered it clearly:',
     INTERVIEW_TOPICS.map((topic, i) => `${i + 1}. ${topic}`).join('\n'),
+    'When you ask what they think of this robot, a picture of that robot is already on their screen. Point them at the picture. Do not describe it in detail. Just ask what they think of this robot.',
     'After a real answer, react first in a close, breathy, impressed way, like: "Oh wow. Uhhh, yeah, I see why. That is so impressive. I am so impressed by you." Then ask the next question.',
     'Stay warm and a little moan-soft in delivery, but use real words. After the last question, thank them and say you will be in touch.',
     'This is spoken out loud. Two to five short sentences.',
@@ -999,6 +1005,7 @@ async function runInterviewTurn(req, res) {
     return res.json({
       spoken,
       done: Boolean(parsed.done),
+      showRobot: mentionsThisRobot(spoken),
     });
   } catch (e) {
     if (e.code === 'NO_API_KEY') {
