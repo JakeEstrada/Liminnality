@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   Tab,
   Tabs,
   Table,
@@ -26,7 +27,7 @@ import {
   Typography,
   Paper,
 } from '@mui/material';
-import { Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { DeleteOutline as DeleteOutlineIcon, Refresh as RefreshIcon, Sms as SmsIcon } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
@@ -37,6 +38,8 @@ import SmsConversationView, { type ChatMessage } from '../components/messages/Sm
 import TeamInboxPanel from '../components/messages/TeamInboxPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
+  deleteSms,
+  deleteSmsConversation,
   fetchSmsDetail,
   fetchSmsLists,
   markSmsRead,
@@ -137,12 +140,16 @@ function MessageDetailDialog({
   open,
   detail,
   loading,
+  deleting,
   onClose,
+  onDelete,
 }: {
   open: boolean;
   detail: SmsDetail | null;
   loading: boolean;
+  deleting: boolean;
   onClose: () => void;
+  onDelete: () => void;
 }) {
   const isReceived = detail?.direction === 'inbound';
 
@@ -217,7 +224,12 @@ function MessageDetailDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button color="error" onClick={onDelete} disabled={loading || deleting || !detail} sx={{ mr: 'auto' }}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </Button>
+        <Button onClick={onClose} disabled={deleting}>
+          Close
+        </Button>
       </DialogActions>
     </Dialog>
   );
@@ -228,11 +240,13 @@ function MessageTable({
   tab,
   loading,
   onOpenRow,
+  onDeleteRow,
 }: {
   rows: SmsRow[];
   tab: 'sent' | 'scheduled' | 'received';
   loading: boolean;
   onOpenRow: (row: SmsRow) => void;
+  onDeleteRow?: (row: SmsRow) => void;
 }) {
   if (loading) {
     return (
@@ -269,6 +283,7 @@ function MessageTable({
             <TableCell>Message</TableCell>
             <TableCell>{tab === 'scheduled' ? 'Send at' : 'When'}</TableCell>
             <TableCell>Status</TableCell>
+            {onDeleteRow ? <TableCell padding="checkbox" /> : null}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -296,6 +311,17 @@ function MessageTable({
                 {tab === 'scheduled' ? formatWhen(row.sendAt) : formatWhen(row.sentAt || row.createdAt)}
               </TableCell>
               <TableCell>{statusChip(row.status)}</TableCell>
+              {onDeleteRow ? (
+                <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
+                  <IconButton
+                    size="small"
+                    aria-label="Delete message"
+                    onClick={() => onDeleteRow(row)}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              ) : null}
             </TableRow>
           ))}
         </TableBody>
@@ -326,6 +352,12 @@ function MessagePage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<SmsDetail | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: 'message'; recordType: SmsRecordType; id: string; label: string }
+    | { kind: 'conversation'; phone: string; label: string }
+    | null
+  >(null);
 
   const fetchMessages = useCallback(async (limit = listLimit, { silent = false } = {}) => {
     if (!silent) setLoadingLists(true);
@@ -412,6 +444,46 @@ function MessagePage() {
   const handleCloseDetail = () => {
     setDetailOpen(false);
     setSelectedDetail(null);
+  };
+
+  const handleDeleteMessage = (row: SmsRow, tabKey: 'sent' | 'scheduled' | 'received') => {
+    setPendingDelete({
+      kind: 'message',
+      recordType: rowRecordType(row, tabKey),
+      id: row.id,
+      label: (row.body || 'this message').slice(0, 80),
+    });
+  };
+
+  const handleDeleteConversation = (phone: string, label: string) => {
+    setPendingDelete({ kind: 'conversation', phone, label });
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      if (pendingDelete.kind === 'conversation') {
+        const result = await deleteSmsConversation(pendingDelete.phone);
+        if (!result.deleted) toast.error('Could not find that conversation');
+        else toast.success(result.deleted === 1 ? 'Conversation deleted' : `Removed ${result.deleted} messages`);
+      } else {
+        await deleteSms(pendingDelete.recordType, pendingDelete.id);
+        toast.success('Message deleted');
+      }
+      setPendingDelete(null);
+      await fetchMessages(listLimit, { silent: true });
+    } catch (error) {
+      console.error(error);
+      const msg = isAxiosError(error)
+        ? error.response?.data?.error || error.message || 'Failed to delete'
+        : error instanceof Error
+          ? error.message
+          : 'Failed to delete';
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSend = async (to: string, message: string) => {
@@ -624,6 +696,7 @@ function MessagePage() {
           tab="scheduled"
           loading={loadingLists}
           onOpenRow={(row) => void handleOpenMessage(row, 'scheduled')}
+          onDeleteRow={(row) => handleDeleteMessage(row, 'scheduled')}
         />
       ) : (
         <>
@@ -638,6 +711,7 @@ function MessagePage() {
             onSchedule={handleSchedule}
             onOpenMessage={handleOpenChatMessage}
             onOpenConversation={(ids) => void handleOpenConversation(ids)}
+            onDeleteConversation={handleDeleteConversation}
           />
           {lists.sent.length + lists.received.length >= listLimit && (
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
@@ -663,8 +737,41 @@ function MessagePage() {
         open={detailOpen}
         detail={selectedDetail}
         loading={detailLoading}
+        deleting={deleting}
         onClose={handleCloseDetail}
+        onDelete={() => {
+          if (!selectedDetail) return;
+          const tabKey =
+            selectedDetail.direction === 'inbound'
+              ? 'received'
+              : selectedDetail.recordType === 'scheduled'
+                ? 'scheduled'
+                : 'sent';
+          handleDeleteMessage(selectedDetail, tabKey);
+          handleCloseDetail();
+        }}
       />
+
+      <Dialog open={Boolean(pendingDelete)} onClose={() => (deleting ? null : setPendingDelete(null))} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {pendingDelete?.kind === 'conversation' ? 'Delete conversation?' : 'Delete this message?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {pendingDelete?.kind === 'conversation'
+              ? `Remove the thread with ${pendingDelete.label} from Paarth. It does not unsend texts that already went out.`
+              : 'Remove this text from Paarth. It does not unsend anything already delivered.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" onClick={() => void confirmDelete()} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

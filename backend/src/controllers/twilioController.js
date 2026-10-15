@@ -1250,6 +1250,66 @@ async function markSmsRead(req, res) {
   }
 }
 
+function partyPhoneVariants(value) {
+  const variants = new Set(phoneMatchVariants(value));
+  const digits = phoneDigits(normalizeToE164(value) || value);
+  const last10 =
+    digits.length === 11 && digits.startsWith('1')
+      ? digits.slice(1)
+      : digits.length >= 10
+        ? digits.slice(-10)
+        : '';
+  if (last10.length === 10) {
+    const a = last10.slice(0, 3);
+    const b = last10.slice(3, 6);
+    const c = last10.slice(6);
+    variants.add(`(${a}) ${b}-${c}`);
+    variants.add(`(${a})${b}-${c}`);
+    variants.add(`${a}-${b}-${c}`);
+    variants.add(`${a}.${b}.${c}`);
+    variants.add(`${a}${b}${c}`);
+  }
+  return [...variants].filter(Boolean);
+}
+
+async function deleteSms(req, res) {
+  try {
+    const { recordType, id } = req.params;
+    if (!id || !['message', 'scheduled'].includes(recordType)) {
+      return res.status(400).json({ error: 'Invalid message reference' });
+    }
+    const Model = recordType === 'scheduled' ? ScheduledSms : SmsMessage;
+    const doc = await Model.findByIdAndDelete(id);
+    if (!doc) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    return res.status(200).json({ ok: true, id: String(id), recordType });
+  } catch (error) {
+    console.error('deleteSms error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to delete message' });
+  }
+}
+
+async function deleteSmsConversation(req, res) {
+  try {
+    const phone = String(req.query?.phone || req.body?.phone || '').trim();
+    const variants = partyPhoneVariants(phone);
+    if (!phone || variants.length === 0) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+    const party = { $in: variants };
+    const [messages, scheduled] = await Promise.all([
+      SmsMessage.deleteMany({ $or: [{ from: party }, { to: party }] }),
+      ScheduledSms.deleteMany({ to: party }),
+    ]);
+    const deleted = (messages.deletedCount || 0) + (scheduled.deletedCount || 0);
+    return res.status(200).json({ ok: true, deleted });
+  } catch (error) {
+    console.error('deleteSmsConversation error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to delete conversation' });
+  }
+}
+
 async function getUnreadSmsCount(req, res) {
   try {
     const unread = await SmsMessage.countDocuments({
@@ -1417,6 +1477,8 @@ module.exports = {
   scheduleSms,
   listSms,
   getSmsDetail,
+  deleteSms,
+  deleteSmsConversation,
   markSmsRead,
   getUnreadSmsCount,
   startSmsScheduler,

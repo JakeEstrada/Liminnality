@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
+  DeleteOutline as DeleteOutlineIcon,
   Edit as EditIcon,
   Schedule as ScheduleIcon,
   Send as SendIcon,
@@ -186,6 +187,7 @@ export default function SmsConversationView({
   onSchedule,
   onOpenMessage,
   onOpenConversation,
+  onDeleteConversation,
 }: {
   sent: SmsRow[];
   received: SmsRow[];
@@ -197,6 +199,7 @@ export default function SmsConversationView({
   onSchedule: (to: string, message: string, sendAtLocal: string) => Promise<void>;
   onOpenMessage: (row: ChatMessage) => void;
   onOpenConversation?: (unreadIds: string[]) => void;
+  onDeleteConversation?: (phone: string, label: string) => void;
 }) {
   const theme = useTheme();
   const isMobile = useIsMobile();
@@ -360,7 +363,11 @@ export default function SmsConversationView({
                   key={conv.key}
                   selected={conv.key === selectedKey && !composingNew}
                   onClick={() => openConversation(conv)}
-                  sx={{ alignItems: 'flex-start', py: 1.25 }}
+                  sx={{
+                    alignItems: 'flex-start',
+                    py: 1.25,
+                    '&:hover .conv-delete': { opacity: 1 },
+                  }}
                 >
                   <ListItemText
                     primary={conv.customerName || conv.displayPhone}
@@ -396,6 +403,23 @@ export default function SmsConversationView({
                       >
                         {conv.unreadCount}
                       </Box>
+                    ) : null}
+                    {onDeleteConversation ? (
+                      <IconButton
+                        className="conv-delete"
+                        size="small"
+                        aria-label={`Delete conversation with ${conv.customerName || conv.displayPhone}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteConversation(conv.phone, conv.customerName || conv.displayPhone);
+                        }}
+                        sx={{
+                          mt: 0.25,
+                          opacity: { xs: 1, md: 0 },
+                        }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
                     ) : null}
                   </Box>
                 </ListItemButton>
@@ -446,6 +470,14 @@ export default function SmsConversationView({
                 </>
               )}
             </Box>
+            {selected && !composingNew && onDeleteConversation ? (
+              <IconButton
+                aria-label="Delete conversation"
+                onClick={() => onDeleteConversation(selected.phone, selected.customerName || selected.displayPhone)}
+              >
+                <DeleteOutlineIcon />
+              </IconButton>
+            ) : null}
           </Box>
 
           <Box

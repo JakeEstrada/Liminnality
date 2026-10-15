@@ -12,6 +12,8 @@ const {
   scheduleSmsAdhoc,
   listSms,
   getSmsDetail,
+  deleteSms,
+  deleteSmsConversation,
   markSmsRead,
   getTwilioConfigStatus,
   syncInboundFromTwilio,
@@ -34,7 +36,9 @@ router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
 router.post('/schedule-sms-adhoc', requireAuth, scheduleSmsAdhoc);
 router.get('/unread-count', requireAuth, getUnreadSmsCount);
 router.get('/messages', requireAuth, listSms);
+router.delete('/messages/conversation', requireAuth, deleteSmsConversation);
 router.get('/messages/:recordType/:id', requireAuth, getSmsDetail);
+router.delete('/messages/:recordType/:id', requireAuth, deleteSms);
 router.post('/messages/message/:id/read', requireAuth, markSmsRead);
 router.post('/mms-upload', requireAuth, upload.single('file'), uploadTwilioMmsStaging);
 

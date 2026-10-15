@@ -14,9 +14,9 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import axios from 'axios';
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import toast from 'react-hot-toast';
+import { captureHtmlToPng } from '../../utils/captureHtmlToPng';
 import {
   formatMoney,
   getContractBase,
@@ -310,17 +310,15 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
 
   const capturePage = async (el) => {
     if (!el) throw new Error('Cover page not ready');
-    const canvas = await html2canvas(el, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-    });
-    return canvas.toDataURL('image/png');
+    return captureHtmlToPng(el, { width: PAGE_SX.width, height: PAGE_SX.height, scale: 2 });
   };
 
   const renderPdf = async () => {
     flushSync(() => {});
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!page1Ref.current || !page2Ref.current) {
+      throw new Error('Cover page not ready');
+    }
     const img1 = await capturePage(page1Ref.current);
     const img2 = await capturePage(page2Ref.current);
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
@@ -365,7 +363,16 @@ export default function JobCoverPagesDialog({ open, onClose, job, onSaved }) {
       const doc = await renderPdf();
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `Contract-Packet-${jobCardNumber(job) || 'job'}-${stamp}.pdf`;
-      doc.save(filename);
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
       try {
         await persistPdf(doc, filename);
         toast.success('Contract cover saved to this job');

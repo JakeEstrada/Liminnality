@@ -90,13 +90,35 @@ export async function fetchSmsDetail(recordType: SmsRecordType, id: string): Pro
   return withTwilioPathFallback<SmsDetail>(`/messages/${recordType}/${id}`, (url) => api.get(url));
 }
 
+function notifyUnreadMaybeChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paarth:sms-unread-changed'));
+  }
+}
+
+export async function deleteSms(recordType: SmsRecordType, id: string) {
+  const result = await withTwilioPathFallback<{ ok: boolean }>(`/messages/${recordType}/${id}`, (url) =>
+    api.delete(url),
+  );
+  notifyUnreadMaybeChanged();
+  return result;
+}
+
+export async function deleteSmsConversation(phone: string) {
+  const encoded = encodeURIComponent(String(phone || '').trim());
+  const result = await withTwilioPathFallback<{ ok: boolean; deleted: number }>(
+    `/messages/conversation?phone=${encoded}`,
+    (url) => api.delete(url),
+  );
+  notifyUnreadMaybeChanged();
+  return result;
+}
+
 export async function markSmsRead(id: string): Promise<SmsDetail> {
   const detail = await withTwilioPathFallback<SmsDetail>(`/messages/message/${id}/read`, (url) =>
     api.post(url),
   );
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('paarth:sms-unread-changed'));
-  }
+  notifyUnreadMaybeChanged();
   return detail;
 }
 
