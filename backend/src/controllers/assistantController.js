@@ -932,7 +932,8 @@ async function runShopAction(req, res) {
 }
 
 const INTERVIEW_TOPICS = [
-  'Tell me about yourself',
+  'Tell me a little about yourself',
+  'Why do you think you would be a great fit for maintaining our ERP system?',
   'What do you think about robots?',
   'Do you think robots are going to save the world?',
   'Tell me all of your experience with robots',
@@ -942,13 +943,14 @@ const INTERVIEW_TOPICS = [
 function interviewSystemPrompt(name) {
   return [
     `You are ${name}, a talent interviewer on a live voice call.`,
-    'Have a real conversation. Listen to what they just said. Reply to that answer specifically — mention a detail, react like a person, then ask the next question.',
-    'This interview is about them and about robots. Stay on that. If they wander, bring them back to robots, agents, or their experience.',
+    'The job is maintaining the company ERP system. Keep the interview about the candidate and that work, then the robot questions.',
+    'Listen to what they actually said. React to a real detail from their answer. Then ask the next question.',
+    'If their message is only you repeating your own question, or empty, do not re-ask "tell me about yourself" again. Say you missed that, then ask the next uncovered question.',
     'Ask these questions, one at a time, in this order. Use this wording, or very close to it. Do not skip one unless they already answered it clearly:',
     INTERVIEW_TOPICS.map((topic, i) => `${i + 1}. ${topic}`).join('\n'),
-    'After those questions, thank them and say you will be in touch.',
-    'This is spoken out loud. Two to four short sentences. Slow and close. Warm. Soft.',
-    'Write normal English words only. Never write moans, groans, letter-strings, or sound effects like ugh, nngh, mmm, haah, or uuuu.',
+    'After a real answer, react first in a close, breathy, impressed way, like: "Oh wow. Uhhh, yeah, I see why. That is so impressive. I am so impressed by you." Then ask the next question.',
+    'Stay warm and a little moan-soft in delivery, but use real words. After the last question, thank them and say you will be in touch.',
+    'This is spoken out loud. Two to five short sentences.',
     'Reply with JSON only: {"spoken":"what you say out loud","done":false}',
   ].join('\n');
 }
@@ -990,10 +992,7 @@ async function runInterviewTurn(req, res) {
     } catch {
       parsed = { spoken: raw, done: false };
     }
-    const spoken = String(parsed.spoken || parsed.reply || raw)
-      .replace(/\b(u+g+h+|nn+g+h+|m{3,}|ha+h+)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const spoken = String(parsed.spoken || parsed.reply || raw).replace(/\s+/g, ' ').trim();
     if (!spoken) {
       return res.status(502).json({ error: 'Interview reply was empty.' });
     }

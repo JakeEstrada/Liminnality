@@ -11,12 +11,43 @@ import {
 import { speakNeural, unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { ELEVEN_VOICES, neuralVoiceIdFromUri } from '../../voice/neuralVoices';
 
-const ENDPOINT_MS = 1400;
+const ENDPOINT_MS = 1600;
+const SETTLE_MS = 900;
 
 type Phase = 'idle' | 'asking' | 'listening' | 'reacting' | 'done';
 
+function normalizeHeard(raw: string) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isEcho(heard: string, spoken: string) {
+  const a = normalizeHeard(heard);
+  const b = normalizeHeard(spoken);
+  if (!a) return true;
+  if (a.split(' ').length < 3) return false;
+  if (!b) return false;
+  if (a === b || b.includes(a) || a.includes(b)) return true;
+  if (
+    /tell me (a little )?about yourself|hear a little about yourself|a little about yourself|why do you think you would be a great fit/.test(
+      a,
+    )
+  ) {
+    return true;
+  }
+  const long = b.split(' ').filter((word) => word.length > 3);
+  if (!long.length) return false;
+  const have = new Set(a.split(' '));
+  const hits = long.filter((word) => have.has(word)).length;
+  return hits / long.length >= 0.55;
+}
+
 async function speakInterview(text: string, voiceUri: string) {
   await speakNeural(text, voiceUri, 'asmr');
+  await new Promise((resolve) => window.setTimeout(resolve, SETTLE_MS));
 }
 
 async function nextInterviewLine(input: {
@@ -29,7 +60,7 @@ async function nextInterviewLine(input: {
   return data as { spoken: string; done?: boolean };
 }
 
-function listenOnce(signal: { dead: boolean }): Promise<string> {
+function listenOnce(signal: { dead: boolean }, ignore: string[]): Promise<string> {
   return new Promise((resolve) => {
     const recognition = createSpeechRecognition();
     if (!recognition) {
@@ -39,7 +70,7 @@ function listenOnce(signal: { dead: boolean }): Promise<string> {
     let last = '';
     let timer = 0;
     let settled = false;
-    const finish = () => {
+    const finish = (text = last) => {
       if (settled) return;
       settled = true;
       if (timer) window.clearTimeout(timer);
@@ -51,35 +82,49 @@ function listenOnce(signal: { dead: boolean }): Promise<string> {
       } catch {
         /* already stopped */
       }
-      resolve(last.trim());
+      resolve(text.trim());
     };
     recognition.onresult = (event) => {
       if (signal.dead) return;
       const { finalText, interimText } = collectTranscript(event);
-      last = finalText || interimText || last;
+      const text = finalText || interimText || '';
+      if (!text || ignore.some((line) => isEcho(text, line))) {
+        last = '';
+        return;
+      }
+      last = text;
       if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(finish, ENDPOINT_MS);
+      timer = window.setTimeout(() => finish(last), ENDPOINT_MS);
     };
     recognition.onerror = () => {
-      if (!settled && last) finish();
+      if (!settled && last) finish(last);
     };
     recognition.onend = () => {
-      if (!settled) finish();
+      if (!settled) finish(last);
     };
     try {
       recognition.start();
     } catch {
-      finish();
+      finish('');
     }
     window.setTimeout(() => {
-      if (!settled) finish();
+      if (!settled) finish(last);
     }, 28_000);
   });
 }
 
+async function listenForAnswer(signal: { dead: boolean }, ignore: string[]) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal.dead) return '';
+    const heard = await listenOnce(signal, ignore);
+    if (heard && !ignore.some((line) => isEcho(heard, line))) return heard;
+  }
+  return '';
+}
+
 export default function PrankInterview() {
   const supported = isSpeechRecognitionSupported();
-  const { voiceUri, setVoiceUri } = useLiminalitySettings();
+  const { voiceUri } = useLiminalitySettings();
   const [phase, setPhase] = useState<Phase>('idle');
   const [heard, setHeard] = useState('');
   const [spoken, setSpoken] = useState('');
@@ -112,6 +157,7 @@ export default function PrankInterview() {
     const run = runRef.current + 1;
     runRef.current = run;
     const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    const spokenLines: string[] = [];
     unlockNeuralAudio();
     setHeard('');
     setSpoken('');
@@ -121,25 +167,35 @@ export default function PrankInterview() {
         const opening = await nextInterviewLine({ name: voiceRef.current.name, start: true, messages });
         if (runRef.current !== run || deadRef.current.dead) return;
         setSpoken(opening.spoken);
+        spokenLines.push(opening.spoken);
         messages.push({ role: 'assistant', content: opening.spoken });
         await speakInterview(opening.spoken, voiceRef.current.uri);
         if (runRef.current !== run || deadRef.current.dead) return;
 
+        let emptyTurns = 0;
         while (runRef.current === run && !deadRef.current.dead) {
           setPhase('listening');
-          const answer = await listenOnce(deadRef.current);
+          const answer = await listenForAnswer(deadRef.current, spokenLines);
           if (runRef.current !== run || deadRef.current.dead) return;
-          setHeard(answer || '...');
+          if (!answer) {
+            emptyTurns += 1;
+            setHeard('');
+            if (emptyTurns < 2) continue;
+          } else {
+            emptyTurns = 0;
+          }
+          setHeard(answer);
           const turn = await nextInterviewLine({
             name: voiceRef.current.name,
-            answer: answer || 'I did not catch that.',
+            answer: answer || 'I was quiet. Please go on to the next question.',
             messages,
           });
           if (runRef.current !== run || deadRef.current.dead) return;
-          if (answer) messages.push({ role: 'user', content: answer });
+          messages.push({ role: 'user', content: answer });
           messages.push({ role: 'assistant', content: turn.spoken });
           if (messages.length > 16) messages.splice(0, messages.length - 16);
           setSpoken(turn.spoken);
+          spokenLines.push(turn.spoken);
           setPhase('reacting');
           await speakInterview(turn.spoken, voiceRef.current.uri);
           if (turn.done) {
@@ -199,27 +255,9 @@ export default function PrankInterview() {
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography sx={{ fontWeight: 600, lineHeight: 1.25 }}>{voice.name}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Talent · live interview
+              Talent · ERP interview
             </Typography>
           </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
-          {ELEVEN_VOICES.map((row) => (
-            <Button
-              key={row.uri}
-              type="button"
-              size="small"
-              variant={row.uri === voice.uri ? 'contained' : 'outlined'}
-              onClick={() => {
-                unlockNeuralAudio();
-                setVoiceUri(row.uri);
-              }}
-              sx={{ textTransform: 'none' }}
-            >
-              {row.name}
-            </Button>
-          ))}
         </Box>
 
         <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2 }}>
@@ -227,7 +265,7 @@ export default function PrankInterview() {
         </Typography>
         <Typography sx={{ mt: 0.5, mb: 2, fontSize: 18, fontWeight: 500, lineHeight: 1.45 }}>
           {phase === 'idle'
-            ? 'Sit down, pick a voice, and answer out loud. She will listen and keep the conversation going.'
+            ? 'Sit down and answer out loud. Change her voice from the Liminality chip.'
             : spoken}
         </Typography>
 
