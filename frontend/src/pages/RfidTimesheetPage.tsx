@@ -1,5 +1,5 @@
 /**
- * RfidTimesheetPage — RFID-derived timesheets by employee & pay period (Fri–Thu).
+ * RfidTimesheetPage — RFID-derived timesheets by employee & pay period (Fri–Thu; Daniel Mon–Sun).
  * Shown as the Payroll tab on /payroll. /rfid-timesheets redirects there.
  * Current week and payday week are editable. Older weeks unlock with the financial PIN.
  */
@@ -70,15 +70,17 @@ import {
   type RfidTimesheetWeekPayload,
 } from '../utils/rfidTimesheetScans';
 import {
-  PAY_PERIOD_DAYS,
   formatPayDate,
   formatPayPeriodDayHeader,
+  getPayCalendarForEmployee,
   getPayPeriodDayDates,
   getPayPeriodForDate,
   isCurrentPayPeriod,
+  isDanielEmployee,
   isEditablePayPeriod,
   isPastPayPeriod,
   listRecentPayPeriods,
+  periodDays,
   shouldPreferRfidOverManual,
   shiftPayPeriod,
   type PayPeriod,
@@ -252,7 +254,7 @@ function sheetFromRemotePayload(
       };
     }),
     receipts: remote.receipts || [],
-    travelMiles: mergeTravelMiles(remote.travelMiles),
+    travelMiles: mergeTravelMiles(remote.travelMiles, period),
     additionalHours: (remote.additionalHours || []).map((row) => ({
       id: row.id || newAdditionalHoursRow().id,
       description: String(row.description ?? ''),
@@ -274,13 +276,13 @@ function localSheetHasData(sheet: WeekSheetData): boolean {
   );
 }
 
-function defaultTravelMiles(): TravelMileRow[] {
-  return PAY_PERIOD_DAYS.map((day) => ({ day, miles: '' }));
+function defaultTravelMiles(period?: PayPeriod): TravelMileRow[] {
+  return periodDays(period).map((day) => ({ day, miles: '' }));
 }
 
-function mergeTravelMiles(saved: TravelMileRow[] | undefined): TravelMileRow[] {
+function mergeTravelMiles(saved: TravelMileRow[] | undefined, period?: PayPeriod): TravelMileRow[] {
   const byDay = Object.fromEntries((saved || []).map((r) => [r.day, r]));
-  return PAY_PERIOD_DAYS.map((day) => ({
+  return periodDays(period).map((day) => ({
     day,
     miles: String(byDay[day]?.miles ?? ''),
   }));
@@ -288,7 +290,7 @@ function mergeTravelMiles(saved: TravelMileRow[] | undefined): TravelMileRow[] {
 
 function defaultWorkHours(period: PayPeriod): DayRow[] {
   const dates = getPayPeriodDayDates(period);
-  return PAY_PERIOD_DAYS.map((day, index) => ({
+  return periodDays(period).map((day, index) => ({
     day,
     dateLabel: formatPayPeriodDayHeader(dates[index]),
     in: '0',
@@ -306,7 +308,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
       return {
         workHours: defaultWorkHours(period),
         receipts: [],
-        travelMiles: defaultTravelMiles(),
+        travelMiles: defaultTravelMiles(period),
         additionalHours: [],
         ratePerHour: '',
         manualByDay: {},
@@ -325,7 +327,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
         note: String(byDay[d.day]?.note ?? ''),
       })),
       receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
-      travelMiles: mergeTravelMiles(parsed.travelMiles),
+      travelMiles: mergeTravelMiles(parsed.travelMiles, period),
       additionalHours: Array.isArray(parsed.additionalHours)
         ? parsed.additionalHours.map((row: AdditionalHoursRow) => ({
             id: row.id || newAdditionalHoursRow().id,
@@ -341,7 +343,7 @@ function loadWeekSheet(employeeId: string, period: PayPeriod): WeekSheetData {
     return {
       workHours: defaultWorkHours(period),
       receipts: [],
-      travelMiles: defaultTravelMiles(),
+      travelMiles: defaultTravelMiles(period),
       additionalHours: [],
       ratePerHour: '',
       manualByDay: {},
@@ -413,7 +415,9 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   const [workHours, setWorkHours] = useState<DayRow[]>(() => defaultWorkHours(getPayPeriodForDate(new Date())));
   const [manualByDay, setManualByDay] = useState<Record<string, RfidManualDayFlags>>({});
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
-  const [travelMiles, setTravelMiles] = useState<TravelMileRow[]>(() => defaultTravelMiles());
+  const [travelMiles, setTravelMiles] = useState<TravelMileRow[]>(() =>
+    defaultTravelMiles(getPayPeriodForDate(new Date())),
+  );
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [ratePerHour, setRatePerHour] = useState('');
   const [shiftIn, setShiftIn] = useState(defaultShiftProfile().shiftIn);
@@ -439,7 +443,12 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   const isPastWeek = isPastPayPeriod(payPeriod);
   const canOpenEditor = isEditablePayPeriod(payPeriod) || (isPastWeek && pastWeeksUnlocked);
   const canEdit = canOpenEditor && isEditMode;
-  const currentPeriodId = getPayPeriodForDate(new Date()).id;
+  const payCalendar = useMemo(
+    () => getPayCalendarForEmployee(selectedEmployee?.id),
+    [selectedEmployee?.id],
+  );
+  const currentPeriodId = getPayPeriodForDate(new Date(), payCalendar).id;
+  const danielWeek = isDanielEmployee(selectedEmployee?.id);
 
   const activeShiftProfile = useMemo((): RfidEmployeeShiftProfile => {
     if (!selectedEmployee) return defaultShiftProfile();
@@ -453,7 +462,11 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
     );
   }, [selectedEmployee, employeeProfiles, shiftIn, shiftOut, shiftBreak, ratePerHour]);
 
-  const payPeriodOptions = useMemo(() => listRecentPayPeriods(new Date(), 16), []);
+  const payPeriodOptions = useMemo(() => listRecentPayPeriods(new Date(), 16, payCalendar), [payCalendar]);
+
+  useEffect(() => {
+    setPayPeriod(getPayPeriodForDate(new Date(), payCalendar));
+  }, [payCalendar]);
 
   const scheduleHours = workHours.reduce(
     (sum, day) => sum + calculateHours(day.in, day.out, day.breaks),
@@ -603,7 +616,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
       let sheet: WeekSheetData = {
         workHours: defaultWorkHours(payPeriod),
         receipts: [],
-        travelMiles: defaultTravelMiles(),
+        travelMiles: defaultTravelMiles(payPeriod),
         additionalHours: [],
         ratePerHour: profile.ratePerHour || '',
         manualByDay: {},
@@ -820,7 +833,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
           };
         }),
         receipts: remote.receipts || [],
-        travelMiles: mergeTravelMiles(remote.travelMiles),
+        travelMiles: mergeTravelMiles(remote.travelMiles, payPeriod),
         additionalHours: (remote.additionalHours || []).map((row) => ({
           id: row.id || newAdditionalHoursRow().id,
           description: String(row.description ?? ''),
@@ -1417,12 +1430,21 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
             </Typography>
           )}
           <Typography variant="body2" color="text.secondary">
-            Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
+            {danielWeek ? (
+              <>
+                Daniel&apos;s pay week is <strong>Monday through Sunday</strong> (hours tracked Mon–Fri).
+                Paychecks go out the following Monday.
+              </>
+            ) : (
+              <>
+                Pay periods run <strong>Friday through Thursday</strong>; paychecks go out on the following Friday.
+              </>
+            )}{' '}
             Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
-            being paid, through payday Friday) to adjust times, set each employee&apos;s expected shift, or add miles
+            being paid, through payday) to adjust times, set each employee&apos;s expected shift, or add miles
             and receipts. A lone late punch — at or after the expected clock-out — is treated as clock-out and
             auto-fills clock-in from the expected shift start. Missing morning-style clock-outs after 11:59 PM use
-            the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday Friday;
+            the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday;
             unlock a previous week with the PIN to edit it.
           </Typography>
         </Box>
@@ -1445,7 +1467,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
             : isPastWeek
               ? 'Previous week unlocked for this session. Click Edit to change hours.'
               : canOpenEditor
-                ? 'This is the week being paid today. You can still Edit until the end of payday Friday — then it locks.'
+                ? `This is the week being paid today. You can still Edit until the end of payday${danielWeek ? ' Monday' : ' Friday'} — then it locks.`
                 : 'This pay period is in the future. Editing opens when this becomes the current week.'}
         </Alert>
       )}
@@ -1533,7 +1555,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
               <Button
                 size="small"
                 variant="text"
-                onClick={() => setPayPeriod(getPayPeriodForDate(new Date()))}
+                onClick={() => setPayPeriod(getPayPeriodForDate(new Date(), payCalendar))}
                 sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
               >
                 This week

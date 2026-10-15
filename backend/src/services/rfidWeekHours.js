@@ -14,6 +14,16 @@ const PAY_PERIOD_DAYS = [
   'Thursday',
 ];
 
+const DANIEL_PAY_PERIOD_DAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
 const RFID_SCAN_BURST_MS = 5 * 60 * 1000;
 const RFID_DEFAULT_SHIFT_IN = '600';
 const RFID_DEFAULT_SHIFT_OUT = '1430';
@@ -111,20 +121,34 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 86400000);
 }
 
-function getPayPeriodForDate(date = new Date()) {
+function isDanielEmployee(nameOrKey) {
+  const key = normalizeEmployeeKey(nameOrKey);
+  return key === 'daniel' || key.startsWith('daniel ');
+}
+
+function getPayCalendar(employeeKey = '') {
+  if (isDanielEmployee(employeeKey)) {
+    return { weekStartDay: 1, days: DANIEL_PAY_PERIOD_DAYS };
+  }
+  return { weekStartDay: 5, days: PAY_PERIOD_DAYS };
+}
+
+function periodDays(period) {
+  return period?.days?.length ? period.days : PAY_PERIOD_DAYS;
+}
+
+function getPayPeriodForDate(date = new Date(), employeeKey = '') {
+  const calendar = getPayCalendar(employeeKey);
   const weekday = getShopWeekday(date);
   const todayStart = shopStartOfDay(date);
-  let periodStart;
-
-  if (weekday === 5) periodStart = todayStart;
-  else if (weekday === 6) periodStart = addDays(todayStart, -1);
-  else periodStart = addDays(todayStart, -(weekday + 2));
-
+  const delta = (weekday - calendar.weekStartDay + 7) % 7;
+  const periodStart = addDays(todayStart, -delta);
   const periodEnd = addDays(periodStart, 6);
   return {
     start: periodStart,
     end: periodEnd,
     id: formatYmd(periodStart),
+    days: calendar.days,
   };
 }
 
@@ -134,9 +158,10 @@ function getTodayPayPeriodDay(period, now = new Date()) {
   const startYmd = formatYmd(period.start);
   if (nowYmd < startYmd || nowYmd > endYmd) return null;
 
-  for (let index = 0; index < PAY_PERIOD_DAYS.length; index += 1) {
+  const days = periodDays(period);
+  for (let index = 0; index < days.length; index += 1) {
     const dayDate = addDays(period.start, index);
-    if (formatYmd(dayDate) === nowYmd) return PAY_PERIOD_DAYS[index];
+    if (formatYmd(dayDate) === nowYmd) return days[index];
   }
 
   return null;
@@ -265,7 +290,8 @@ function buildEmployeeIdentity(displayName, tags, pins) {
 }
 
 function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Date()) {
-  const dayDates = PAY_PERIOD_DAYS.map((_, index) => addDays(period.start, index));
+  const days = periodDays(period);
+  const dayDates = days.map((_, index) => addDays(period.start, index));
   const dateKeys = dayDates.map((d) => formatYmd(d));
   const scansByDateKey = new Map(dateKeys.map((key) => [key, []]));
 
@@ -285,7 +311,7 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
 
   const result = {};
 
-  PAY_PERIOD_DAYS.forEach((day, index) => {
+  days.forEach((day, index) => {
     const dayDate = dayDates[index];
     const key = dateKeys[index];
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
@@ -378,8 +404,8 @@ function mergeRfidIntoWorkHours(rows, rfidByDay, manualByDay) {
   });
 }
 
-function defaultWorkHours() {
-  return PAY_PERIOD_DAYS.map((day) => ({
+function defaultWorkHours(period) {
+  return periodDays(period).map((day) => ({
     day,
     in: '0',
     out: '0',
@@ -396,7 +422,7 @@ async function computeWeekTotalHours(displayName, options = {}) {
   }
 
   const now = options.now || new Date();
-  const period = getPayPeriodForDate(now);
+  const period = getPayPeriodForDate(now, employeeKey);
 
   const [tags, pins, profile, timesheet, scans] = await Promise.all([
     RfidTag.find({ isActive: { $ne: false } }).lean(),
@@ -418,7 +444,7 @@ async function computeWeekTotalHours(displayName, options = {}) {
     breakMinutes: Number(profile?.breakMinutes ?? RFID_DEFAULT_BREAK_MINUTES) || 0,
   };
 
-  const baseRows = defaultWorkHours();
+  const baseRows = defaultWorkHours(period);
   const savedWorkHours = (timesheet?.workHours || []).map((row) => ({
     day: row.day,
     in: String(row.in ?? '0'),

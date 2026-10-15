@@ -1,6 +1,6 @@
 /**
- * PayrollPage — Manual timesheet plus RFID payroll on a second tab.
- * Route: /payroll  (?tab=payroll for RFID hours)
+ * PayrollPage — RFID payroll first, plus a Manual timesheet tab.
+ * Route: /payroll  (?tab=manual for the handwritten sheet)
  * Docs: ../../../docs/PAGES.md#payrollpagetsx
  */
 import { useState, useEffect, useRef } from 'react';
@@ -1217,7 +1217,7 @@ function ManualPayrollPage() {
 
 function PayrollPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') === 'payroll' ? 'payroll' : 'manual';
+  const tab = searchParams.get('tab') === 'manual' ? 'manual' : 'payroll';
 
   return (
     <Box>
@@ -1231,15 +1231,15 @@ function PayrollPage() {
         <Tabs
           value={tab}
           onChange={(_event, next) => {
-            setSearchParams(next === 'payroll' ? { tab: 'payroll' } : {}, { replace: true });
+            setSearchParams(next === 'manual' ? { tab: 'manual' } : {}, { replace: true });
           }}
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab value="manual" label="Manual" sx={{ textTransform: 'none' }} />
           <Tab value="payroll" label="Payroll" sx={{ textTransform: 'none' }} />
+          <Tab value="manual" label="Manual" sx={{ textTransform: 'none' }} />
         </Tabs>
       </Box>
-      {tab === 'payroll' ? <RfidTimesheetPage hidePageTitle /> : <ManualPayrollPage />}
+      {tab === 'manual' ? <ManualPayrollPage /> : <RfidTimesheetPage hidePageTitle />}
     </Box>
   );
 }

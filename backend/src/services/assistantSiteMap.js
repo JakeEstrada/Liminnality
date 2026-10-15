@@ -66,7 +66,7 @@ Main app routes (path → purpose):
 - /website — customer website homepage CMS (developer tab, super admin only)
 - /developer/analytics — Google campaign tag and first-party website traffic log (developer tab, super admin only)
 - /developer — developer page with tabs for tasks, voice, print, finance hub, activity log, website, analytics, and RFID
-- /payroll — payroll (Manual tab + Payroll tab for RFID hours)
+- /payroll — payroll (Payroll tab first for RFID hours; Manual tab for the handwritten sheet)
 - /bills — bills (super admin only)
 - /finance — finance hub (hidden from typical nav; developer tab, super admin only)
 - /takeoff-sheet — takeoff sheet

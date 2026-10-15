@@ -1,8 +1,8 @@
 import { addDays, format, startOfDay } from 'date-fns';
 import {
-  PAY_PERIOD_DAYS,
   formatPayPeriodDayHeader,
   getPayPeriodDayDates,
+  periodDays,
   type PayPeriod,
 } from './payPeriod';
 
@@ -232,14 +232,15 @@ function breakForShift(
   return String(profile.breakMinutes ?? RFID_DEFAULT_BREAK_MINUTES);
 }
 
-/** Build Fri–Thu clock rows from raw scans for one employee and pay period. */
+/** Build clock rows from raw scans for one employee and pay period. */
 export function buildRfidDayClocks(
   scans: RfidScanRecord[],
   employee: RfidEmployeeIdentity,
   period: PayPeriod,
   shiftProfile: RfidEmployeeShiftProfile = defaultShiftProfile(),
   now: Date = new Date(),
-): Record<(typeof PAY_PERIOD_DAYS)[number], RfidDayClock> {
+): Record<string, RfidDayClock> {
+  const days = periodDays(period);
   const dayDates = getPayPeriodDayDates(period);
   const dateKeys = dayDates.map((d) => localDateKey(d));
   const scansByDateKey = new Map<string, Date[]>();
@@ -263,9 +264,9 @@ export function buildRfidDayClocks(
     scansByDateKey.get(key)!.push(at);
   }
 
-  const result = {} as Record<(typeof PAY_PERIOD_DAYS)[number], RfidDayClock>;
+  const result: Record<string, RfidDayClock> = {};
 
-  PAY_PERIOD_DAYS.forEach((day, index) => {
+  days.forEach((day, index) => {
     const dayDate = dayDates[index];
     const key = dateKeys[index];
     const raw = (scansByDateKey.get(key) || []).sort((a, b) => a.getTime() - b.getTime());
@@ -391,8 +392,9 @@ export function buildTimesheetRowsFromScans(
   savedWorkHours: Array<{ day: string; in: string; out: string; breaks: string; note?: string }> = [],
   preferRfidWhenScansExist = false,
 ): { rows: Array<RfidDayClock & { day: string; dateLabel: string }>; manual: Record<string, RfidManualDayFlags> } {
+  const days = periodDays(period);
   const dates = getPayPeriodDayDates(period).map((d) => formatPayPeriodDayHeader(d));
-  const baseRows = PAY_PERIOD_DAYS.map((day, index) => ({
+  const baseRows = days.map((day, index) => ({
     day,
     dateLabel: dates[index] || day,
     in: '0',
