@@ -47,8 +47,6 @@ type LiminalitySettingsContextValue = {
   supported: boolean;
   runtime: LiminalityRuntimeStatus;
   setRuntime: (next: LiminalityRuntimeStatus) => void;
-  holdMic: boolean;
-  setHoldMic: (next: boolean) => void;
 };
 
 const defaultRuntime: LiminalityRuntimeStatus = {
@@ -68,7 +66,6 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
   const [speechSpeed, setSpeechSpeedState] = useState(readLiminalitySpeechSpeed);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [runtime, setRuntime] = useState<LiminalityRuntimeStatus>(defaultRuntime);
-  const [holdMic, setHoldMic] = useState(false);
   const supported = isSpeechRecognitionSupported();
 
   useEffect(() => {
@@ -116,10 +113,8 @@ export function LiminalitySettingsProvider({ children }: { children: ReactNode }
       supported,
       runtime,
       setRuntime,
-      holdMic,
-      setHoldMic,
     }),
-    [enabled, setEnabled, voiceUri, setVoiceUri, speechSpeed, setSpeechSpeed, voices, supported, runtime, holdMic]
+    [enabled, setEnabled, voiceUri, setVoiceUri, speechSpeed, setSpeechSpeed, voices, supported, runtime]
   );
 
   return (

@@ -37,7 +37,6 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import GeocodeIssuePanel from '../components/developer/GeocodeIssuePanel';
 import LiminalityCommandsGuide from '../components/developer/LiminalityCommandsGuide';
-import PrankInterview from '../components/developer/PrankInterview';
 import FinanceHubPage from './FinanceHubPage';
 import CompletedTasksPage from './CompletedTasksPage';
 import WebsitePage from './WebsitePage';
@@ -46,7 +45,7 @@ import RfidPage from './RfidPage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const DEVELOPER_SECTIONS = ['tasks', 'voice', 'interview', 'finance', 'activity', 'website', 'analytics', 'rfid'];
+const DEVELOPER_SECTIONS = ['tasks', 'voice', 'finance', 'activity', 'website', 'analytics', 'rfid'];
 const FINANCE_TABS = ['deposits', 'register', 'estimates', 'change-orders', 'payment-schedules'];
 
 function resolveDeveloperSection(searchParams) {
@@ -254,7 +253,6 @@ function DeveloperTasksPage() {
   const sectionTitle = {
     tasks: 'Developer',
     voice: 'Voice commands',
-    interview: 'Interview',
     finance: 'Finance Hub',
     activity: 'Activity log',
     website: 'Website',
@@ -264,7 +262,6 @@ function DeveloperTasksPage() {
   const sectionSubtitle = {
     tasks: 'Shop extras in one place — typical users do not see these tabs',
     voice: 'What you can say to Liminality after the listen cue',
-    interview: 'Live interview room. Answer out loud.',
     finance: 'Bank register, deposits, estimates, and payment tracking',
     activity: 'Completed work, appointments, and stage changes by week',
     website: 'Customer-facing homepage CMS',
@@ -312,7 +309,6 @@ function DeveloperTasksPage() {
       >
         <Tab value="tasks" label="Tasks" sx={{ textTransform: 'none' }} />
         <Tab value="voice" label="Voice" sx={{ textTransform: 'none' }} />
-        <Tab value="interview" label="Interview" sx={{ textTransform: 'none' }} />
         <Tab value="finance" label="Finance Hub" sx={{ textTransform: 'none' }} />
         <Tab value="activity" label="Activity log" sx={{ textTransform: 'none' }} />
         <Tab value="website" label="Website" sx={{ textTransform: 'none' }} />
@@ -324,10 +320,6 @@ function DeveloperTasksPage() {
       {section === 'voice' ? (
         <Box sx={{ px: 0 }}>
           <LiminalityCommandsGuide />
-        </Box>
-      ) : section === 'interview' ? (
-        <Box sx={{ px: 0 }}>
-          <PrankInterview />
         </Box>
       ) : section === 'finance' ? (
         <FinanceHubPage />

@@ -6,10 +6,9 @@ import LiminalityHud from './LiminalityHud';
 
 export default function LiminalityRuntime() {
   const navigate = useNavigate();
-  const { enabled, holdMic, setRuntime } = useLiminalitySettings();
+  const { enabled, setRuntime } = useLiminalitySettings();
   const voice = useLiminalityVoice({
     enabled,
-    holdMic,
     onNavigate: (path) => navigate(path),
   });
 
@@ -24,7 +23,7 @@ export default function LiminalityRuntime() {
 
   return (
     <LiminalityHud
-      enabled={enabled && !holdMic}
+      enabled={enabled}
       phase={voice.phase}
       statusLabel={voice.statusLabel}
       heard={voice.heard}

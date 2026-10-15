@@ -61,11 +61,9 @@ export type LiminalityPhase =
 
 export function useLiminalityVoice({
   enabled,
-  holdMic = false,
   onNavigate,
 }: {
   enabled: boolean;
-  holdMic?: boolean;
   onNavigate: (path: string) => void;
 }) {
   const supported = isSpeechRecognitionSupported();
@@ -851,7 +849,7 @@ export function useLiminalityVoice({
       setStatusLabel('Voice not available in this browser');
       return undefined;
     }
-    if (!enabled || holdMic) {
+    if (!enabled) {
       enabledRef.current = false;
       speakingRef.current = false;
       registerRef.current = 'polite';
@@ -860,13 +858,11 @@ export function useLiminalityVoice({
       assistantHistoryRef.current = [];
       clearTimers();
       destroyRecognition();
-      if (!holdMic) {
-        cancelSpeech();
-        stopPrimedMicrophone();
-      }
+      cancelSpeech();
+      stopPrimedMicrophone();
       setHeard('');
       setPhase('off');
-      setStatusLabel(holdMic ? 'Interview has the mic' : 'Microphone off');
+      setStatusLabel('Microphone off');
       return undefined;
     }
     enabledRef.current = true;
@@ -891,7 +887,7 @@ export function useLiminalityVoice({
     };
     // Intentionally only bind to enabled/supported so a command session is not torn down mid-speech.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, holdMic, supported]);
+  }, [enabled, supported]);
 
   useEffect(() => {
     if (!enabled || !supported) return undefined;

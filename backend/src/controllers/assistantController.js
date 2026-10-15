@@ -931,95 +931,9 @@ async function runShopAction(req, res) {
   }
 }
 
-const INTERVIEW_TOPICS = [
-  'Tell me a little about yourself',
-  'Why do you think you would be a great fit for maintaining our ERP system?',
-  'What do you think about robots? Do you like robots?',
-  'Look at this robot. What do you think of this robot?',
-  'Do you think robots are going to save the world?',
-  'Tell me all of your experience with robots',
-  'Do you think autonomous agents are sentient?',
-];
-
-function mentionsThisRobot(text) {
-  return /this robot|look at (this |the )?robot/i.test(String(text || ''));
-}
-
-function interviewSystemPrompt(name) {
-  return [
-    `You are ${name}, a talent interviewer on a live voice call.`,
-    'The job is maintaining the company ERP system. Keep the interview about the candidate and that work, then the robot questions.',
-    'Listen to what they actually said. React to a real detail from their answer. Then ask the next question.',
-    'If their message is only you repeating your own question, or empty, do not re-ask "tell me about yourself" again. Say you missed that, then ask the next uncovered question.',
-    'Ask these questions, one at a time, in this order. Use this wording, or very close to it. Do not skip one unless they already answered it clearly:',
-    INTERVIEW_TOPICS.map((topic, i) => `${i + 1}. ${topic}`).join('\n'),
-    'When you ask what they think of this robot, a picture of that robot is already on their screen. Point them at the picture. Do not describe it in detail. Just ask what they think of this robot.',
-    'After a real answer, react first in a close, breathy, impressed way, like: "Oh wow. Uhhh, yeah, I see why. That is so impressive. I am so impressed by you." Then ask the next question.',
-    'Stay warm and a little moan-soft in delivery, but use real words. After the last question, thank them and say you will be in touch.',
-    'This is spoken out loud. Two to five short sentences.',
-    'Reply with JSON only: {"spoken":"what you say out loud","done":false}',
-  ].join('\n');
-}
-
-async function runInterviewTurn(req, res) {
-  const name = String(req.body?.name || 'Ivanna').trim().slice(0, 40) || 'Ivanna';
-  const start = Boolean(req.body?.start);
-  const answer = String(req.body?.answer || '').trim().slice(0, 2000);
-  const history = sanitizeClientMessages(req.body);
-  if (!start && !answer && !history.length) {
-    return res.status(400).json({ error: 'Say something first.' });
-  }
-  const messages = [
-    { role: 'system', content: interviewSystemPrompt(name) },
-    ...history,
-  ];
-  if (start && !answer) {
-    messages.push({
-      role: 'user',
-      content: 'The interview is starting. Greet them briefly and ask them to tell you about themselves.',
-    });
-  } else {
-    messages.push({
-      role: 'user',
-      content: answer || 'I did not catch that. Ask me the last question again.',
-    });
-  }
-  try {
-    const data = await openaiChat({
-      messages,
-      temperature: 0.7,
-      max_tokens: 220,
-      response_format: { type: 'json_object' },
-    });
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    let parsed = {};
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = { spoken: raw, done: false };
-    }
-    const spoken = String(parsed.spoken || parsed.reply || raw).replace(/\s+/g, ' ').trim();
-    if (!spoken) {
-      return res.status(502).json({ error: 'Interview reply was empty.' });
-    }
-    return res.json({
-      spoken,
-      done: Boolean(parsed.done),
-      showRobot: mentionsThisRobot(spoken),
-    });
-  } catch (e) {
-    if (e.code === 'NO_API_KEY') {
-      return res.status(503).json({ error: 'Assistant is not configured. Set OPENAI_API_KEY on the server.' });
-    }
-    console.error('runInterviewTurn:', e);
-    return res.status(500).json({ error: e.message || 'Interview turn failed.' });
-  }
-}
-
 module.exports = {
   runAssistantChat,
   runMapShow,
   runShopAction,
   runJobLookup,
-  runInterviewTurn,
 };
