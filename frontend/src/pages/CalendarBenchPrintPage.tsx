@@ -29,6 +29,7 @@ const tdSx = {
   py: 1,
   verticalAlign: 'top',
   height: 42,
+  overflowWrap: 'anywhere',
 };
 
 export default function CalendarBenchPrintPage() {
@@ -135,25 +136,31 @@ export default function CalendarBenchPrintPage() {
           >
             <Box component="thead">
               <Box component="tr">
-                <Box component="th" sx={{ ...thSx, width: '22%' }}>
+                <Box component="th" sx={{ ...thSx, width: '20%' }}>
                   Customer / job
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '10%' }}>
+                <Box component="th" sx={{ ...thSx, width: '14%' }}>
+                  Address
+                </Box>
+                <Box component="th" sx={{ ...thSx, width: '9%' }}>
                   Deposit paid
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '22%' }}>
+                <Box component="th" sx={{ ...thSx, width: '12%' }}>
+                  Schedule
+                </Box>
+                <Box component="th" sx={{ ...thSx, width: '13%' }}>
                   Payments
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '10%' }}>
+                <Box component="th" sx={{ ...thSx, width: '8%' }}>
                   Total
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '10%' }}>
+                <Box component="th" sx={{ ...thSx, width: '8%' }}>
                   Start
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '10%' }}>
+                <Box component="th" sx={{ ...thSx, width: '8%' }}>
                   Finish
                 </Box>
-                <Box component="th" sx={{ ...thSx, width: '16%' }}>
+                <Box component="th" sx={{ ...thSx, width: '8%' }}>
                   Who
                 </Box>
               </Box>
@@ -166,7 +173,16 @@ export default function CalendarBenchPrintPage() {
                     <Box sx={{ fontSize: 11, mt: 0.25 }}>{row.jobTitle}</Box>
                   </Box>
                   <Box component="td" sx={tdSx}>
+                    {row.address || '—'}
+                  </Box>
+                  <Box component="td" sx={tdSx}>
                     {row.depositDate || '—'}
+                  </Box>
+                  <Box component="td" sx={tdSx}>
+                    <Box sx={{ fontWeight: 700 }}>{row.scheduleShort || '—'}</Box>
+                    {row.scheduleDetail ? (
+                      <Box sx={{ fontSize: 10, mt: 0.35, color: '#333' }}>{row.scheduleDetail}</Box>
+                    ) : null}
                   </Box>
                   <Box component="td" sx={tdSx}>
                     {row.payments || '—'}
@@ -184,6 +200,8 @@ export default function CalendarBenchPrintPage() {
               ))}
               {extraBlanks.map((key) => (
                 <Box component="tr" key={`blank-${key}`}>
+                  <Box component="td" sx={tdSx} />
+                  <Box component="td" sx={tdSx} />
                   <Box component="td" sx={tdSx} />
                   <Box component="td" sx={tdSx} />
                   <Box component="td" sx={tdSx} />

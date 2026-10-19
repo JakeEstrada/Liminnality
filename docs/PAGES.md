@@ -188,7 +188,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 
 ### CalendarBenchPrintPage.tsx
 - **Route:** `/print/calendar-bench`
-- **Purpose:** Landscape worksheet of jobs currently on the install bench: deposit date, payments, total, plus blank start / finish / who columns.
+- **Purpose:** Landscape worksheet of jobs currently on the install bench: address, deposit date, payment split (40/60 or custom), payments, total, plus blank start / finish / who columns. Opened from bench settings.
 
 ---
 

@@ -1861,6 +1861,7 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
   const [installerOrder, setInstallerOrder] = useState(installerBaseOrder);
   const [installerSettingsOpen, setInstallerSettingsOpen] = useState(false);
   const [installerDraftOrder, setInstallerDraftOrder] = useState(installerBaseOrder);
+  const [benchSettingsAnchor, setBenchSettingsAnchor] = useState(null);
 
   const [benchPosition, setBenchPosition] = useState(() => {
     if (tvMode) return 'right';
@@ -2585,11 +2586,11 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             gap: 0.5,
           }}
         >
-          <Tooltip title="Installer order settings">
+          <Tooltip title="Bench settings">
             <IconButton
               onClick={(e) => {
                 e.stopPropagation();
-                openInstallerSettings();
+                setBenchSettingsAnchor(e.currentTarget);
               }}
               size="small"
               sx={{
@@ -2603,6 +2604,38 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               <SettingsIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <Menu
+            anchorEl={benchSettingsAnchor}
+            open={Boolean(benchSettingsAnchor)}
+            onClose={() => setBenchSettingsAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            {!tvMode ? (
+              <MenuItem
+                onClick={() => {
+                  setBenchSettingsAnchor(null);
+                  handlePrintBench();
+                }}
+              >
+                <ListItemIcon>
+                  <PrintIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary="Print bench" />
+              </MenuItem>
+            ) : null}
+            <MenuItem
+              onClick={() => {
+                setBenchSettingsAnchor(null);
+                openInstallerSettings();
+              }}
+            >
+              <ListItemIcon>
+                <SettingsIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Installer order" />
+            </MenuItem>
+          </Menu>
           <IconButton
             onClick={() => {
               setIsBenchMinimized(!isBenchMinimized);
@@ -2761,22 +2794,9 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               }}
               onDrop={handleDropOnBench}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
-                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                  Bench ({benchJobs.length})
-                </Typography>
-                {!tvMode ? (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<PrintIcon fontSize="small" />}
-                    onClick={handlePrintBench}
-                    sx={{ textTransform: 'none', flexShrink: 0 }}
-                  >
-                    Print bench
-                  </Button>
-                ) : null}
-              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Bench ({benchJobs.length})
+              </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                 Jobs ready to schedule. Drag a scheduled card here to park it on the bench without removing dates.
               </Typography>
