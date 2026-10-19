@@ -69,6 +69,7 @@ import EmployeeSmsRecipientField, {
 import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
 import { buildCustomerShareMessage } from '../utils/customerShareMessage';
 import { buildCalendarBenchPrintData, writeCalendarBenchPrintData } from '../utils/calendarBenchPrint';
+import { jobSiteAddress } from '../utils/jobGeo';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -2354,10 +2355,19 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     }
   };
 
-  const handlePrintBench = () => {
-    writeCalendarBenchPrintData(
-      buildCalendarBenchPrintData(benchJobs, { hideSensitive }),
+  const handlePrintBench = async () => {
+    const jobs = await Promise.all(
+      benchJobs.map(async (job) => {
+        if (jobSiteAddress(job)) return job;
+        try {
+          const response = await axios.get(`${API_URL}/jobs/${job._id}`);
+          return response.data || job;
+        } catch {
+          return job;
+        }
+      }),
     );
+    writeCalendarBenchPrintData(buildCalendarBenchPrintData(jobs, { hideSensitive }));
     window.open('/print/calendar-bench', '_blank', 'noopener,noreferrer');
   };
 

@@ -2,31 +2,53 @@ function formatAddressParts(parts: unknown[]): string {
   return parts.map((part) => String(part || '').trim()).filter(Boolean).join(', ');
 }
 
+function formatAddressLike(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value !== 'object') return '';
+  const addr = value as {
+    fullAddress?: unknown;
+    street?: unknown;
+    line1?: unknown;
+    address1?: unknown;
+    city?: unknown;
+    state?: unknown;
+    zip?: unknown;
+    postalCode?: unknown;
+  };
+  const full = String(addr.fullAddress || '').trim();
+  if (full) return full;
+  return formatAddressParts([
+    addr.street || addr.line1 || addr.address1,
+    addr.city,
+    addr.state,
+    addr.zip || addr.postalCode,
+  ]);
+}
+
 export function jobSiteAddress(job: Record<string, unknown> | null | undefined): string {
   if (!job) return '';
-  const jobAddress = job.jobAddress as
-    | { street?: string; city?: string; state?: string; zip?: string }
-    | undefined;
-  if (jobAddress && (jobAddress.street || jobAddress.city || jobAddress.state || jobAddress.zip)) {
-    return formatAddressParts([jobAddress.street, jobAddress.city, jobAddress.state, jobAddress.zip]);
-  }
+  const fromJob = formatAddressLike(job.jobAddress);
+  if (fromJob) return fromJob;
+
   const customer =
     job.customerId && typeof job.customerId === 'object'
-      ? (job.customerId as { address?: { street?: string; city?: string; state?: string; zip?: string } })
+      ? (job.customerId as {
+          address?: unknown;
+          addresses?: unknown[];
+        })
       : null;
-  const customerAddress = customer?.address;
-  if (
-    customerAddress &&
-    (customerAddress.street || customerAddress.city || customerAddress.state || customerAddress.zip)
-  ) {
-    return formatAddressParts([
-      customerAddress.street,
-      customerAddress.city,
-      customerAddress.state,
-      customerAddress.zip,
-    ]);
+  const fromCustomer = formatAddressLike(customer?.address);
+  if (fromCustomer) return fromCustomer;
+
+  const extras = Array.isArray(customer?.addresses) ? customer.addresses : [];
+  for (const extra of extras) {
+    const line = formatAddressLike(extra);
+    if (line) return line;
   }
-  return '';
+
+  const geo = job.geo as { sourceAddress?: unknown } | undefined;
+  return String(geo?.sourceAddress || '').trim();
 }
 
 export function jobHasMapPin(job: Record<string, unknown> | null | undefined): boolean {

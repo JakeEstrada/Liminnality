@@ -36,6 +36,26 @@ describe('calendar bench print', () => {
     expect(data.rows[0].depositDate).toBe('10/1/2026');
   });
 
+  it('fills address from customer extra addresses or geocoded source', () => {
+    const fromExtra = buildCalendarBenchPrintData([
+      job({
+        customerId: {
+          name: 'Ada West',
+          addresses: [{ fullAddress: '88 Avenida Presidio, San Clemente, CA 92672' }],
+        },
+      }),
+    ]);
+    expect(fromExtra.rows[0].address).toContain('88 Avenida Presidio');
+
+    const fromGeo = buildCalendarBenchPrintData([
+      job({
+        customerId: { name: 'Ada West' },
+        geo: { sourceAddress: '200 Avenida Del Mar, San Clemente, CA 92672' },
+      }),
+    ]);
+    expect(fromGeo.rows[0].address).toContain('200 Avenida Del Mar');
+  });
+
   it('shows a custom multi-payment split as percents', () => {
     const data = buildCalendarBenchPrintData([
       job({

@@ -23,7 +23,7 @@ const { syncJobGeo, parseManualGeo, manualGeoPayload } = require('../services/ge
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
-const CUSTOMER_CONTACT_FIELDS = 'name primaryPhone primaryEmail emails contactEmails address contactPhones gateCode';
+const CUSTOMER_CONTACT_FIELDS = 'name primaryPhone primaryEmail emails contactEmails address addresses contactPhones gateCode';
 
 function parseTruthyQuery(value) {
   return value === true || value === 'true' || value === '1' || value === 1;
@@ -104,7 +104,7 @@ async function getJobs(req, res) {
     const jobs = await Job.find(query)
       .populate({
         path: 'customerId',
-        select: 'name primaryPhone primaryEmail address phones contactPhones',
+        select: 'name primaryPhone primaryEmail address addresses phones contactPhones',
         strictPopulate: false
       })
       .populate({
