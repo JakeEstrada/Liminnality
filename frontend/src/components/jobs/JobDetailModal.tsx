@@ -27,6 +27,7 @@ import {
   Link as MuiLink,
   Tooltip,
   Chip,
+  Alert,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -95,6 +96,7 @@ import {
   shopDisplayCustomerPath,
 } from '../../utils/shopDisplay';
 import { JOB_SOURCE_OPTIONS, formatJobSourceWithCompany, sanitizeMoneyTypingInput, clipReferralCompany } from '../../utils/jobSources';
+import { jobMapFixLabel, jobNeedsMapFix } from '../../utils/jobGeo';
 import ReferralCompanyField, { rememberReferralCompany } from '../common/ReferralCompanyField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -286,6 +288,7 @@ function JobDetailModal({
   onAppointmentCreated = () => {},
   onJobDataChanged = () => {},
   initialTab = 'overview',
+  startEditing = false,
   sx = {},
   hideSensitive = false,
   onRequestSensitiveUnlock = () => {},
@@ -317,6 +320,8 @@ function JobDetailModal({
   const hideFinancials = hideSensitive;
   const [coverPagesOpen, setCoverPagesOpen] = useState(false);
   const [cannedSmsOpen, setCannedSmsOpen] = useState(false);
+  const startEditingRef = useRef(Boolean(startEditing));
+  startEditingRef.current = Boolean(startEditing);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareSmsRecipient, setShareSmsRecipient] = useState('');
   const [shareMessage, setShareMessage] = useState('');
@@ -372,7 +377,10 @@ function JobDetailModal({
       const response = await axios.get(`${API_URL}/jobs/${jobId}`);
       setJob(response.data);
       setEditedJob(response.data);
-      setIsEditing(false);
+      setIsEditing(Boolean(startEditingRef.current));
+      if (startEditingRef.current) {
+        setActiveTab(JOB_MODAL_TAB.overview);
+      }
       await fetchJobTasks();
     } catch (error) {
       console.error('Error fetching job details:', error);
@@ -1471,6 +1479,22 @@ function JobDetailModal({
       <DialogContent sx={{ px: 2.5, py: 2.5 }}>
         {activeTab === 0 && (
           <Grid container spacing={2} alignItems="stretch">
+            {jobNeedsMapFix(job) ? (
+              <Grid item xs={12}>
+                <Alert
+                  severity="error"
+                  action={
+                    isEditing ? null : (
+                      <Button color="inherit" size="small" onClick={handleEdit}>
+                        Fix address
+                      </Button>
+                    )
+                  }
+                >
+                  {jobMapFixLabel(job)}
+                </Alert>
+              </Grid>
+            ) : null}
             {isEditing && (
               <Grid item xs={12}>
                 <Paper
@@ -1501,7 +1525,7 @@ function JobDetailModal({
                         placeholder="Short note to help identify this job on the board"
                       />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid item xs={12} id="job-site-address">
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
                         Job site address
                       </Typography>

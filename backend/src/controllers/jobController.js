@@ -198,10 +198,17 @@ async function createJob(req, res) {
     
     await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
-    void syncJobGeo(job).catch(() => {});
-
     await emitJobCreated(req, job);
-    
+    try {
+      const geoResult = await syncJobGeo(job);
+      if (geoResult?.geo) {
+        job.geo = geoResult.geo;
+        await emitJobUpdated(req, job);
+      }
+    } catch (geoErr) {
+      console.error('Job geocode failed:', geoErr?.message || geoErr);
+    }
+
     res.status(201).json(job);
   } catch (error) {
     res.status(500).json({ error: error.message });

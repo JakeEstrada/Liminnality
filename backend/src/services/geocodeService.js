@@ -134,6 +134,31 @@ function manualGeoPayload(job, lat, lng) {
   };
 }
 
+async function syncJobsForCustomer(customer) {
+  const Job = require('../models/Job');
+  if (!customer?._id) return { skipped: true, reason: 'missing-customer' };
+  const jobs = await Job.find({
+    customerId: customer._id,
+    isArchived: { $ne: true },
+    isDeadEstimate: { $ne: true },
+    isCompletedClosedOut: { $ne: true },
+  });
+  const updatedJobs = [];
+  for (const job of jobs) {
+    job.customerId = customer;
+    try {
+      const result = await syncJobGeo(job);
+      if (result?.geo) {
+        job.geo = result.geo;
+        updatedJobs.push(job);
+      }
+    } catch {
+      /* keep going so one bad job does not block the rest */
+    }
+  }
+  return { ok: true, updated: updatedJobs.length, jobs: updatedJobs };
+}
+
 async function syncJobGeo(job) {
   const Job = require('../models/Job');
   if (!job) return { skipped: true, reason: 'missing-job' };
@@ -165,4 +190,5 @@ module.exports = {
   geoPayload,
   manualGeoPayload,
   syncJobGeo,
+  syncJobsForCustomer,
 };

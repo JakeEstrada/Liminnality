@@ -125,6 +125,7 @@ function PipelineBoard({
   onJobUpdate,
   onStageChange,
   onJobClick,
+  onMapErrorClick,
   onNewJobClick,
   onJobContextMenu,
   onArchiveCompleted,
@@ -584,6 +585,7 @@ function PipelineBoard({
                 key={job._id}
                 job={job}
                 onClick={() => onJobClick && onJobClick(job._id)}
+                onMapErrorClick={onMapErrorClick}
                 onUpdate={(updates) => onJobUpdate(job._id, updates)}
                 onStageChange={(toStage, note) => onStageChange(job._id, toStage, note)}
                 onContextMenu={onJobContextMenu}

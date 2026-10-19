@@ -58,7 +58,7 @@ Main app routes (path → purpose):
 - /messages — SMS inbox; ?tab=inbox is the team Outlook worksheets (admin)
 - /outlook — redirects to /messages?tab=inbox
 - /customers — customer list and records
-- /calendar — calendar and scheduling
+- /calendar — calendar and scheduling (bench print worksheet from Print bench)
 - /tasks — projects and tasks
 - /archive — job archive (also /dead-estimates)
 - /completed-tasks — weekly activity log (developer tab; also opened from the dashboard team-activity graph)

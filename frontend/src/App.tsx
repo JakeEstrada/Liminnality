@@ -44,6 +44,7 @@ import KioskDashboardPage from './pages/KioskDashboardPage';
 import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import ContractCoverPrintPage from './pages/ContractCoverPrintPage';
+import CalendarBenchPrintPage from './pages/CalendarBenchPrintPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
 import VendorsPage from './pages/VendorsPage';
@@ -170,6 +171,14 @@ function App(): JSX.Element | null {
           element={
             <ProtectedRoute>
               <ContractCoverPrintPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/print/calendar-bench"
+          element={
+            <ProtectedRoute>
+              <CalendarBenchPrintPage />
             </ProtectedRoute>
           }
         />

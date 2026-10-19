@@ -1,13 +1,16 @@
 import { useState, useRef } from 'react';
-import { Card, CardContent, Typography, Box, Tooltip, useTheme, alpha } from '@mui/material';
+import { Card, CardContent, Typography, Box, Tooltip, IconButton, useTheme, alpha } from '@mui/material';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
 import { getJobCardAccent } from '../../utils/taskDisplay';
+import { jobMapFixLabel, jobNeedsMapFix } from '../../utils/jobGeo';
 
 function JobCard(props: Record<string, unknown>) {
   const {
     job,
     onClick,
     onContextMenu,
+    onMapErrorClick,
     canModify = true,
     minHeightPx = DEFAULT_JOB_CARD_MIN_HEIGHT_PX,
     narrow = false,
@@ -25,6 +28,7 @@ function JobCard(props: Record<string, unknown>) {
     };
     onClick?: () => void;
     onContextMenu?: (e: unknown, job: Record<string, unknown>) => void;
+    onMapErrorClick?: (job: Record<string, unknown>) => void;
     canModify?: boolean;
     minHeightPx?: number;
     /** Phone columns are ~80px wide: one truncated line, no description. */
@@ -92,6 +96,8 @@ function JobCard(props: Record<string, unknown>) {
       'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
   }
 
+  const needsMapFix = jobNeedsMapFix(job);
+  const mapFixLabel = jobMapFixLabel(job);
   const compactCard = narrow || minHeightPx <= 56;
   const ultraCompact = narrow || minHeightPx <= 48;
   const contentPy = narrow ? 0.5 : compactCard ? 0.75 : 1.5;
@@ -193,8 +199,29 @@ function JobCard(props: Record<string, unknown>) {
           )}
           </Box>
         {/* The dot repeats what the coloured left edge already says — drop it in narrow columns. */}
-        {!narrow && (
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
+          {needsMapFix ? (
+            <Tooltip title={mapFixLabel}>
+              <IconButton
+                size="small"
+                aria-label={mapFixLabel}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (onMapErrorClick) onMapErrorClick(job);
+                  else onClick?.();
+                }}
+                sx={{
+                  p: 0.15,
+                  mt: ultraCompact ? -0.15 : 0,
+                  color: 'error.main',
+                }}
+              >
+                <ErrorOutlineIcon sx={{ fontSize: narrow ? 14 : ultraCompact ? 16 : 18 }} />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+          {!narrow && (
             <Tooltip title={statusLabel}>
               <Box
                 sx={{
@@ -208,8 +235,8 @@ function JobCard(props: Record<string, unknown>) {
                 }}
               />
             </Tooltip>
-          </Box>
-        )}
+          )}
+        </Box>
       </Box>
       </CardContent>
     </Card>

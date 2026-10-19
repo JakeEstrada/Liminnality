@@ -470,7 +470,26 @@ function AddJobModal({
         uploadResult = await uploadPendingFiles(jobId);
       }
 
-      if (uploadResult.failed && uploadResult.succeeded) {
+      const createdJob = response.data;
+      const lat = Number(createdJob?.geo?.lat);
+      const lng = Number(createdJob?.geo?.lng);
+      const onMap =
+        createdJob?.geo?.status === 'ok' && Number.isFinite(lat) && Number.isFinite(lng);
+      const hasAddress = Boolean(
+        formData.customerAddress.street ||
+          formData.customerAddress.city ||
+          formData.customerAddress.state ||
+          formData.customerAddress.zip,
+      );
+
+      if (!onMap) {
+        toast.error(
+          hasAddress
+            ? "Couldn't place this job on the map. Click the error on the job card to correct the address."
+            : 'Job created. Add a street address so it can be placed on the map.',
+          { duration: 7000 },
+        );
+      } else if (uploadResult.failed && uploadResult.succeeded) {
         toast.error(`Job created, but ${uploadResult.failed} file${uploadResult.failed === 1 ? '' : 's'} failed to upload`);
       } else if (uploadResult.failed) {
         toast.error('Job created, but files failed to upload. Add them from the Files tab.');

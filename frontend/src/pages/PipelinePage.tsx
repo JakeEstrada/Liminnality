@@ -75,6 +75,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [jobModalInitialTab, setJobModalInitialTab] = useState(JOB_MODAL_TAB.overview);
+  const [jobModalStartEditing, setJobModalStartEditing] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [editAppointmentOpen, setEditAppointmentOpen] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState(null);
@@ -703,7 +704,13 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             onStageChange={handleStageChange}
             onJobClick={(jobId) => {
               setJobModalInitialTab(JOB_MODAL_TAB.overview);
+              setJobModalStartEditing(false);
               setSelectedJobId(jobId);
+            }}
+            onMapErrorClick={(job) => {
+              setJobModalInitialTab(JOB_MODAL_TAB.overview);
+              setJobModalStartEditing(true);
+              setSelectedJobId(job._id);
             }}
             onNewJobClick={() => {
               setAddJobOpen(true);
@@ -734,9 +741,11 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
           jobId={selectedJobId}
           open={!!selectedJobId}
           initialTab={jobModalInitialTab}
+          startEditing={jobModalStartEditing}
           onClose={() => {
             setSelectedJobId(null);
             setJobModalInitialTab(JOB_MODAL_TAB.overview);
+            setJobModalStartEditing(false);
           }}
           onJobUpdate={handleJobUpdate}
           onJobDelete={handleJobDelete}
@@ -826,6 +835,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
           onEditPayments={() => {
             if (contextMenuJob?._id) {
               setJobModalInitialTab(JOB_MODAL_TAB.payments);
+              setJobModalStartEditing(false);
               setSelectedJobId(contextMenuJob._id);
             }
           }}

@@ -186,6 +186,10 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **Route:** `/print/contract-cover`
 - **Purpose:** Printable HTML contract cover (letter, two pages). Opened from the job Cover page dialog. Does not save a file to the job.
 
+### CalendarBenchPrintPage.tsx
+- **Route:** `/print/calendar-bench`
+- **Purpose:** Landscape worksheet of jobs currently on the install bench: deposit date, payments, total, plus blank start / finish / who columns.
+
 ---
 
 ## Route map (quick)
@@ -215,6 +219,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/calendar-view` | CalendarPage (tvMode) |
 | `/customers-view` | CustomersPage (viewMode) |
 | `/print/contract-cover` | ContractCoverPrintPage |
+| `/print/calendar-bench` | CalendarBenchPrintPage |
 
 Defined in `frontend/src/App.tsx`.
 

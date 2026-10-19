@@ -50,6 +50,7 @@ import {
   LightMode as LightModeIcon,
   Settings as SettingsIcon,
   Share as ShareIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, startOfWeek, endOfWeek, isSameDay, addDays } from 'date-fns';
 import axios, { isAxiosError } from 'axios';
@@ -67,6 +68,7 @@ import EmployeeSmsRecipientField, {
 } from '../components/common/EmployeeSmsRecipientField';
 import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
 import { buildCustomerShareMessage } from '../utils/customerShareMessage';
+import { buildCalendarBenchPrintData, writeCalendarBenchPrintData } from '../utils/calendarBenchPrint';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -2351,6 +2353,13 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     }
   };
 
+  const handlePrintBench = () => {
+    writeCalendarBenchPrintData(
+      buildCalendarBenchPrintData(benchJobs, { hideSensitive }),
+    );
+    window.open('/print/calendar-bench', '_blank', 'noopener,noreferrer');
+  };
+
   const handleDropOnScheduled = async (event) => {
     event.preventDefault();
     setScheduledDropActive(false);
@@ -2752,9 +2761,22 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               }}
               onDrop={handleDropOnBench}
             >
-              <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                Bench ({benchJobs.length})
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  Bench ({benchJobs.length})
+                </Typography>
+                {!tvMode ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<PrintIcon fontSize="small" />}
+                    onClick={handlePrintBench}
+                    sx={{ textTransform: 'none', flexShrink: 0 }}
+                  >
+                    Print bench
+                  </Button>
+                ) : null}
+              </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                 Jobs ready to schedule. Drag a scheduled card here to park it on the bench without removing dates.
               </Typography>

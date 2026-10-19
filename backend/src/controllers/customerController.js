@@ -3,9 +3,10 @@ const Activity = require('../models/Activity');
 const Job = require('../models/Job');
 const fs = require('fs');
 const path = require('path');
-const { emitJobCreated, sourceSocketIdFromReq } = require('../services/jobRealtime');
+const { emitJobCreated, emitJobUpdated, sourceSocketIdFromReq } = require('../services/jobRealtime');
 const { publishCustomerChanged } = require('../services/eventBus');
 const { applyReferralFields } = require('../utils/referralCompany');
+const { syncJobGeo, syncJobsForCustomer } = require('../services/geocodeService');
 
 /** Default pipeline job so every API-created customer has at least one job. Skip when caller will create the job (e.g. Add Job modal). */
 async function createInitialJobForCustomer(customer, createdBy, req) {
@@ -21,6 +22,12 @@ async function createInitialJobForCustomer(customer, createdBy, req) {
     createdBy,
   });
   await job.save();
+  try {
+    await job.populate({ path: 'customerId', select: 'name address addresses', strictPopulate: false });
+    await syncJobGeo(job);
+  } catch (geoErr) {
+    console.error('Initial job geocode failed:', geoErr?.message || geoErr);
+  }
   try {
     await Activity.create({
       type: 'job_created',
@@ -186,6 +193,18 @@ async function updateCustomer(req, res) {
       action: 'updated',
       sourceSocketId: sourceSocketIdFromReq(req),
     });
+    const oldAddress = JSON.stringify(oldData.address || {});
+    const nextAddress = JSON.stringify(customer.address || {});
+    if (oldAddress !== nextAddress) {
+      try {
+        const geoSync = await syncJobsForCustomer(customer);
+        for (const job of geoSync.jobs || []) {
+          await emitJobUpdated(req, job);
+        }
+      } catch (geoErr) {
+        console.error('Customer address geocode failed:', geoErr?.message || geoErr);
+      }
+    }
     res.json(customer);
   } catch (error) {
     res.status(500).json({ error: error.message });
