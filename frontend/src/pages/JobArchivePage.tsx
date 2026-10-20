@@ -68,9 +68,11 @@ function JobArchivePage() {
   useTenantRealtimeRefresh(tenantRoom, () => fetchArchivedJobs({ background: true }));
 
   useEffect(() => {
-    const jobIdFromUrl = searchParams.get('jobId');
-    if (!jobIdFromUrl) return;
-    setSelectedJobId(jobIdFromUrl);
+    const yearFromUrl = Number.parseInt(searchParams.get('year') || '', 10);
+    if (Number.isFinite(yearFromUrl)) {
+      setSelectedYear(yearFromUrl);
+    }
+    if (!searchParams.get('jobId')) return;
     const next = new URLSearchParams(searchParams);
     next.delete('jobId');
     setSearchParams(next, { replace: true });
@@ -237,15 +239,11 @@ function JobArchivePage() {
     return years.sort((a, b) => b - a);
   }, [organizedByYear]);
 
-  // Set selected year to current year if available, otherwise first available year
   useEffect(() => {
-    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
-      setSelectedYear(availableYears[0]);
-    } else if (availableYears.length > 0 && availableYears[0] !== new Date().getFullYear()) {
-      // If current year is not available, use the most recent year
-      setSelectedYear(availableYears[0]);
-    }
-  }, [availableYears]);
+    if (availableYears.length === 0) return;
+    if (availableYears.includes(selectedYear)) return;
+    setSelectedYear(availableYears[0]);
+  }, [availableYears, selectedYear]);
 
   // Get months for selected year
   const selectedYearMonths = useMemo(() => {

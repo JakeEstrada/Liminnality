@@ -544,6 +544,12 @@ async function uploadCustomersCSV(req, res) {
   }
 }
 
+function archivePagePath(job) {
+  const stamp = job?.archivedAt || job?.movedToDeadEstimateAt || job?.updatedAt;
+  const year = stamp ? new Date(stamp).getFullYear() : NaN;
+  return Number.isFinite(year) ? `/archive?year=${year}` : '/archive';
+}
+
 function jobSearchDestination(job) {
   if (job?.isCompletedClosedOut || (job?.isArchived && job?.stage === 'FINAL_PAYMENT_CLOSED')) {
     return {
@@ -558,7 +564,7 @@ function jobSearchDestination(job) {
       type: 'dead_estimate',
       locationLabel: 'Job Archive',
       subtitle: 'Dead estimate',
-      path: `/archive?jobId=${job._id}`,
+      path: archivePagePath(job),
     };
   }
   if (job?.isArchived) {
@@ -566,7 +572,7 @@ function jobSearchDestination(job) {
       type: 'archived_job',
       locationLabel: 'Job Archive',
       subtitle: 'Archived job',
-      path: `/archive?jobId=${job._id}`,
+      path: archivePagePath(job),
     };
   }
   return {
@@ -609,7 +615,7 @@ async function fetchGlobalCustomerSearchResults({ tenantId, q, limit: limitArg }
       $or: [{ title: nameRegex }, ...(customerIds.length ? [{ customerId: { $in: customerIds } }] : [])],
     })
       .populate({ path: 'customerId', select: 'name', strictPopulate: false })
-      .select('title stage customerId isArchived isDeadEstimate isCompletedClosedOut')
+      .select('title stage customerId isArchived isDeadEstimate isCompletedClosedOut archivedAt movedToDeadEstimateAt updatedAt')
       .sort({ updatedAt: -1 })
       .limit(limit)
       .lean(),
