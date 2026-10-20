@@ -332,31 +332,17 @@ export function sanitizeManualByDay(
 
   for (const [day, flags] of Object.entries(manual || {})) {
     const saved = savedByDay[day];
+    if (!saved) continue;
     const cleaned: RfidManualDayFlags = {};
-    if (flags.in && saved?.in && saved.in !== '0') cleaned.in = true;
-    if (flags.out && saved?.out && saved.out !== '0') cleaned.out = true;
-    if (flags.breaks && saved?.breaks && saved.breaks !== '0') cleaned.breaks = true;
-    const note = String(saved?.note ?? '').trim();
-    if (flags.note && note.length > 0) cleaned.note = true;
+    // Keep explicit Edit locks, including a manual zero that clears a bad RFID day.
+    if (flags.in) cleaned.in = true;
+    if (flags.out) cleaned.out = true;
+    if (flags.breaks) cleaned.breaks = true;
+    if (flags.note) cleaned.note = true;
     if (Object.keys(cleaned).length > 0) result[day] = cleaned;
   }
 
   return result;
-}
-
-function timeTokenValue(token: string | undefined): number {
-  const digits = String(token || '').replace(/\D/g, '');
-  if (!digits || digits === '0') return -1;
-  return Number.parseInt(digits.padStart(4, '0'), 10);
-}
-
-/** Later live RFID OUT always wins over a stale locked/saved OUT. */
-function shouldKeepManualOut(
-  savedOut: string | undefined,
-  rfid: RfidDayClock | undefined,
-): boolean {
-  if (!rfid || rfid.out === '0') return true;
-  return !(timeTokenValue(rfid.out) > timeTokenValue(savedOut));
 }
 
 export function inferManualFromSavedRows(
@@ -416,13 +402,11 @@ export function buildTimesheetRowsFromScans(
   merged = merged.map((row) => {
     const flags = manual[row.day];
     const saved = savedByDay[row.day];
-    const rfid = rfidByDay[row.day];
     if (!flags || !saved) return row;
-    const keepOut = Boolean(flags.out) && shouldKeepManualOut(saved.out, rfid);
     return {
       ...row,
       in: flags.in ? String(saved.in) : row.in,
-      out: keepOut ? String(saved.out) : String(rfid?.out ?? row.out),
+      out: flags.out ? String(saved.out) : row.out,
       breaks: flags.breaks ? String(saved.breaks) : row.breaks,
       note: flags.note ? String(saved.note ?? '') : row.note,
     };

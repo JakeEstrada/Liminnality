@@ -352,37 +352,18 @@ function buildRfidDayClocks(scans, employee, period, shiftProfile, now = new Dat
   return result;
 }
 
-function timeTokenValue(token) {
-  const digits = String(token || '').replace(/\D/g, '');
-  if (!digits || digits === '0') return -1;
-  return Number.parseInt(digits.padStart(4, '0'), 10);
-}
-
-/**
- * Auto-inferring "manual" from saved vs live RFID incorrectly locks stale OUT
- * times (e.g. 1017) after a later scan (e.g. 1123). Only explicit manualByDay
- * from Edit should stick — and even then, a later RFID punch advances OUT.
- */
-function shouldKeepManualOut(savedOut, rfid) {
-  if (!rfid || rfid.out === '0') return true;
-  const saved = timeTokenValue(savedOut);
-  const live = timeTokenValue(rfid.out);
-  if (live > saved) return false;
-  return true;
-}
-
 function sanitizeManualByDay(manual, workHours) {
   const savedByDay = Object.fromEntries((workHours || []).map((r) => [r.day, r]));
   const result = {};
 
   for (const [day, flags] of Object.entries(manual || {})) {
     const saved = savedByDay[day];
+    if (!saved) continue;
     const cleaned = {};
-    if (flags.in && saved?.in && saved.in !== '0') cleaned.in = true;
-    if (flags.out && saved?.out && saved.out !== '0') cleaned.out = true;
-    if (flags.breaks && saved?.breaks && saved.breaks !== '0') cleaned.breaks = true;
-    const note = String(saved?.note ?? '').trim();
-    if (flags.note && note.length > 0) cleaned.note = true;
+    if (flags.in) cleaned.in = true;
+    if (flags.out) cleaned.out = true;
+    if (flags.breaks) cleaned.breaks = true;
+    if (flags.note) cleaned.note = true;
     if (Object.keys(cleaned).length > 0) result[day] = cleaned;
   }
 
@@ -468,13 +449,11 @@ async function computeWeekTotalHours(displayName, options = {}) {
   rows = rows.map((row) => {
     const flags = manualByDay[row.day];
     const saved = savedByDay[row.day];
-    const rfid = rfidByDay[row.day];
     if (!flags || !saved) return row;
-    const keepOut = Boolean(flags.out) && shouldKeepManualOut(saved.out, rfid);
     return {
       ...row,
       in: flags.in ? String(saved.in) : row.in,
-      out: keepOut ? String(saved.out) : String(rfid?.out ?? row.out),
+      out: flags.out ? String(saved.out) : row.out,
       breaks: flags.breaks ? String(saved.breaks) : row.breaks,
       note: flags.note ? String(saved.note ?? '') : row.note,
     };

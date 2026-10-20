@@ -58,6 +58,7 @@ import {
   defaultShiftProfile,
   isPayPeriodWorkday,
   sanitizeManualByDay,
+  minutesToTimeInput,
   mergeRfidRegistries,
   payPeriodScanRangeIso,
   profileMapFromApi,
@@ -376,6 +377,15 @@ function calculateHours(inTime: string, outTime: string, breaks: string) {
   return Math.max(0, (outMinutes - inMinutes - breakMinutes) / 60);
 }
 
+function outTokenFromHours(inTime: string, hoursValue: number, breaks: string) {
+  if (!Number.isFinite(hoursValue) || hoursValue <= 0) return '0';
+  const inMinutes = timeToMinutes(inTime);
+  const breakMinutes = parseInt(breaks || '0', 10) || 0;
+  const outMinutes = inMinutes + Math.round(hoursValue * 60) + breakMinutes;
+  if (outMinutes <= inMinutes || outMinutes >= 24 * 60) return '';
+  return minutesToTimeInput(outMinutes);
+}
+
 function calculateWeightedHours(workHours: DayRow[], additionalHours: AdditionalHoursRow[]) {
   let totalRegular = 0;
   let totalOvertime = 0;
@@ -419,6 +429,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
     defaultTravelMiles(getPayPeriodForDate(new Date())),
   );
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
+  const [hoursDraftByDay, setHoursDraftByDay] = useState<Record<string, string>>({});
   const [ratePerHour, setRatePerHour] = useState('');
   const [shiftIn, setShiftIn] = useState(defaultShiftProfile().shiftIn);
   const [shiftOut, setShiftOut] = useState(defaultShiftProfile().shiftOut);
@@ -602,6 +613,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   useEffect(() => {
     if (!selectedEmployee) return undefined;
     setIsEditMode(false);
+    setHoursDraftByDay({});
     lastPersistedRef.current = '';
     sheetReadyRef.current = false;
 
@@ -970,6 +982,41 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
     });
   };
 
+  const applyHoursDraft = (index: number) => {
+    if (!canEdit) return;
+    const row = workHours[index];
+    if (!row) return;
+    const raw = hoursDraftByDay[row.day];
+    if (raw === undefined) return;
+    const hoursValue = parseFloat(raw);
+    setHoursDraftByDay((prev) => {
+      const next = { ...prev };
+      delete next[row.day];
+      return next;
+    });
+    if (!Number.isFinite(hoursValue) || hoursValue < 0) return;
+    const inToken =
+      row.in && row.in !== '0' ? row.in : shiftIn || defaultShiftProfile().shiftIn;
+    const outToken = hoursValue === 0 ? '0' : outTokenFromHours(inToken, hoursValue, row.breaks);
+    if (!outToken) {
+      toast.error('Hours must fit between clock-in and midnight');
+      return;
+    }
+    setManualByDay((prev) => ({
+      ...prev,
+      [row.day]: { ...prev[row.day], in: true, out: true },
+    }));
+    setWorkHours((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        in: hoursValue > 0 ? inToken : next[index].in,
+        out: outToken,
+      };
+      return next;
+    });
+  };
+
   const handleTravelMilesChange = (index: number, value: string) => {
     if (!canEdit) return;
     setTravelMiles((prev) => {
@@ -1084,6 +1131,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
         persistedSheetRef.current = snapshotPersistedSheet(workHours, cleanedManual);
         setManualByDay(cleanedManual);
         toast.success('Timesheet saved');
+        setHoursDraftByDay({});
         setIsEditMode(false);
       })
       .catch((error) => {
@@ -1441,11 +1489,12 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
               </>
             )}{' '}
             Hours auto-fill live from RFID/PIN scans. Click <strong>Edit</strong> on the current week (or the week
-            being paid, through payday) to adjust times, set each employee&apos;s expected shift, or add miles
-            and receipts. A lone late punch — at or after the expected clock-out — is treated as clock-out and
-            auto-fills clock-in from the expected shift start. Missing morning-style clock-outs after 11:59 PM use
-            the employee&apos;s shift end with an &quot;Auto log out&quot; note. Weeks lock the day after payday;
-            unlock a previous week with the PIN to edit it.
+            being paid, through payday) to adjust times or hours — those edits stay even if RFID has a later
+            punch. You can also set each employee&apos;s expected shift, or add miles and receipts. A lone late
+            punch — at or after the expected clock-out — is treated as clock-out and auto-fills clock-in from the
+            expected shift start. Missing morning-style clock-outs after 11:59 PM use the employee&apos;s shift
+            end with an &quot;Auto log out&quot; note. Weeks lock the day after payday; unlock a previous week
+            with the PIN to edit it.
           </Typography>
         </Box>
         <Button
@@ -1810,7 +1859,29 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
                           )}
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600, color: hours > 0 ? 'primary.main' : 'text.secondary' }}>
-                          {hours.toFixed(2)}
+                          {canEdit ? (
+                            <TextField
+                              value={hoursDraftByDay[row.day] ?? hours.toFixed(2)}
+                              onChange={(e) =>
+                                setHoursDraftByDay((prev) => ({
+                                  ...prev,
+                                  [row.day]: e.target.value.replace(/[^\d.]/g, ''),
+                                }))
+                              }
+                              onBlur={() => applyHoursDraft(index)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                              size="small"
+                              placeholder="0.00"
+                              inputProps={{ inputMode: 'decimal', style: { textAlign: 'center' } }}
+                              sx={{ maxWidth: 88 }}
+                            />
+                          ) : (
+                            hours.toFixed(2)
+                          )}
                         </TableCell>
                         <TableCell align="center" sx={{ color: 'text.secondary' }}>
                           {row.scanCount}
