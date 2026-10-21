@@ -23,6 +23,7 @@ const {
   reorderWebsite,
   getPublicWebsite,
   getPublicWebsiteMedia,
+  downloadWebsiteSlideshowZip,
 } = require('../controllers/websiteController');
 
 router.get('/public', getPublicWebsite);
@@ -32,6 +33,7 @@ router.post('/public/events', recordPublicAnalyticsEvent);
 router.use(requireAuth, requireSuperAdmin);
 
 router.get('/', getWebsite);
+router.get('/photos/slideshow-zip', downloadWebsiteSlideshowZip);
 router.put('/', updateWebsite);
 router.get('/analytics/report', getWebsiteAnalyticsReport);
 router.get('/analytics/today-ips', getWebsiteAnalyticsTodayIps);

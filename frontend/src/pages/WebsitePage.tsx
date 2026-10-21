@@ -25,6 +25,7 @@ import {
   ArrowUpward as ArrowUpIcon,
   Delete as DeleteIcon,
   PhotoCamera as PhotoIcon,
+  Download as DownloadIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
@@ -83,6 +84,21 @@ function mediaSrc(url?: string) {
   if (!url) return '';
   if (/^https?:\/\//i.test(url)) return url;
   return `${API_URL}${url}`;
+}
+
+function collectAllWebsitePhotos(content: WebsiteContent): WebsitePhoto[] {
+  const seen = new Set<string>();
+  const photos: WebsitePhoto[] = [];
+  const add = (photo?: WebsitePhoto) => {
+    const key = String(photo?.id || photo?.url || '').trim();
+    if (!photo?.url || !key || seen.has(key)) return;
+    seen.add(key);
+    photos.push(photo);
+  };
+  content.heroPhotos.forEach(add);
+  content.gallery.forEach(add);
+  content.projects.forEach((project) => project.photos.forEach(add));
+  return photos;
 }
 
 type SpecRow = { label: string; value: string };
@@ -318,6 +334,7 @@ function WebsitePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingSlideshow, setDownloadingSlideshow] = useState(false);
   const [content, setContent] = useState<WebsiteContent>(EMPTY);
   const heroInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -366,6 +383,37 @@ function WebsitePage() {
 
   const handleField = (field: keyof WebsiteContent, value: string) => {
     setContent((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const slideshowPhotoCount = collectAllWebsitePhotos(content).length;
+
+  const handleDownloadSlideshow = async () => {
+    if (!slideshowPhotoCount || downloadingSlideshow) return;
+    setDownloadingSlideshow(true);
+    try {
+      const { data } = await axios.get(`${API_URL}/website/photos/slideshow-zip`, {
+        responseType: 'blob',
+        timeout: 10 * 60 * 1000,
+      });
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/zip' });
+      if (blob.type && blob.type.includes('json')) {
+        throw new Error('Download failed');
+      }
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = 'website-slideshow.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      toast.success(`Downloaded ${slideshowPhotoCount} photos in random order`);
+    } catch (error) {
+      console.error('Error downloading slideshow zip:', error);
+      toast.error('Failed to download photos');
+    } finally {
+      setDownloadingSlideshow(false);
+    }
   };
 
   const handleSaveCopy = async () => {
@@ -568,11 +616,24 @@ function WebsitePage() {
             Controls the customer homepage — hero photos, wording, featured projects, and gallery. Google tag setup is under Website Analytics.
           </Typography>
         </Box>
-        {tab === 0 ? (
-          <Button variant="contained" onClick={() => void handleSaveCopy()} disabled={saving} sx={{ textTransform: 'none' }}>
-            {saving ? 'Saving…' : 'Save copy'}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            startIcon={downloadingSlideshow ? <CircularProgress size={16} /> : <DownloadIcon />}
+            onClick={() => void handleDownloadSlideshow()}
+            disabled={!slideshowPhotoCount || downloadingSlideshow}
+            sx={{ textTransform: 'none' }}
+          >
+            {downloadingSlideshow
+              ? 'Preparing zip…'
+              : `Download all photos (${slideshowPhotoCount})`}
           </Button>
-        ) : null}
+          {tab === 0 ? (
+            <Button variant="contained" onClick={() => void handleSaveCopy()} disabled={saving} sx={{ textTransform: 'none' }}>
+              {saving ? 'Saving…' : 'Save copy'}
+            </Button>
+          ) : null}
+        </Box>
       </Box>
 
       <Paper sx={{ mb: 3 }}>

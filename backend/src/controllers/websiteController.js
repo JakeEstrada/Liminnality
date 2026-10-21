@@ -4,6 +4,7 @@ const WebsiteAnalyticsEvent = require('../models/WebsiteAnalyticsEvent');
 const Tenant = require('../models/Tenant');
 const { getFileStream, deleteStoredFileBinary } = require('./fileController');
 const { getTenantContext } = require('../middleware/tenantContext');
+const { writeStoreZip } = require('../utils/storeZip');
 const { extractClientIp } = require('../services/clientNetwork');
 const { publishWebsiteAnalyticsCreated } = require('../services/eventBus');
 
@@ -226,6 +227,96 @@ function assetFromUpload(file, alt = '') {
     size: Number(file.size) || 0,
     alt: clip(alt, 160),
   };
+}
+
+function collectWebsiteAssets(content) {
+  const seen = new Set();
+  const assets = [];
+  const add = (asset) => {
+    const id = String(asset?._id || '');
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    assets.push(asset);
+  };
+  for (const photo of content?.heroPhotos || []) add(photo);
+  for (const photo of content?.gallery || []) add(photo);
+  for (const project of content?.projects || []) {
+    for (const photo of projectPhotoList(project)) add(photo);
+  }
+  return assets;
+}
+
+function shuffleInPlace(items) {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
+function photoExtension(asset) {
+  const named = String(asset?.originalName || asset?.filename || '');
+  const match = named.match(/\.(jpe?g|png|gif|webp)$/i);
+  if (match) return match[0].toLowerCase() === '.jpeg' ? '.jpg' : match[0].toLowerCase();
+  const mime = String(asset?.mimetype || '').toLowerCase();
+  if (mime.includes('png')) return '.png';
+  if (mime.includes('gif')) return '.gif';
+  if (mime.includes('webp')) return '.webp';
+  return '.jpg';
+}
+
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+async function downloadWebsiteSlideshowZip(req, res) {
+  try {
+    const tenantId = tenantIdFromReq(req);
+    if (!tenantId) return res.status(400).json({ error: 'Missing tenant' });
+    const doc = await getOrCreateWebsite(tenantId);
+    const assets = shuffleInPlace(collectWebsiteAssets(doc));
+    if (!assets.length) {
+      return res.status(404).json({ error: 'No website photos to download' });
+    }
+
+    req.setTimeout(10 * 60 * 1000);
+    res.setTimeout(10 * 60 * 1000);
+
+    const pad = String(assets.length).length < 3 ? 3 : String(assets.length).length;
+    const files = [];
+    for (let i = 0; i < assets.length; i += 1) {
+      try {
+        const stream = await getFileStream(assets[i]);
+        const buffer = await streamToBuffer(stream);
+        if (!buffer.length) continue;
+        files.push({
+          name: `${String(i + 1).padStart(pad, '0')}${photoExtension(assets[i])}`,
+          buffer,
+        });
+      } catch (error) {
+        console.error('Slideshow zip skipped photo:', assets[i]?._id, error?.message || error);
+      }
+    }
+    if (!files.length) {
+      return res.status(404).json({ error: 'Website photos could not be read' });
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="website-slideshow.zip"');
+    res.setHeader('Cache-Control', 'no-store');
+    writeStoreZip(res, files);
+  } catch (error) {
+    console.error('Slideshow zip failed:', error?.message || error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to download photos' });
+    } else {
+      res.end();
+    }
+  }
 }
 
 function findAsset(content, assetId) {
@@ -960,4 +1051,5 @@ module.exports = {
   reorderWebsite,
   getPublicWebsite,
   getPublicWebsiteMedia,
+  downloadWebsiteSlideshowZip,
 };
