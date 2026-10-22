@@ -8,13 +8,19 @@ It is built for the way a real shop actually works. The owner opens it on a lapt
 
 ### Recent (October 2026)
 
-The last stretch went into the wall display, the county map, and talking to the shop without picking up a phone.
+The first half of the month went into the wall display, the county map, and talking to the shop without picking up a phone. The second half went into paper the crew can take to a job, the texts that already happen on a job card, and payroll hours that stay put after someone fixes them by hand.
 
 - **Shop dashboard** — `/dashboard-view` is the TV page: team activity, pipeline mix, and the job map, with a switcher for pipeline, calendar, and customers. The office `/dashboard` stays the full morning page.
-- **Job map** — Orange County pins from geocoded sites. New and edited jobs place themselves (US Census, then OpenStreetMap). Views for the pipeline, who is on site now, this week, completed, and archived. Filter by name, city, stage, scheduled or not, dollar amount, or a 10-mile radius. Full screen, satellite imagery, and a click opens the job card. A wrong pin can be corrected with lat/lng on the job.
+- **Job map** — Orange County pins from geocoded sites. New and edited jobs place themselves (US Census, then OpenStreetMap). Views for the pipeline, who is on site now, this week, completed, and archived. Filter by name, city, stage, scheduled or not, dollar amount, or a 10-mile radius. Full screen, satellite imagery, and a click opens the job card. A missing or failed pin shows an error on the pipeline card and on the job so the address can be fixed. A wrong pin can also be corrected with lat/lng on the job.
 - **Liminality** — wake word, then a 30-second listen window with a start sound and a close sound. She opens shop screens, texts a customer card, books a reminder or an appointment, and answers live questions (payments, deposits, who is coming up). “Jobs in Dana Point” and “jobs near Fullerton” walk the map, naming each job while that pin highlights. “Open the Hammer job” puts the card on the current page, Files tab first. Speech streams from ElevenLabs so she starts talking before the sentence is finished. **Stop** ends the window. **Close**, or a key or click while she is talking, drops the card or the tour and keeps listening. The voice is chosen under Account Settings → Liminality.
 - **Text clock-in** — a registered mobile texts the shop line `in`, `out`, a period, or a blank and gets a confirmation back. The API also polls Twilio every 10 seconds, so a missed webhook still becomes a punch.
-- **Cover pages** — from the job card, a two-page letter PDF: estimate number, payment terms from the job schedule, Zelle QR, California contract language, and a signature block. It saves onto the job’s files.
+- **Job messages** — the job card has a Messages tab right after Overview. It is the back-and-forth with that customer: canned texts, replies, and a composer. New customer replies put `(+n)` on the pipeline card until someone opens the tab. Sent and received texts are timestamped on Recent Activity, on Notes, and in the shop activity log.
+- **Cover pages** — from the job card, two US-letter pages open in a print tab (estimate number, payment terms from the job schedule, Zelle QR, California contract language, signature block). The browser’s print dialog is the export, so it does not save as a grey PDF.
+- **Print bench and print calendar** — both live in the calendar bench gear. Print bench is a landscape worksheet of the current bench: address, deposit date, payment split (40/60 or custom), payments, total, and blank start / finish / who. Print calendar is this month and next month, each on its own landscape letter page, with job chips, installers, and holidays.
+- **Payroll** — the RFID timesheet is the first tab; Manual is the handwritten sheet. Daniel’s paid week is Monday–Sunday. Hours you lock with Edit stay locked when a later RFID OUT arrives.
+- **Archive search** — finding an archived job opens the archive on that year. The card does not auto-open; you pick it.
+- **Takeoff** — any row, including the first, can be made double height from a `2×` control. Add double row converts the first empty single-height row instead of only appending at the bottom.
+- **Website slideshow** — the website CMS can download every homepage photo as a shuffled zip.
 
 ---
 
@@ -88,6 +94,8 @@ Templates are configured per stage and stored on the tenant, so each business wr
 
 Cards are deliberately sparse. A column is narrow, and a board with sixty jobs on it has to be readable at a glance from across a room, so a card shows the customer or job name, a coloured left edge, and nothing else it can avoid.
 
+Opening a card is the rest of the job: **Overview**, **Messages**, **Schedule**, **Payments**, **Files**, **Notes**. Messages is the customer text thread. Overview’s Recent Activity (and the Notes list) includes timestamped `Text sent` / `Text received` lines. A pipeline card shows `(+n)` when the customer has unread replies, and a map-error icon when the site address is not on the county map.
+
 The colour of that left edge answers the single most common question in the shop — *is this job actually going to happen this week?*
 
 | Colour | Meaning |
@@ -123,6 +131,7 @@ A job is "on the bench" when it is sold, prepped, and buildable but has no insta
 - **Hidden weekdays.** A shop that never installs on Sundays can right-click a day header and remove that column from the grid permanently, reclaiming the space. TV mode always shows the full week.
 - **Holidays** (US federal plus Easter) are marked on day headers, because they are the thing people forget when promising a date.
 - **Duration estimate.** Bench cards show a rough day count derived from job value, giving the scheduler a sense of size before they commit a slot.
+- **Print from bench settings.** The gear on the bench list has **Print bench** (landscape worksheet of the current bench: address, deposit date, payment split, payments, total, blank start / finish / who) and **Print calendar** (the month you are looking at plus the next one, one landscape letter page each, with chips, installers, and holidays). Hidden weekdays stay hidden.
 - **TV mode** at `/calendar-view` shows multiple months at once for wall display.
 
 On a phone the calendar becomes read-only and reshapes completely — see [the mobile experience](#the-mobile-experience).
@@ -141,6 +150,7 @@ Paarth sends and receives real SMS through Twilio, in both directions, and keeps
 | Pipeline stage templates | Offered automatically when a job moves stage |
 | Appointment reminders | Queued when an appointment is booked, keyed to the appointment |
 | Payment notifications | Fired automatically when a payment is marked paid, to a configured recipient list |
+| Job-card thread | The job’s Messages tab — canned or free text to the customer, plus their replies, stored on that job |
 | Employee and customer texts | From the job modal, customer page, vendor page, and calendar — including sharing a job's schedule and address with an installer. The same customer card can be sent by voice: “send [customer] to [employee]” texts only rolodex mobiles |
 
 Recipients can be resolved from the employee roster rather than retyped, and messages can be **scheduled for the future** rather than sent now. Images can be attached via a staged MMS upload.
@@ -151,7 +161,7 @@ Replies come back. A public webhook at `POST /twilio/sms` receives Twilio's call
 
 Because webhooks can be misconfigured or miss a window, the API also **polls Twilio every 10 seconds** for recent inbound messages and records any clock-in texts it finds. There is still an admin-only **backfill**: one button pulls recent messages straight from the Twilio API and reconciles anything both paths missed.
 
-Unread replies surface as a **badge in the sidebar**, polled on an interval and refreshed immediately when the user reads a thread, so a reply is never silently sitting in a page nobody opened.
+Unread replies surface as a **badge in the sidebar**, and a new customer reply on a job also puts **`(+n)` on that pipeline card**. Both clear when the thread is read, so a reply is never silently sitting in a page nobody opened.
 
 A public `/sms-consent` page carries the A2P compliance copy required for campaign registration.
 
@@ -276,7 +286,7 @@ A job is the richest document in the system, because in this business a job *is*
 - **The install plan** — start and end dates, installers, multiple scheduled entries, crew notes, calendar colour, and a flag for jobs parked back on the bench
 - **Where it is** — job site address and on-site contact, which are often not the customer's billing details. The address is geocoded onto the job automatically; lat/lng can also be set by hand. Customers also carry a **gate code**, which prints on cover pages and in the installer text card
 - **How it closed** — final payment method, close-out state, archive state, and a "dead estimate" flag for jobs that never happened
-- **Its whole story** — a notes timeline where stage changes, appointments, and flagged important notes are interleaved with free text
+- **Its whole story** — a notes timeline where stage changes, appointments, texts sent and received, and flagged important notes are interleaved with free text
 
 ### Everything else
 
@@ -291,7 +301,7 @@ A job is the richest document in the system, because in this business a job *is*
 | **Marketing** | `WebsiteContent`, `WebsiteAnalyticsEvent` | The public site's CMS and first-party visitor analytics |
 | **Platform** | `Tenant`, `User`, `UserAuditLog`, `DeveloperTask` | Organisations, logins, a security audit trail, and the internal engineering backlog |
 
-The **activity log** deserves a mention on its own: it recognises more than forty distinct event types — stage changes, payments received, deposits, files uploaded and deleted, estimates sent, contracts signed, takeoffs completed, payroll printed, appointments created and completed, tasks opened and closed. The result is that any job, customer, or task can answer "what has happened here?" without anyone having kept notes by hand.
+The **activity log** deserves a mention on its own: it recognises more than forty distinct event types — stage changes, texts sent and received, payments received, deposits, files uploaded and deleted, estimates sent, contracts signed, takeoffs completed, payroll printed, appointments created and completed, tasks opened and closed. The result is that any job, customer, or task can answer "what has happened here?" without anyone having kept notes by hand.
 
 ---
 
@@ -303,7 +313,7 @@ A woodworking business lives or dies on deposits, progress payments, and final b
 
 **Estimates, contracts, and invoices** are separate numbered document types, each with its own per-tenant sequence counter so numbers never collide or repeat. An estimate carries line items, tax, discounts, and a grand total, and moves through a real lifecycle — draft, sent, approved, rejected, superseded, converted, archived. Approved estimates convert into contracts and invoices, and the derived documents stay linked back to the estimate that produced them, so a disputed invoice can be traced to the quote it came from. Invoices know what kind they are (deposit, final, full, or change order) and track a running balance due. PDFs are generated in the browser.
 
-**Cover pages** are the packet that goes in the truck, not the numbered CRM contract. From the job card, Paarth asks for the QuickBooks estimate number and confirms customer details, then builds two US-letter pages from the job total and payment schedule: a bordered cover (shop letterhead, terms, Zelle QR) and a California contract page with mechanics’-lien notice and a signature block. Export is html2canvas + jsPDF and the file lands on the job. The action stays on the job header even when dollar amounts are hidden on a shared screen.
+**Cover pages** are the packet that goes in the truck, not the numbered CRM contract. From the job card, Paarth asks for the QuickBooks estimate number and confirms customer details, then opens two US-letter pages in a print tab: a bordered cover (shop letterhead, terms from the job’s payment schedule, Zelle QR) and a California contract page with mechanics’-lien notice and a signature block. Print or Save as PDF from the browser — the same path as the bench and calendar sheets — so Windows and Firefox do not get a grey file. The action stays on the job header even when dollar amounts are hidden on a shared screen.
 
 ### Payment schedules
 
@@ -320,7 +330,7 @@ The commission log is a dense, purpose-built grid rather than a report. It shows
 ### Also
 
 - **Bills** — recurring company obligations (utilities, rent, insurance, software) with a due day of the month and a link to the payment portal
-- **Payroll** — timesheets and mileage with print-optimised output, because this is a document that gets signed on paper
+- **Payroll** — RFID timesheets first, then a Manual tab for the handwritten sheet. Default pay week is Friday–Thursday; Daniel is Monday–Sunday. Mileage 0.725/mi, PDF print, SMS share. Hours locked with Edit are not overwritten by a later RFID OUT.
 
 ---
 
@@ -332,9 +342,9 @@ The parts of the business that happen away from a computer.
 
 **Text clock-in.** The same timesheet accepts a punch from a phone. On the RFID page, a mobile number is registered to an employee name. That person texts the shop Twilio line `in`, `out`, a period, or a blank message (a space counts). Anything else stays a normal customer text and is not a punch. The shop replies with the clock time. A second punch from the same number inside two minutes is ignored, so a webhook and the inbound poll cannot double-book the same text. The scan is stored like a badge read, with the source marked as SMS, and it rolls into the same Friday-to-Thursday timesheet.
 
-**Timesheets.** Raw scans are compiled into weekly timesheets on a Friday-to-Thursday pay period. The current week is editable — because readers get missed and people forget to clock out — while past weeks lock as a record. Each employee has shift defaults, a break allowance, and an hourly rate, and each week can carry extra hours, expense receipts, and travel mileage.
+**Timesheets.** Raw scans are compiled into weekly timesheets. Most of the shop is Friday–Thursday; Daniel is Monday–Sunday. The week being paid is still editable — because readers get missed and people forget to clock out — then it locks after payday. An explicit Edit lock stays put when another RFID OUT arrives later. Each employee has shift defaults, a break allowance, and an hourly rate, and each week can carry extra hours, expense receipts, and travel mileage.
 
-**Takeoff sheet.** A measurement tool built for the way takeoffs are actually written: room-by-room rows, fractional measurements, autofill from the job, tab-completion for repeated values, local persistence so a half-finished sheet survives a closed tab, and PDF export. The completed sheet saves back onto the job as structured data.
+**Takeoff sheet.** A measurement tool built for the way takeoffs are actually written: room-by-room rows, fractional measurements, double-height rows (including the first line), autofill from the job, tab-completion for repeated values, local persistence so a half-finished sheet survives a closed tab, and PDF export. The completed sheet saves back onto the job as structured data.
 
 **Vendors.** Suppliers and subcontractors with contact details and reusable order-item catalogues, so re-ordering the same stair parts does not mean re-typing part numbers.
 
@@ -380,11 +390,11 @@ A single theme provider defines light and dark palettes, responsive typography t
 - **Right-click context menus** on jobs, calendar events, and day headers, so power users get depth without the primary interface growing buttons
 - **Tooltips** that explain what a stage means and what a status colour implies, rather than restating the label
 - **Confirmation dialogs** on destructive and bulk actions — archiving, closing out, deleting schedule entries
-- **Print stylesheets** on payroll and the dashboard day sheet, because those are documents that leave the screen
+- **Print stylesheets** on payroll, the dashboard day sheet, cover pages, the bench worksheet, and the two-month calendar, because those are documents that leave the screen
 - **Empty states** written as guidance rather than "No data"
 - **Kiosk mode** with a view switcher across dashboard, pipeline, calendar, and customers, a long-lived session so wall displays never log out, and a PIN to leave the display and get back to the office app
 - **Accessibility** touches: `aria-label` on icon-only buttons, `title` on truncated text so a clipped job name is still readable on hover, and `role="img"` on the hand-rolled analytics chart
-- **Deep links** throughout — `?jobId=`, `?customerId=`, `?tab=` — so a page can be shared or bookmarked in the state you were looking at
+- **Deep links** throughout — `?jobId=`, `?customerId=`, `?tab=`, `?year=` on archive — so a page can be shared or bookmarked in the state you were looking at. Global search for an archived job opens that archive year and leaves the card closed.
 
 ### Sensitive data on shared screens
 

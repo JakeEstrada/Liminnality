@@ -222,9 +222,13 @@ export default function SmsConversationView({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const markedUnreadRef = useRef('');
   const selected = conversations.find((row) => row.key === selectedKey) || null;
   const showList = !isMobile || (!selected && !composingNew);
   const showThread = !isMobile || Boolean(selected) || composingNew;
+  const recipient = composingNew || !selected
+    ? toDisplay.trim()
+    : String(selected.phone || selected.displayPhone || toDisplay).trim();
 
   const loadCustomerNames = useCallback(async () => {
     try {
@@ -253,6 +257,23 @@ export default function SmsConversationView({
   }, [conversations, selectedKey, composingNew, isMobile]);
 
   useEffect(() => {
+    if (composingNew || !selected) return;
+    setToDisplay((prev) => (prev === selected.displayPhone ? prev : selected.displayPhone));
+  }, [composingNew, selected]);
+
+  useEffect(() => {
+    if (composingNew || !selected) return;
+    const unreadIds = selected.messages
+      .filter((row) => row.direction === 'inbound' && row.status === 'unread')
+      .map((row) => row.id);
+    if (!unreadIds.length) return;
+    const stamp = `${selected.key}:${[...unreadIds].sort().join(',')}`;
+    if (markedUnreadRef.current === stamp) return;
+    markedUnreadRef.current = stamp;
+    onOpenConversation?.(unreadIds);
+  }, [composingNew, selected, onOpenConversation]);
+
+  useEffect(() => {
     const node = threadRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
@@ -264,10 +285,6 @@ export default function SmsConversationView({
     setToDisplay(conv.displayPhone);
     setBody('');
     setScheduleMode(false);
-    const unreadIds = conv.messages
-      .filter((row) => row.direction === 'inbound' && row.status === 'unread')
-      .map((row) => row.id);
-    if (unreadIds.length) onOpenConversation?.(unreadIds);
   };
 
   const startNew = () => {
@@ -284,11 +301,11 @@ export default function SmsConversationView({
   };
 
   const busy = sending || scheduling;
-  const canSend = toDisplay.trim() && body.trim() && !busy;
+  const canSend = Boolean(recipient && body.trim() && !busy);
 
   const handleSend = async () => {
     if (!canSend) return;
-    const to = toDisplay.trim();
+    const to = recipient;
     const message = body.trim();
     try {
       await onSend(to, message);
@@ -303,11 +320,11 @@ export default function SmsConversationView({
   const handleSchedule = async () => {
     if (!canSend || !sendAtLocal) return;
     try {
-      await onSchedule(toDisplay.trim(), body.trim(), sendAtLocal);
+      await onSchedule(recipient, body.trim(), sendAtLocal);
       setBody('');
       setScheduleMode(false);
       setComposingNew(false);
-      setSelectedKey(conversationKey(toDisplay.trim()));
+      setSelectedKey(conversationKey(recipient));
     } catch {
       /* parent already showed the error */
     }

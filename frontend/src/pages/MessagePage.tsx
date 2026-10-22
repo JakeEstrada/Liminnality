@@ -432,14 +432,15 @@ function MessagePage() {
     void handleOpenMessage(row, tabKey);
   };
 
-  const handleOpenConversation = async (unreadIds: string[]) => {
+  const handleOpenConversation = useCallback(async (unreadIds: string[]) => {
+    if (!unreadIds.length) return;
     try {
       await Promise.all(unreadIds.map((id) => markSmsRead(id)));
       await fetchMessages(listLimit, { silent: true });
     } catch {
       /* unread badge updates on next refresh */
     }
-  };
+  }, [fetchMessages, listLimit]);
 
   const handleCloseDetail = () => {
     setDetailOpen(false);
@@ -710,7 +711,7 @@ function MessagePage() {
             onSend={handleSend}
             onSchedule={handleSchedule}
             onOpenMessage={handleOpenChatMessage}
-            onOpenConversation={(ids) => void handleOpenConversation(ids)}
+            onOpenConversation={handleOpenConversation}
             onDeleteConversation={handleDeleteConversation}
           />
           {lists.sent.length + lists.received.length >= listLimit && (
