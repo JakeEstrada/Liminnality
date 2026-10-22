@@ -1,6 +1,7 @@
 const ScheduledSms = require('../models/ScheduledSms');
 const SmsMessage = require('../models/SmsMessage');
 const Customer = require('../models/Customer');
+const Job = require('../models/Job');
 const Tenant = require('../models/Tenant');
 const File = require('../models/File');
 const crypto = require('crypto');
@@ -50,6 +51,96 @@ function phoneMatchVariants(value) {
     }
   }
   return [...variants].filter(Boolean);
+}
+
+function optionalObjectId(value) {
+  const raw = String(value || '').trim();
+  return /^[a-fA-F0-9]{24}$/.test(raw) ? raw : undefined;
+}
+
+function collectJobPhoneVariants(job) {
+  const customer = job?.customerId && typeof job.customerId === 'object' ? job.customerId : null;
+  const raw = [
+    customer?.primaryPhone,
+    ...(Array.isArray(customer?.phones) ? customer.phones : []),
+    ...(Array.isArray(customer?.contactPhones) ? customer.contactPhones.map((row) => row?.value) : []),
+    job?.jobContact?.phone,
+  ];
+  const variants = new Set();
+  for (const value of raw) {
+    for (const variant of phoneMatchVariants(value)) variants.add(variant);
+  }
+  return [...variants];
+}
+
+async function resolveSmsJobLinks({ from, to, direction, jobId, customerId } = {}) {
+  let nextJobId = optionalObjectId(jobId);
+  let nextCustomerId = optionalObjectId(customerId);
+  const phone = direction === 'inbound' ? from : to;
+
+  if (!nextCustomerId) {
+    const variants = phoneMatchVariants(phone);
+    if (variants.length) {
+      const customer = await Customer.findOne({
+        $or: [
+          { primaryPhone: { $in: variants } },
+          { phones: { $in: variants } },
+          { 'contactPhones.value': { $in: variants } },
+        ],
+      })
+        .select('_id')
+        .lean();
+      if (customer?._id) nextCustomerId = String(customer._id);
+    }
+  }
+
+  if (!nextJobId) {
+    const variants = phoneMatchVariants(phone);
+    if (variants.length) {
+      const prior = await SmsMessage.findOne({
+        direction: 'outbound',
+        jobId: { $exists: true, $ne: null },
+        to: { $in: variants },
+      })
+        .sort({ createdAt: -1 })
+        .select('jobId customerId')
+        .lean();
+      if (prior?.jobId) {
+        nextJobId = String(prior.jobId);
+        if (!nextCustomerId && prior.customerId) nextCustomerId = String(prior.customerId);
+      }
+    }
+  }
+
+  if (!nextJobId && nextCustomerId) {
+    const job = await Job.findOne({
+      customerId: nextCustomerId,
+      isArchived: { $ne: true },
+    })
+      .sort({ updatedAt: -1 })
+      .select('_id customerId')
+      .lean();
+    if (job?._id) nextJobId = String(job._id);
+  }
+
+  return {
+    jobId: nextJobId || undefined,
+    customerId: nextCustomerId || undefined,
+  };
+}
+
+async function applySmsJobLinks(doc, links) {
+  if (!doc || !links) return false;
+  let dirty = false;
+  if (links.jobId && String(doc.jobId || '') !== String(links.jobId)) {
+    doc.jobId = links.jobId;
+    dirty = true;
+  }
+  if (links.customerId && String(doc.customerId || '') !== String(links.customerId)) {
+    doc.customerId = links.customerId;
+    dirty = true;
+  }
+  return dirty;
 }
 
 /**
@@ -150,11 +241,24 @@ async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, 
           existing.to = toNorm;
           dirty = true;
         }
+        if (!existing.jobId || !existing.customerId) {
+          const links = await resolveSmsJobLinks({
+            from: fromNorm,
+            to: toNorm,
+            direction: 'inbound',
+          });
+          if (await applySmsJobLinks(existing, links)) dirty = true;
+        }
         if (dirty) await existing.save();
         return { doc: existing, created: false };
       }
     }
 
+    const links = await resolveSmsJobLinks({
+      from: fromNorm,
+      to: toNorm,
+      direction: 'inbound',
+    });
     const payload = {
       direction: 'inbound',
       from: fromNorm,
@@ -163,6 +267,8 @@ async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, 
       twilioSid: sid || undefined,
       source: 'inbound',
       tenantId,
+      jobId: links.jobId,
+      customerId: links.customerId,
     };
     if (createdAt) payload.createdAt = new Date(createdAt);
 
@@ -184,17 +290,37 @@ async function logInboundSms({ from, to, body, twilioSid, io }) {
   return { doc, created };
 }
 
-async function logOutboundSms({ from, to, body, twilioSid, source, createdBy, tenantId, deliveryStatus }) {
+async function logOutboundSms({
+  from,
+  to,
+  body,
+  twilioSid,
+  source,
+  createdBy,
+  tenantId,
+  deliveryStatus,
+  jobId,
+  customerId,
+}) {
+  const toNorm = normalizeToE164(to) || String(to || '').trim();
+  const links = await resolveSmsJobLinks({
+    to: toNorm,
+    direction: 'outbound',
+    jobId,
+    customerId,
+  });
   const payload = {
     direction: 'outbound',
     from: from || undefined,
-    to: normalizeToE164(to) || String(to || '').trim(),
+    to: toNorm,
     body: String(body || '').trim(),
     twilioSid: twilioSid || undefined,
     deliveryStatus: normalizeDeliveryStatus(deliveryStatus) || 'queued',
     statusUpdatedAt: new Date(),
     source: source || 'other',
     createdBy: createdBy || undefined,
+    jobId: links.jobId,
+    customerId: links.customerId,
   };
   if (tenantId) {
     payload.tenantId = tenantId;
@@ -886,6 +1012,8 @@ async function sendSmsAdhoc(req, res) {
         source: 'adhoc',
         createdBy: req.user?._id,
         tenantId: req.user?.tenantId,
+        jobId: req.body?.jobId,
+        customerId: req.body?.customerId,
       });
     } catch (logError) {
       console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -1323,9 +1451,49 @@ async function getUnreadSmsCount(req, res) {
   }
 }
 
+async function listJobSms(jobId, limit) {
+  const job = await Job.findById(jobId).populate(
+    'customerId',
+    'name primaryPhone phones contactPhones',
+  );
+  if (!job) return null;
+
+  const variants = collectJobPhoneVariants(job);
+  const customerId = job.customerId?._id || job.customerId;
+  const or = [{ jobId: job._id }];
+  if (customerId) or.push({ customerId });
+  if (variants.length) {
+    or.push({ from: { $in: variants } });
+    or.push({ to: { $in: variants } });
+  }
+
+  const [rows, scheduledRows] = await Promise.all([
+    SmsMessage.find({ $or: or }).sort({ createdAt: -1 }).limit(limit).lean(),
+    variants.length
+      ? ScheduledSms.find({ status: 'scheduled', to: { $in: variants } })
+          .sort({ sendAt: 1 })
+          .limit(limit)
+          .lean()
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    scheduled: scheduledRows.map(mapScheduledRow),
+    sent: rows.filter((doc) => doc.direction === 'outbound').map(mapOutboundRow),
+    received: rows.filter((doc) => doc.direction === 'inbound').map(mapInboundRow),
+  };
+}
+
 async function listSms(req, res) {
   try {
     const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 500, 1), 2000);
+    const jobId = optionalObjectId(req.query?.jobId);
+    if (jobId) {
+      const data = await listJobSms(jobId, limit);
+      if (!data) return res.status(404).json({ error: 'Job not found' });
+      return res.status(200).json(data);
+    }
+
     const fetchCap = Math.min(Math.max(limit * 2, limit), 4000);
     const userId = req.user?._id;
     const tenantId = req.user?.tenantId;

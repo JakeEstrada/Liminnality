@@ -31,12 +31,14 @@ export default function JobCannedSmsDialog({
   senderName,
   companyName,
   onClose,
+  onSent,
 }: {
   open: boolean;
   job: JobCardSmsSource | null;
   senderName: string;
   companyName: string;
   onClose: () => void;
+  onSent?: () => void;
 }) {
   const context = useMemo(
     () => buildJobCardSmsContext(job, { senderName, companyName }),
@@ -114,8 +116,20 @@ export default function JobCannedSmsDialog({
   const handleConfirmSend = async () => {
     setSending(true);
     try {
-      await api.post('/twilio/send-sms-adhoc', { to: to.trim(), message: body.trim() });
+      const customerId =
+        job?.customerId && typeof job.customerId === 'object' && job.customerId && '_id' in job.customerId
+          ? String((job.customerId as { _id?: string })._id || '')
+          : typeof job?.customerId === 'string'
+            ? job.customerId
+            : '';
+      await api.post('/twilio/send-sms-adhoc', {
+        to: to.trim(),
+        message: body.trim(),
+        jobId: job && '_id' in job && job._id ? String(job._id) : undefined,
+        customerId: customerId || undefined,
+      });
       toast.success(`Text sent to ${context.customerName || displayPhone || to}`);
+      onSent?.();
       setConfirmOpen(false);
       onClose();
     } catch (error) {

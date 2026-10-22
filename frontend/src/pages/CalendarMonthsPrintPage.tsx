@@ -1,5 +1,5 @@
 /**
- * CalendarMonthsPrintPage — This month + next month on one landscape letter page.
+ * CalendarMonthsPrintPage — This month and next month, one landscape letter page each.
  * Route: /print/calendar-months
  * Docs: ../../../docs/PAGES.md#calendarmonthsprintpagetsx
  */
@@ -12,7 +12,7 @@ import {
   type CalendarMonthsPrintEvent,
 } from '../utils/calendarMonthsPrint';
 
-const MAX_EVENTS = 5;
+const MAX_EVENTS = 6;
 
 function contrastText(hex: string) {
   const raw = String(hex || '').replace('#', '');
@@ -97,22 +97,33 @@ export default function CalendarMonthsPrintPage() {
         @page { size: letter landscape; margin: 0.32in; }
         @media print {
           html, body { background: #fff !important; }
+          .cal-print-pages { display: block; padding: 0; }
           .cal-print-sheet { box-shadow: none !important; margin: 0 !important; }
+        }
+        .cal-print-pages {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+          padding: 16px 0 24px;
         }
         .cal-print-sheet {
           width: 10.36in;
           height: 7.86in;
-          margin: 16px auto;
           background: #fff;
           color: #111;
           box-shadow: 0 2px 10px rgba(0,0,0,0.18);
-          padding: 0.12in 0.16in 0.1in;
+          padding: 0.16in 0.2in 0.14in;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
           overflow: hidden;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
+        }
+        .cal-print-sheet + .cal-print-sheet {
+          break-before: page;
+          page-break-before: always;
         }
         .cal-print-header {
           display: flex;
@@ -123,40 +134,27 @@ export default function CalendarMonthsPrintPage() {
           flex-shrink: 0;
         }
         .cal-print-header h1 {
-          font-size: 13px;
+          font-size: 18px;
           font-weight: 800;
           letter-spacing: 0.02em;
           margin: 0;
-          text-transform: uppercase;
         }
         .cal-print-header span {
-          font-size: 10px;
+          font-size: 12px;
           color: #444;
         }
-        .cal-print-months {
-          flex: 1;
-          min-height: 0;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.22in;
-        }
         .cal-print-month {
+          flex: 1;
           min-width: 0;
           min-height: 0;
           display: flex;
           flex-direction: column;
         }
-        .cal-print-month h2 {
-          margin: 0 0 0.05in;
-          font-size: 14px;
-          font-weight: 800;
-          text-align: center;
-        }
         .cal-print-grid {
           flex: 1;
           min-height: 0;
           display: grid;
-          grid-template-rows: 16px;
+          grid-template-rows: 22px;
           grid-auto-rows: minmax(0, 1fr);
           border-top: 1px solid #222;
           border-left: 1px solid #222;
@@ -168,16 +166,16 @@ export default function CalendarMonthsPrintPage() {
           min-height: 0;
         }
         .cal-print-dow {
-          font-size: 8px;
+          font-size: 11px;
           font-weight: 800;
           text-align: center;
-          padding: 2px 0;
+          padding: 3px 0;
           background: #f2f2f2;
           letter-spacing: 0.02em;
           text-transform: uppercase;
         }
         .cal-print-day {
-          padding: 2px 3px 3px;
+          padding: 3px 5px 4px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
@@ -190,64 +188,61 @@ export default function CalendarMonthsPrintPage() {
           background: #111;
           color: #fff;
           border-radius: 8px;
-          padding: 0 4px;
+          padding: 0 5px;
         }
         .cal-print-day-head {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 3px;
+          gap: 4px;
           flex-shrink: 0;
         }
         .cal-print-num {
-          font-size: 9px;
+          font-size: 13px;
           font-weight: 800;
           line-height: 1.2;
         }
         .cal-print-hol {
-          font-size: 6.5px;
+          font-size: 10px;
           font-weight: 700;
           color: #6a4700;
           background: #ffe08a;
           border-radius: 6px;
-          padding: 0 3px;
+          padding: 0 4px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 72%;
         }
         .cal-print-event {
-          margin-top: 1px;
-          font-size: 7px;
+          margin-top: 2px;
+          font-size: 11px;
           font-weight: 700;
-          line-height: 1.15;
-          padding: 1px 3px;
+          line-height: 1.2;
+          padding: 1px 4px;
           border-radius: 2px;
-          border-left: 2px solid #111;
+          border-left: 3px solid #111;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .cal-print-more {
-          font-size: 6.5px;
+          font-size: 10px;
           font-weight: 700;
           color: #444;
           text-align: right;
-          margin-top: 1px;
+          margin-top: 2px;
         }
       `}</style>
 
-      <div className="cal-print-sheet">
-        <header className="cal-print-header">
-          <h1>Install calendar</h1>
-          <span>
-            {data.rangeLabel} · Printed {data.printedAt}
-          </span>
-        </header>
-        <div className="cal-print-months">
-          {data.months.map((month) => (
-            <section key={month.title} className="cal-print-month">
-              <h2>{month.title}</h2>
+      <div className="cal-print-pages">
+        {data.months.map((month) => (
+          <div key={month.title} className="cal-print-sheet">
+            <header className="cal-print-header">
+              <h1>{month.title}</h1>
+              <span>Printed {data.printedAt}</span>
+            </header>
+            <section className="cal-print-month" aria-label={month.title}>
               <div
                 className="cal-print-grid"
                 style={{ gridTemplateColumns: `repeat(${month.columnCount}, minmax(0, 1fr))` }}
@@ -277,8 +272,8 @@ export default function CalendarMonthsPrintPage() {
                 })}
               </div>
             </section>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </Box>
   );

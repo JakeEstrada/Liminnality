@@ -64,6 +64,7 @@ import AddNoteModal from './AddNoteModal';
 import AddJobTaskModal from './AddJobTaskModal';
 import AddAppointmentModal from '../appointments/AddAppointmentModal';
 import JobCannedSmsDialog from './JobCannedSmsDialog';
+import JobMessagesPanel from './JobMessagesPanel';
 import JobPaymentScheduleEditor from './JobPaymentScheduleEditor';
 import JobChangeOrdersEditor from './JobChangeOrdersEditor';
 import JobCoverPagesDialog from './JobCoverPagesDialog';
@@ -185,10 +186,11 @@ export const JOB_MODAL_TAB = {
   payments: 2,
   files: 3,
   notes: 4,
+  messages: 5,
 };
 
 function resolveJobModalTab(tab) {
-  if (typeof tab === 'number' && tab >= 0 && tab <= 4) return tab;
+  if (typeof tab === 'number' && tab >= 0 && tab <= 5) return tab;
   if (typeof tab === 'string' && tab in JOB_MODAL_TAB) return JOB_MODAL_TAB[tab];
   return JOB_MODAL_TAB.overview;
 }
@@ -320,6 +322,7 @@ function JobDetailModal({
   const hideFinancials = hideSensitive;
   const [coverPagesOpen, setCoverPagesOpen] = useState(false);
   const [cannedSmsOpen, setCannedSmsOpen] = useState(false);
+  const [messagesRefreshKey, setMessagesRefreshKey] = useState(0);
   const startEditingRef = useRef(Boolean(startEditing));
   startEditingRef.current = Boolean(startEditing);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -1473,6 +1476,7 @@ function JobDetailModal({
           <Tab label="Payments" />
           <Tab label="Files" />
           <Tab label="Notes" />
+          <Tab label="Messages" />
         </Tabs>
       </Box>
 
@@ -2215,6 +2219,14 @@ function JobDetailModal({
             )}
           </Box>
         )}
+
+        {activeTab === JOB_MODAL_TAB.messages && (
+          <JobMessagesPanel
+            job={job}
+            refreshKey={messagesRefreshKey}
+            onOpenCanned={() => setCannedSmsOpen(true)}
+          />
+        )}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -2302,6 +2314,7 @@ function JobDetailModal({
             : 'San Clemente Woodworking'
         }
         onClose={() => setCannedSmsOpen(false)}
+        onSent={() => setMessagesRefreshKey((n) => n + 1)}
       />
 
       <Dialog open={shareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>

@@ -30,10 +30,12 @@ type EmailRow = { value?: string };
 type PhoneRow = { value?: string };
 
 export type JobCardSmsSource = {
+  _id?: string;
   title?: string;
   jobAddress?: AddressLike;
   jobContact?: { email?: string; phone?: string };
   customerId?: {
+    _id?: string;
     name?: string;
     primaryEmail?: string;
     emails?: string[];

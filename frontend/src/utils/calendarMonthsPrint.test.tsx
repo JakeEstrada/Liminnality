@@ -67,7 +67,7 @@ describe('calendar months print', () => {
     expect(data.months[0].days.some((day) => day.iso === '2026-10-05')).toBe(true);
   });
 
-  it('renders both months and job chips on one sheet', () => {
+  it('renders each month on its own sheet', () => {
     writeCalendarMonthsPrintData(
       buildCalendarMonthsPrintData({
         currentDate: new Date('2026-10-15T12:00:00'),
@@ -86,12 +86,13 @@ describe('calendar months print', () => {
       }),
     );
 
-    render(
+    const { container } = render(
       <MemoryRouter>
         <CalendarMonthsPrintPage />
       </MemoryRouter>,
     );
 
+    expect(container.querySelectorAll('.cal-print-sheet')).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'November 2026' })).toBeInTheDocument();
     expect(screen.getByText('Ada West · Nick')).toBeInTheDocument();

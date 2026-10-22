@@ -25,6 +25,7 @@ type JobLike = {
   title?: string;
   jobContact?: { phone?: string };
   customerId?: {
+    _id?: string;
     name?: string;
     primaryPhone?: string;
     phones?: string[];
@@ -84,7 +85,12 @@ export default function PipelineStageSmsDialog({
   const handleConfirmSend = async () => {
     setSending(true);
     try {
-      await api.post('/twilio/send-sms-adhoc', { to: phone, message: body.trim() });
+      await api.post('/twilio/send-sms-adhoc', {
+        to: phone,
+        message: body.trim(),
+        jobId: job?._id || undefined,
+        customerId: job?.customerId?._id || undefined,
+      });
       toast.success(`Text sent to ${customerName || displayPhone}`);
       setConfirmOpen(false);
       onClose();

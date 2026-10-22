@@ -134,7 +134,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 
 ### TakeoffSheetPage.tsx
 - **Route:** `/takeoff-sheet`
-- **Purpose:** Field takeoff form — room rows, fractions, link to job for customer/address autofill.
+- **Purpose:** Field takeoff form — room rows, fractions, double-height rows (including the first), link to job for customer/address autofill.
 - **APIs:** `GET /jobs/:id` when job selected; form persisted in localStorage.
 
 ### UsersPage.tsx 👤
@@ -192,7 +192,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 
 ### CalendarMonthsPrintPage.tsx
 - **Route:** `/print/calendar-months`
-- **Purpose:** One landscape letter page of this month and next month (from the calendar you are viewing), with job chips, installers, and holidays. Opened from bench settings.
+- **Purpose:** This month and next month (from the calendar you are viewing), each on its own landscape letter page, with job chips, installers, and holidays. Opened from bench settings.
 
 ---
 

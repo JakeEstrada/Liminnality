@@ -25,6 +25,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 - `fetchJobDetails` — loads job, tasks, estimates
 - Overview tab — notes, activity, **AI summary** button → `POST /activities/job/:id/summary`
 - Files tab — upload via `POST /files/upload`
+- Messages tab — SMS thread with the customer (`GET /twilio/messages?jobId=`)
 
 ## Customers
 

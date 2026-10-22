@@ -24,6 +24,11 @@ import {
 } from '@mui/icons-material';
 import TakeoffAutocompleteSettingsDialog from '../components/takeoff/TakeoffAutocompleteSettingsDialog';
 import { loadTakeoffAutocompleteLists } from '../utils/takeoffAutocompleteStorage';
+import {
+  applyAddDoubleRow,
+  newTakeoffRow as newRow,
+  toggleTakeoffRowDouble,
+} from '../utils/takeoffRows';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import axios from 'axios';
@@ -89,15 +94,6 @@ function terminalTabComplete(options, value, cycleKey, cycleRef) {
     cycleRef.current.idx = (cycleRef.current.idx + 1) % ordered.length;
   }
   return ordered[cycleRef.current.idx];
-}
-
-function newRow() {
-  return { item: '', qty: '', material: '', description: '' };
-}
-
-/** Same four columns as a normal row, but twice the row height. */
-function newDoubleRow() {
-  return { ...newRow(), doubleHeight: true };
 }
 
 function normalizeSavedRow(r) {
@@ -342,7 +338,11 @@ function TakeoffSheetPage() {
   };
 
   const addDoubleRow = () => {
-    setForm((prev) => ({ ...prev, rows: [...prev.rows, newDoubleRow()] }));
+    setForm((prev) => ({ ...prev, rows: applyAddDoubleRow(prev.rows) }));
+  };
+
+  const toggleDoubleRow = (index) => {
+    setForm((prev) => ({ ...prev, rows: toggleTakeoffRowDouble(prev.rows, index) }));
   };
 
   const focusCell = (row, col) => {
@@ -847,6 +847,26 @@ function TakeoffSheetPage() {
                   return (
                     <Box key={`takeoff-row-${index}`} sx={rowGridSx}>
                       <Box sx={{ borderRight: '1px solid #000', display: 'flex', alignItems: tall ? 'center' : 'stretch' }}>
+                        {!isExportMode ? (
+                          <Button
+                            size="small"
+                            onClick={() => toggleDoubleRow(index)}
+                            aria-label={tall ? 'Make row single height' : 'Make row double height'}
+                            sx={{
+                              minWidth: 34,
+                              px: 0.5,
+                              alignSelf: 'stretch',
+                              borderRadius: 0,
+                              borderRight: '1px solid #000',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              color: '#111',
+                            }}
+                          >
+                            {tall ? '1×' : '2×'}
+                          </Button>
+                        ) : null}
                         <Autocomplete
                           freeSolo
                           options={takeoffAutocompleteLists.items}
@@ -1061,7 +1081,7 @@ function TakeoffSheetPage() {
           </Box>
 
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Export uses the on-screen layout, so the PDF matches what users type.
+            Use 2× on any row, including the first, to make it double height. Add double row converts the first empty single row. Export uses the on-screen layout.
           </Typography>
 
           <TakeoffAutocompleteSettingsDialog
