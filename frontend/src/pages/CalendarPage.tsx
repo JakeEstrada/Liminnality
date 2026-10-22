@@ -69,6 +69,7 @@ import EmployeeSmsRecipientField, {
 import { formatPhoneForDisplay, nanpDigitsOnly } from '../utils/phoneFormat';
 import { buildCustomerShareMessage } from '../utils/customerShareMessage';
 import { buildCalendarBenchPrintData, writeCalendarBenchPrintData } from '../utils/calendarBenchPrint';
+import { buildCalendarMonthsPrintData, writeCalendarMonthsPrintData } from '../utils/calendarMonthsPrint';
 import { jobSiteAddress } from '../utils/jobGeo';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -2439,6 +2440,18 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
     [effectiveHiddenWeekdays]
   );
 
+  const handlePrintCalendar = () => {
+    writeCalendarMonthsPrintData(
+      buildCalendarMonthsPrintData({
+        currentDate,
+        events: calendarEvents,
+        holidayMap,
+        hiddenWeekdays: effectiveHiddenWeekdays,
+      }),
+    );
+    window.open('/print/calendar-months', '_blank', 'noopener,noreferrer');
+  };
+
   const handleDayContextMenu = (date, e) => {
     e.preventDefault();
     setDayContextMenu({
@@ -2632,6 +2645,19 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                   <PrintIcon fontSize="small" />
                 </ListItemIcon>
                 <ListItemText primary="Print bench" />
+              </MenuItem>
+            ) : null}
+            {!tvMode ? (
+              <MenuItem
+                onClick={() => {
+                  setBenchSettingsAnchor(null);
+                  handlePrintCalendar();
+                }}
+              >
+                <ListItemIcon>
+                  <PrintIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary="Print calendar" />
               </MenuItem>
             ) : null}
             <MenuItem

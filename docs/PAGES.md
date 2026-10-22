@@ -190,6 +190,10 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 - **Route:** `/print/calendar-bench`
 - **Purpose:** Landscape worksheet of jobs currently on the install bench: address, deposit date, payment split (40/60 or custom), payments, total, plus blank start / finish / who columns. Opened from bench settings.
 
+### CalendarMonthsPrintPage.tsx
+- **Route:** `/print/calendar-months`
+- **Purpose:** One landscape letter page of this month and next month (from the calendar you are viewing), with job chips, installers, and holidays. Opened from bench settings.
+
 ---
 
 ## Route map (quick)
@@ -220,6 +224,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/customers-view` | CustomersPage (viewMode) |
 | `/print/contract-cover` | ContractCoverPrintPage |
 | `/print/calendar-bench` | CalendarBenchPrintPage |
+| `/print/calendar-months` | CalendarMonthsPrintPage |
 
 Defined in `frontend/src/App.tsx`.
 

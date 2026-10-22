@@ -45,6 +45,7 @@ import PdfViewerPage from './pages/PdfViewerPage';
 import PictureViewerPage from './pages/PictureViewerPage';
 import ContractCoverPrintPage from './pages/ContractCoverPrintPage';
 import CalendarBenchPrintPage from './pages/CalendarBenchPrintPage';
+import CalendarMonthsPrintPage from './pages/CalendarMonthsPrintPage';
 import FinanceHubPage from './pages/FinanceHubPage';
 import TakeoffSheetPage from './pages/TakeoffSheetPage';
 import VendorsPage from './pages/VendorsPage';
@@ -179,6 +180,14 @@ function App(): JSX.Element | null {
           element={
             <ProtectedRoute>
               <CalendarBenchPrintPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/print/calendar-months"
+          element={
+            <ProtectedRoute>
+              <CalendarMonthsPrintPage />
             </ProtectedRoute>
           }
         />
