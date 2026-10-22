@@ -15,6 +15,7 @@ const {
   deleteSms,
   deleteSmsConversation,
   markSmsRead,
+  markJobSmsRead,
   getTwilioConfigStatus,
   syncInboundFromTwilio,
   getUnreadSmsCount,
@@ -37,6 +38,7 @@ router.post('/schedule-sms-adhoc', requireAuth, scheduleSmsAdhoc);
 router.get('/unread-count', requireAuth, getUnreadSmsCount);
 router.get('/messages', requireAuth, listSms);
 router.delete('/messages/conversation', requireAuth, deleteSmsConversation);
+router.post('/messages/job/:jobId/read', requireAuth, markJobSmsRead);
 router.get('/messages/:recordType/:id', requireAuth, getSmsDetail);
 router.delete('/messages/:recordType/:id', requireAuth, deleteSms);
 router.post('/messages/message/:id/read', requireAuth, markSmsRead);

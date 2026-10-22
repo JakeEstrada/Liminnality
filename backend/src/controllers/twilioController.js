@@ -2,7 +2,10 @@ const ScheduledSms = require('../models/ScheduledSms');
 const SmsMessage = require('../models/SmsMessage');
 const Customer = require('../models/Customer');
 const Job = require('../models/Job');
+const Activity = require('../models/Activity');
+const User = require('../models/User');
 const Tenant = require('../models/Tenant');
+const { emitJobUpdated } = require('../services/jobRealtime');
 const File = require('../models/File');
 const crypto = require('crypto');
 const { getFileStream } = require('./fileController');
@@ -141,6 +144,80 @@ async function applySmsJobLinks(doc, links) {
     dirty = true;
   }
   return dirty;
+}
+
+function formatJobSmsNote(direction, body) {
+  const text = String(body || '').replace(/\s+/g, ' ').trim();
+  const preview = text.length > 180 ? `${text.slice(0, 177)}…` : text;
+  if (direction === 'inbound') {
+    return preview ? `Text received: ${preview}` : 'Text received';
+  }
+  return preview ? `Text sent: ${preview}` : 'Text sent';
+}
+
+async function resolveSmsActivityAuthor(createdBy, jobId) {
+  if (optionalObjectId(createdBy)) return createdBy;
+  if (jobId) {
+    const prior = await SmsMessage.findOne({
+      jobId,
+      direction: 'outbound',
+      createdBy: { $exists: true, $ne: null },
+    })
+      .sort({ createdAt: -1 })
+      .select('createdBy')
+      .lean();
+    if (prior?.createdBy) return prior.createdBy;
+  }
+  const fallback = await User.findOne({ isActive: true }).select('_id').lean();
+  return fallback?._id;
+}
+
+async function recordJobSmsTimeline({ jobId, customerId, direction, body, createdBy, io }) {
+  const id = optionalObjectId(jobId);
+  if (!id) return;
+  const job = await Job.findById(id);
+  if (!job) return;
+
+  const inbound = direction === 'inbound';
+  const content = formatJobSmsNote(direction, body);
+  const authorId = await resolveSmsActivityAuthor(createdBy, id);
+
+  job.notes.push({
+    content,
+    createdBy: authorId || undefined,
+    createdByName: inbound ? 'Customer' : undefined,
+    createdAt: new Date(),
+    isSms: true,
+    smsDirection: inbound ? 'inbound' : 'outbound',
+  });
+  if (inbound) {
+    job.unreadCustomerSmsCount = (Number(job.unreadCustomerSmsCount) || 0) + 1;
+  }
+  await job.save();
+
+  if (authorId) {
+    try {
+      await Activity.create({
+        type: 'sms',
+        jobId: job._id,
+        customerId: customerId || job.customerId,
+        note: content,
+        createdBy: authorId,
+      });
+    } catch (error) {
+      console.error('Failed to log SMS activity:', error?.message || error);
+    }
+  }
+
+  try {
+    await emitJobUpdated(io, job);
+  } catch (error) {
+    console.error('Failed to emit job SMS update:', error?.message || error);
+  }
+}
+
+function skipJobSmsTimeline(source) {
+  return source === 'employee' || source === 'rfid-sms-punch' || source === 'payment_notification';
 }
 
 /**
@@ -287,6 +364,19 @@ async function logInboundSms({ from, to, body, twilioSid, io }) {
       createdAt: doc.createdAt,
     });
   }
+  if (created && doc?.jobId) {
+    try {
+      await recordJobSmsTimeline({
+        jobId: doc.jobId,
+        customerId: doc.customerId,
+        direction: 'inbound',
+        body: doc.body,
+        io,
+      });
+    } catch (error) {
+      console.error('Failed to record inbound SMS on job:', error?.message || error);
+    }
+  }
   return { doc, created };
 }
 
@@ -301,6 +391,7 @@ async function logOutboundSms({
   deliveryStatus,
   jobId,
   customerId,
+  io,
 }) {
   const toNorm = normalizeToE164(to) || String(to || '').trim();
   const links = await resolveSmsJobLinks({
@@ -326,6 +417,20 @@ async function logOutboundSms({
     payload.tenantId = tenantId;
   }
   await SmsMessage.create(payload);
+  if (links.jobId && !skipJobSmsTimeline(source)) {
+    try {
+      await recordJobSmsTimeline({
+        jobId: links.jobId,
+        customerId: links.customerId,
+        direction: 'outbound',
+        body: payload.body,
+        createdBy,
+        io,
+      });
+    } catch (error) {
+      console.error('Failed to record outbound SMS on job:', error?.message || error);
+    }
+  }
 }
 
 async function inboundSms(req, res) {
@@ -1014,6 +1119,7 @@ async function sendSmsAdhoc(req, res) {
         tenantId: req.user?.tenantId,
         jobId: req.body?.jobId,
         customerId: req.body?.customerId,
+        io: req.app.get('io'),
       });
     } catch (logError) {
       console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -1136,6 +1242,9 @@ async function scheduleSms(req, res) {
           source: 'other',
           createdBy: req.user?._id,
           tenantId: req.user?.tenantId,
+          jobId: req.body?.jobId,
+          customerId: req.body?.customerId,
+          io: req.app.get('io'),
         });
       } catch (logError) {
         console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -1370,11 +1479,59 @@ async function markSmsRead(req, res) {
     if (!doc.readAt) {
       doc.readAt = new Date();
       await doc.save();
+      if (doc.jobId) {
+        await Job.updateOne(
+          { _id: doc.jobId, unreadCustomerSmsCount: { $gt: 0 } },
+          { $inc: { unreadCustomerSmsCount: -1 } },
+        );
+        const job = await Job.findById(doc.jobId);
+        if (job) await emitJobUpdated(req, job);
+      }
     }
     return res.status(200).json(buildMessageDetailPayload(doc.toObject(), 'message'));
   } catch (error) {
     console.error('markSmsRead error:', error?.message || error);
     return res.status(500).json({ error: error?.message || 'Failed to mark message read' });
+  }
+}
+
+async function markJobSmsRead(req, res) {
+  try {
+    const jobId = optionalObjectId(req.params?.jobId);
+    if (!jobId) return res.status(400).json({ error: 'Job is required' });
+    const job = await Job.findById(jobId).populate(
+      'customerId',
+      'name primaryPhone phones contactPhones',
+    );
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const variants = collectJobPhoneVariants(job);
+    const customerId = job.customerId?._id || job.customerId;
+    const or = [{ jobId: job._id }];
+    if (customerId) or.push({ customerId });
+    if (variants.length) {
+      or.push({ from: { $in: variants } });
+      or.push({ to: { $in: variants } });
+    }
+
+    await SmsMessage.updateMany(
+      {
+        direction: 'inbound',
+        $and: [
+          { $or: or },
+          { $or: [{ readAt: null }, { readAt: { $exists: false } }] },
+        ],
+      },
+      { $set: { readAt: new Date() } },
+    );
+
+    job.unreadCustomerSmsCount = 0;
+    await job.save();
+    await emitJobUpdated(req, job);
+    return res.status(200).json({ ok: true, unreadCustomerSmsCount: 0 });
+  } catch (error) {
+    console.error('markJobSmsRead error:', error?.message || error);
+    return res.status(500).json({ error: error?.message || 'Failed to mark job messages read' });
   }
 }
 
@@ -1648,6 +1805,7 @@ module.exports = {
   deleteSms,
   deleteSmsConversation,
   markSmsRead,
+  markJobSmsRead,
   getUnreadSmsCount,
   startSmsScheduler,
   sendSmsViaTwilio,

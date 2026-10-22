@@ -308,11 +308,26 @@ const jobSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
+    isSms: {
+      type: Boolean,
+      default: false
+    },
+    smsDirection: {
+      type: String,
+      enum: ['inbound', 'outbound'],
+    },
     important: {
       type: Boolean,
       default: false
     }
   }],
+
+  /** Unread inbound customer texts linked to this job. Shown as (+n) on pipeline cards. */
+  unreadCustomerSmsCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   
   // Archive instead of delete
   isArchived: {

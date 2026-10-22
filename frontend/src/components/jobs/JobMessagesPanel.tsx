@@ -14,7 +14,7 @@ import { useTheme } from '@mui/material/styles';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import api from '../../utils/axios';
-import { fetchSmsLists, markSmsRead, type SmsRow } from '../../utils/twilioApi';
+import { fetchSmsLists, markJobSmsRead, type SmsRow } from '../../utils/twilioApi';
 import { formatPromptPhone, resolveCustomerPhone } from '../../utils/pipelineSmsTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
@@ -22,6 +22,7 @@ import { getTenantRoom } from '../../services/socket';
 
 type JobLike = {
   _id?: string;
+  unreadCustomerSmsCount?: number;
   jobContact?: { phone?: string };
   customerId?:
     | {
@@ -102,9 +103,17 @@ export default function JobMessagesPanel({
         ...(lists.received || []).map((row) => ({ ...row, direction: 'inbound' as const })),
       ].sort((a, b) => messageTime(a) - messageTime(b));
       setMessages(next);
-
-      const unread = next.filter((row) => row.direction === 'inbound' && row.status === 'unread');
-      await Promise.allSettled(unread.map((row) => markSmsRead(row.id)));
+      const hasUnread =
+        next.some((row) => row.direction === 'inbound' && row.status === 'unread') ||
+        Number(job?.unreadCustomerSmsCount || 0) > 0;
+      if (hasUnread) {
+        await markJobSmsRead(jobId);
+        setMessages((prev) =>
+          prev.map((row) =>
+            row.direction === 'inbound' && row.status === 'unread' ? { ...row, status: 'read' } : row,
+          ),
+        );
+      }
     } catch (error) {
       toast.error(
         isAxiosError(error) ? error.response?.data?.error || 'Failed to load messages' : 'Failed to load messages',
@@ -112,7 +121,7 @@ export default function JobMessagesPanel({
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, job?.unreadCustomerSmsCount]);
 
   useEffect(() => {
     void loadMessages();

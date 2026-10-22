@@ -16,7 +16,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 | Component | Path | Role |
 |-----------|------|------|
 | `PipelineBoard` | `components/pipeline/PipelineBoard.tsx` | Drag-and-drop kanban columns |
-| `JobCard` | `components/pipeline/JobCard.tsx` | Single card in a column |
+| `JobCard` | `components/pipeline/JobCard.tsx` | Single card in a column; `(+n)` when the customer has unread texts |
 | `JobDetailModal` | `components/jobs/JobDetailModal.tsx` | Full job view: notes, files, tasks, AI summary |
 | `AddJobModal` | `components/jobs/AddJobModal.tsx` | Create job form |
 | `JobContextMenu` | `components/jobs/JobContextMenu.tsx` | Right-click actions on cards |
@@ -25,7 +25,8 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 - `fetchJobDetails` — loads job, tasks, estimates
 - Overview tab — notes, activity, **AI summary** button → `POST /activities/job/:id/summary`
 - Files tab — upload via `POST /files/upload`
-- Messages tab — SMS thread with the customer (`GET /twilio/messages?jobId=`)
+- Messages tab — SMS thread with the customer (`GET /twilio/messages?jobId=`), immediately after Overview
+- Recent Activity / Notes — timestamped `Text sent` / `Text received` entries
 
 ## Customers
 

@@ -124,6 +124,16 @@ export async function markSmsRead(id: string): Promise<SmsDetail> {
   return detail;
 }
 
+export async function markJobSmsRead(jobId: string) {
+  const id = encodeURIComponent(String(jobId || '').trim());
+  const result = await withTwilioPathFallback<{ ok: boolean; unreadCustomerSmsCount?: number }>(
+    `/messages/job/${id}/read`,
+    (url) => api.post(url),
+  );
+  notifyUnreadMaybeChanged();
+  return result;
+}
+
 export type ScheduleSmsPayload = {
   to: string;
   message: string;

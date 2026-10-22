@@ -182,11 +182,11 @@ function renderTextWithLinks(text) {
 
 export const JOB_MODAL_TAB = {
   overview: 0,
-  schedule: 1,
-  payments: 2,
-  files: 3,
-  notes: 4,
-  messages: 5,
+  messages: 1,
+  schedule: 2,
+  payments: 3,
+  files: 4,
+  notes: 5,
 };
 
 function resolveJobModalTab(tab) {
@@ -815,6 +815,22 @@ function JobDetailModal({
 
   const getNoteAuthor = (note) =>
     note?.createdBy?.name || note?.createdByName || job?.createdBy?.name || 'Unknown';
+
+  const noteBorderColor = (note) => {
+    if (note?.important) return 'error.main';
+    if (note?.isSms) return note.smsDirection === 'inbound' ? 'success.main' : 'info.main';
+    if (note?.isStageChange) return 'primary.main';
+    if (note?.isAppointment) return 'warning.main';
+    return 'divider';
+  };
+
+  const noteTextColor = (note) => {
+    if (note?.important) return 'error.main';
+    if (note?.isSms) return note.smsDirection === 'inbound' ? 'success.dark' : 'info.dark';
+    if (note?.isStageChange) return 'primary.main';
+    if (note?.isAppointment) return 'warning.main';
+    return 'text.primary';
+  };
 
   /** Job site / customer address + contact for header strip */
   const getCustomerContact = (j) => {
@@ -1472,11 +1488,17 @@ function JobDetailModal({
           }}
         >
           <Tab label="Overview" />
+          <Tab
+            label={
+              Number(job.unreadCustomerSmsCount) > 0
+                ? `Messages (+${Number(job.unreadCustomerSmsCount)})`
+                : 'Messages'
+            }
+          />
           <Tab label="Schedule" />
           <Tab label="Payments" />
           <Tab label="Files" />
           <Tab label="Notes" />
-          <Tab label="Messages" />
         </Tabs>
       </Box>
 
@@ -1664,13 +1686,7 @@ function JobDetailModal({
                             borderRadius: 1, 
                             bgcolor: 'action.hover',
                             borderLeft: '3px solid',
-                            borderColor: note.important
-                              ? 'error.main'
-                              : note.isStageChange
-                                ? 'primary.main'
-                                : note.isAppointment
-                                  ? 'warning.main'
-                                  : 'divider'
+                            borderColor: noteBorderColor(note)
                           }}
                         >
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
@@ -1686,15 +1702,9 @@ function JobDetailModal({
                           <Typography 
                             variant="body2"
                             sx={{
-                              color: note.important
-                                ? 'error.main'
-                                : note.isStageChange
-                                  ? 'primary.main'
-                                  : note.isAppointment
-                                    ? 'warning.main'
-                                    : 'text.primary',
-                              fontStyle: (note.isStageChange || note.isAppointment) && !note.important ? 'italic' : 'normal',
-                              fontWeight: note.important ? 600 : note.isStageChange ? 500 : 'normal'
+                              color: noteTextColor(note),
+                              fontStyle: (note.isStageChange || note.isAppointment || note.isSms) && !note.important ? 'italic' : 'normal',
+                              fontWeight: note.important ? 600 : note.isStageChange || note.isSms ? 500 : 'normal'
                             }}
                           >
                             {renderTextWithLinks(note.content)}
@@ -2173,10 +2183,8 @@ function JobDetailModal({
                       key={index}
                       sx={{
                         p: 2,
-                        ...(note.important && {
-                          borderLeft: '4px solid',
-                          borderColor: 'error.main',
-                        }),
+                        borderLeft: '4px solid',
+                        borderColor: noteBorderColor(note),
                       }}
                     >
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -2190,15 +2198,9 @@ function JobDetailModal({
                       <Typography 
                         variant="body2"
                         sx={{
-                          color: note.important
-                            ? 'error.main'
-                            : note.isStageChange
-                              ? '#1976D2'
-                              : note.isAppointment
-                                ? '#F57C00'
-                                : 'inherit',
-                          fontStyle: (note.isStageChange || note.isAppointment) && !note.important ? 'italic' : 'normal',
-                          fontWeight: note.important ? 600 : note.isStageChange ? 500 : 'normal'
+                          color: noteTextColor(note),
+                          fontStyle: (note.isStageChange || note.isAppointment || note.isSms) && !note.important ? 'italic' : 'normal',
+                          fontWeight: note.important ? 600 : note.isStageChange || note.isSms ? 500 : 'normal'
                         }}
                       >
                         {renderTextWithLinks(note.content)}

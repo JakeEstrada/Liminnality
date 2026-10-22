@@ -44,6 +44,8 @@ function humanActivityTitle(activity) {
     }
     case 'note':
       return 'Note';
+    case 'sms':
+      return 'Text';
     case 'job_created':
       return 'Job Created';
     case 'job_updated':
@@ -392,6 +394,7 @@ function formatJobNotesBlock(notes) {
         n.isStageChange ? 'stage-change' : null,
         n.important ? 'important' : null,
         n.isAppointment ? 'appointment' : null,
+        n.isSms ? (n.smsDirection === 'inbound' ? 'text-received' : 'text-sent') : null,
       ]
         .filter(Boolean)
         .join(', ');

@@ -25,6 +25,7 @@ function JobCard(props: Record<string, unknown>) {
       _id?: string;
       isArchived?: boolean;
       isDeadEstimate?: boolean;
+      unreadCustomerSmsCount?: number;
     };
     onClick?: () => void;
     onContextMenu?: (e: unknown, job: Record<string, unknown>) => void;
@@ -105,6 +106,7 @@ function JobCard(props: Record<string, unknown>) {
   const descFontRem = ultraCompact ? '0.6875rem' : '0.75rem';
   const dotSize = ultraCompact ? 8 : 10;
   const cardMinHeight = narrow ? 32 : minHeightPx;
+  const unreadSms = Math.max(0, Number(job.unreadCustomerSmsCount) || 0);
 
   return (
     <Card
@@ -167,6 +169,19 @@ function JobCard(props: Record<string, unknown>) {
             title={job.title}
           >
             {narrow ? job.title || 'Untitled Job' : truncateTitle(job.title, ultraCompact ? 36 : 50)}
+            {unreadSms > 0 ? (
+              <Box
+                component="span"
+                sx={{
+                  ml: 0.5,
+                  fontWeight: 800,
+                  color: 'primary.main',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                (+{unreadSms})
+              </Box>
+            ) : null}
           </Typography>
           {job.description && !narrow && (
             <>
