@@ -118,11 +118,26 @@ function placeMatch(hay: string, needle: string) {
   return a === b || (` ${a} `).includes(` ${b} `);
 }
 
-function pinIcon(group = 'active', featured = false) {
-  const color = PIN_COLORS[group] || PIN_COLORS.active;
+const SCHEDULED_STAGES = new Set([
+  'SCHEDULED',
+  'IN_PRODUCTION',
+  'INSTALLED',
+  'FINAL_PAYMENT_CLOSED',
+]);
+
+function resolvePinGroup(pin: MapPin) {
+  if (pin.group && PIN_COLORS[pin.group]) return pin.group;
+  if (pin.isArchived || pin.isDeadEstimate) return 'archived';
+  if (pin.isCompletedClosedOut || pin.scheduled || SCHEDULED_STAGES.has(pin.stage)) return 'scheduled';
+  return 'unscheduled';
+}
+
+function pinIcon(pin: MapPin, featured = false) {
+  const color = PIN_COLORS[resolvePinGroup(pin)] || PIN_COLORS.unscheduled;
+  const size = featured ? 24 : 18;
   return L.divIcon({
     className: 'paarth-job-pin',
-    html: `<span class="paarth-job-pin-dot${featured ? ' is-featured' : ''}" style="background:${color}"></span>`,
+    html: `<span class="paarth-job-pin-dot${featured ? ' is-featured' : ''}" style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.25)"></span>`,
     iconSize: featured ? [28, 28] : [22, 22],
     iconAnchor: featured ? [14, 14] : [11, 11],
     popupAnchor: [0, -12],
@@ -250,6 +265,7 @@ export default function OrangeCountyJobMap({
   const [filters, setFilters] = useState<MapFilters>(EMPTY_FILTERS);
   const [featuredJobId, setFeaturedJobId] = useState<string | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [pins, setPins] = useState<Record<MapViewId, MapPin[]>>({
     all: [],
@@ -301,11 +317,13 @@ export default function OrangeCountyJobMap({
     addBasemap(map);
     const markers = L.layerGroup().addTo(map);
     mapRef.current = { map, markers };
+    setMapReady(true);
     window.setTimeout(() => map.invalidateSize(), 80);
 
     return () => {
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
@@ -372,12 +390,12 @@ export default function OrangeCountyJobMap({
 
   useEffect(() => {
     const ctx = mapRef.current;
-    if (!ctx) return;
+    if (!ctx || !mapReady) return;
     ctx.markers.clearLayers();
     markerByIdRef.current.clear();
     visiblePins.forEach((pin) => {
       const marker = L.marker([pin.lat, pin.lng], {
-        icon: pinIcon(pin.group, false),
+        icon: pinIcon(pin, false),
         keyboard: true,
       });
       marker.bindTooltip(escapeHtml(pinLabel(pin)), {
@@ -397,15 +415,18 @@ export default function OrangeCountyJobMap({
     window.setTimeout(() => {
       ctx.map.invalidateSize();
       fitPins(ctx.map, visiblePins);
+      markerByIdRef.current.forEach(({ marker, pin }) => {
+        marker.setIcon(pinIcon(pin, false));
+      });
     }, 40);
-  }, [visiblePins]);
+  }, [visiblePins, mapReady]);
 
   useEffect(() => {
     const ctx = mapRef.current;
     if (!ctx) return;
     markerByIdRef.current.forEach(({ marker, pin }, id) => {
       const featured = id === featuredJobId;
-      marker.setIcon(pinIcon(pin.group, featured));
+      marker.setIcon(pinIcon(pin, featured));
       marker.setZIndexOffset(featured ? 800 : 0);
       marker.unbindTooltip();
       marker.bindTooltip(escapeHtml(pinLabel(pin)), {

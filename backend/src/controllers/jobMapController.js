@@ -126,7 +126,8 @@ function isPipelineBoardJob(job) {
 }
 
 function isScheduledJob(job) {
-  return SCHEDULED_STAGES.includes(job.stage) || isClosedHistoryJob(job);
+  if (SCHEDULED_STAGES.includes(job.stage) || isClosedHistoryJob(job)) return true;
+  return jobWindows(job).length > 0;
 }
 
 function pinGroup(job) {

@@ -1252,8 +1252,6 @@ function DashboardPage() {
     }, 100);
   };
 
-  const todayLabel = format(new Date(), 'EEEE, MMMM d');
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -1264,21 +1262,6 @@ function DashboardPage() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, py: { xs: 2, sm: 3 } }}>
-      <Box
-        sx={{
-          mb: 3,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 1.5,
-        }}
-      >
-        <Typography variant="body2" color="text.secondary">
-          {todayLabel}
-        </Typography>
-      </Box>
-
       <DashboardInsightGrid
         hideSensitive={hideSensitive}
         showTraffic={Boolean(isSuperAdmin())}
