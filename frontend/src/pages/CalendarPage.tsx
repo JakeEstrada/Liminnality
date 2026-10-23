@@ -17,9 +17,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
   MenuItem,
   Chip,
   CircularProgress,
@@ -2833,9 +2830,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Bench ({benchJobs.length})
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                Jobs ready to schedule. Drag a scheduled card here to park it on the bench without removing dates.
-              </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
                 {benchJobs.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">No jobs on bench</Typography>
@@ -2886,9 +2880,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
             >
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Scheduled ({scheduledJobs.length})
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                Jobs with scheduled dates. Drag to the bench to park a demo without losing the schedule.
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
                 {scheduledJobs.length === 0 ? (
@@ -3016,33 +3007,6 @@ function CalendarPage({ tvMode = false, externalViewControls = false }) {
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               >
                 Exit Calendar view
-              </Button>
-            </>
-          ) : !tvMode ? (
-            <>
-              {/* Standalone event creation removed; calendar now only schedules existing jobs */}
-              <FormControl
-                size="small"
-                sx={{ minWidth: 120, display: mobileViewOnly ? 'none' : { xs: 'none', sm: 'flex' } }}
-              >
-                <InputLabel>Bench position</InputLabel>
-                <Select
-                  value={benchPosition}
-                  label="Bench position"
-                  onChange={(e) => setBenchPosition(e.target.value)}
-                >
-                  <MenuItem value="top">Top</MenuItem>
-                  <MenuItem value="right">Right</MenuItem>
-                  <MenuItem value="bottom">Bottom</MenuItem>
-                </Select>
-              </FormControl>
-              <Button
-                onClick={() => navigate('/calendar-view')}
-                variant="outlined"
-                size="small"
-                sx={{ display: mobileViewOnly ? 'none' : { xs: 'none', sm: 'inline-flex' } }}
-              >
-                Calendar view
               </Button>
             </>
           ) : null}

@@ -470,61 +470,44 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
           px: { xs: 1, sm: 2 },
         }}
       >
-        {/* Page Header */}
-        <Box sx={{ mb: tvMode ? 2 : { xs: 1, sm: 2 } }}>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-              {!tvMode && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => navigate('/pipeline-view')}
-                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                >
-                  Pipeline view
-                </Button>
-              )}
-              {tvMode && !externalViewControls && (
-                <>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => navigate('/pipeline-view')}
-                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                  >
-                    Pipeline view
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => navigate('/calendar-view')}
-                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                  >
-                    Calendar view
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => navigate('/customers-view')}
-                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                  >
-                    Customers view
-                  </Button>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => {
-                      navigate('/pipeline');
-                    }}
-                    sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-                  >
-                    Exit Pipeline view
-                  </Button>
-                </>
-              )}
-            </Box>
+        {tvMode && !externalViewControls && (
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => navigate('/pipeline-view')}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Pipeline view
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => navigate('/calendar-view')}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Calendar view
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => navigate('/customers-view')}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Customers view
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                navigate('/pipeline');
+              }}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+            >
+              Exit Pipeline view
+            </Button>
           </Box>
-        </Box>
+        )}
 
         {/* Todos and Appointments — hidden in shop view or fullscreen pipeline view */}
         {showTasksAndAppointments && (
