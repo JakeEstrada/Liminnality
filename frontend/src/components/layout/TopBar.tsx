@@ -114,10 +114,17 @@ function TopBar({ onMenuClick }) {
   );
 
   const handleResultClick = (path) => {
+    const trimmed = query.trim();
     setSearchOpen(false);
     setQuery('');
     setSearchResults([]);
-    navigate(path);
+    let dest = path;
+    if (String(path || '').startsWith('/archive') && trimmed) {
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set('q', trimmed);
+      dest = `${url.pathname}${url.search}`;
+    }
+    navigate(dest);
   };
 
   return (
@@ -147,7 +154,7 @@ function TopBar({ onMenuClick }) {
                 <TextField
                   size="small"
                   fullWidth
-                  placeholder="Search archived, finished, no-job customers, pipeline..."
+                  placeholder="Search job"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onFocus={() => setSearchOpen(true)}

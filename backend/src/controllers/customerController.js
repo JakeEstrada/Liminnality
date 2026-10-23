@@ -544,13 +544,18 @@ async function uploadCustomersCSV(req, res) {
   }
 }
 
-function archivePagePath(job) {
+function archivePagePath(job, q) {
   const stamp = job?.archivedAt || job?.movedToDeadEstimateAt || job?.updatedAt;
   const year = stamp ? new Date(stamp).getFullYear() : NaN;
-  return Number.isFinite(year) ? `/archive?year=${year}` : '/archive';
+  const params = new URLSearchParams();
+  if (Number.isFinite(year)) params.set('year', String(year));
+  const query = String(q || '').trim();
+  if (query) params.set('q', query);
+  const qs = params.toString();
+  return qs ? `/archive?${qs}` : '/archive';
 }
 
-function jobSearchDestination(job) {
+function jobSearchDestination(job, q) {
   if (job?.isCompletedClosedOut || (job?.isArchived && job?.stage === 'FINAL_PAYMENT_CLOSED')) {
     return {
       type: 'finished_job',
@@ -564,7 +569,7 @@ function jobSearchDestination(job) {
       type: 'dead_estimate',
       locationLabel: 'Job Archive',
       subtitle: 'Dead estimate',
-      path: archivePagePath(job),
+      path: archivePagePath(job, q),
     };
   }
   if (job?.isArchived) {
@@ -572,7 +577,7 @@ function jobSearchDestination(job) {
       type: 'archived_job',
       locationLabel: 'Job Archive',
       subtitle: 'Archived job',
-      path: archivePagePath(job),
+      path: archivePagePath(job, q),
     };
   }
   return {
@@ -652,7 +657,7 @@ async function fetchGlobalCustomerSearchResults({ tenantId, q, limit: limitArg }
 
   const jobResults = matchedJobs.map((job) => {
     const customerName = job.customerId && typeof job.customerId === 'object' ? job.customerId.name : '';
-    const destination = jobSearchDestination(job);
+    const destination = jobSearchDestination(job, qTrim);
     return {
       id: `job-${job._id}`,
       jobId: String(job._id),

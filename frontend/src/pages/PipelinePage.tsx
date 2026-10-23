@@ -97,7 +97,6 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [pipelineSearch, setPipelineSearch] = useState('');
   const [pipelineLayouts, setPipelineLayouts] = useState([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState('default');
   const [pipelineHydrated, setPipelineHydrated] = useState(false);
@@ -385,21 +384,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     return jobs.filter((j) => String(j.pipelineLayoutId || '') === effectivePipelineId);
   }, [jobs, effectivePipelineId]);
 
-  const filteredJobs = useMemo(() => {
-    const term = pipelineSearch.trim().toLowerCase();
-    const pool = term ? jobs : layoutFilteredJobs;
-    if (!term) return pool;
-    return pool.filter((job) => {
-      const title = job.title || '';
-      const customerName = job.customerId?.name || '';
-      const stage = job.stage || '';
-      return (
-        title.toLowerCase().includes(term) ||
-        customerName.toLowerCase().includes(term) ||
-        stage.toLowerCase().includes(term)
-      );
-    });
-  }, [jobs, layoutFilteredJobs, pipelineSearch]);
+  const filteredJobs = layoutFilteredJobs;
 
   const pipelineOptions = useMemo(
     () => [
@@ -683,8 +668,6 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
             }}
             onArchiveCompleted={() => setArchiveDialogOpen(true)}
             completedJobsCount={completedJobsCount}
-            search={pipelineSearch}
-            onSearchChange={setPipelineSearch}
             pipelineMode={pipelineMode}
             activeCustomLayout={activeCustomLayout}
             pipelineSelectorValue={selectedPipelineId}

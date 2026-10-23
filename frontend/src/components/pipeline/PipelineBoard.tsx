@@ -10,7 +10,6 @@ import {
   Tooltip,
   useTheme,
   TextField,
-  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -28,7 +27,6 @@ import {
 import {
   Add as AddIcon,
   CheckCircle as CheckCircleIcon,
-  Search as SearchIcon,
   History as HistoryIcon,
   Edit as EditIcon,
   Lock as LockIcon,
@@ -130,8 +128,6 @@ function PipelineBoard({
   onJobContextMenu,
   onArchiveCompleted,
   completedJobsCount,
-  search = '',
-  onSearchChange,
   pipelineMode = 'default',
   activeCustomLayout = null,
   pipelineSelectorValue = 'default',
@@ -773,20 +769,6 @@ function PipelineBoard({
             width: { xs: '100%', md: 'auto' },
           }}
         >
-          <TextField
-            size="small"
-            label="Search jobs in pipeline"
-            value={search}
-            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 280 }, minWidth: 0 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            }}
-          />
           {showPipelinePicker && (
             <FormControl size="small" sx={{ minWidth: 200, maxWidth: 280 }}>
               <InputLabel id="pipeline-layout-select-label">Pipeline</InputLabel>

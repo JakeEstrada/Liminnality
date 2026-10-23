@@ -24,7 +24,6 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
-  TextField,
   useTheme,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Unarchive as UnarchiveIcon } from '@mui/icons-material';
@@ -51,7 +50,7 @@ function JobArchivePage() {
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   const [contextMenu, setContextMenu] = useState(null);
   const [contextMenuJob, setContextMenuJob] = useState(null);
 
@@ -72,6 +71,7 @@ function JobArchivePage() {
     if (Number.isFinite(yearFromUrl)) {
       setSelectedYear(yearFromUrl);
     }
+    setSearchQuery(searchParams.get('q') || '');
     if (!searchParams.get('jobId')) return;
     const next = new URLSearchParams(searchParams);
     next.delete('jobId');
@@ -266,14 +266,6 @@ function JobArchivePage() {
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-              <TextField
-                size="small"
-                label="Search archived jobs"
-                placeholder="Title, customer, estimate #..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ minWidth: { xs: 220, sm: 300 } }}
-              />
               {availableYears.length > 0 && (
                 <FormControl sx={{ minWidth: 200 }}>
                 <InputLabel id="year-select-label">Year</InputLabel>
@@ -318,7 +310,7 @@ function JobArchivePage() {
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               {searchQuery.trim()
-                ? 'Try a different search term or clear search'
+                ? 'Try a different name in the top search, or pick another year'
                 : 'Select a different year to view archived jobs'}
             </Typography>
           </Card>
@@ -327,7 +319,7 @@ function JobArchivePage() {
             {selectedYearMonths.map((group, index) => (
               <Accordion
                 key={`${group.year}-${group.month}`}
-                defaultExpanded={index === 0}
+                defaultExpanded={index === 0 || Boolean(searchQuery.trim())}
                 sx={{
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
                   borderRadius: '12px !important',
