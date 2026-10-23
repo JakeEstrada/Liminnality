@@ -246,7 +246,7 @@ export default function OrangeCountyJobMap({
   const mapRef = useRef<{ map: L.Map; markers: L.LayerGroup } | null>(null);
   const markerByIdRef = useRef<Map<string, { marker: L.Marker; pin: MapPin }>>(new Map());
   const [view, setView] = useState<MapViewId>('pipeline');
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<MapFilters>(EMPTY_FILTERS);
   const [featuredJobId, setFeaturedJobId] = useState<string | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
@@ -472,24 +472,26 @@ export default function OrangeCountyJobMap({
             }),
       }}
     >
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.5, mb: 1.5, flexShrink: 0 }}>
-        {VIEWS.map((item) => (
-          <Button
-            key={item.id}
-            size="small"
-            variant={view === item.id ? 'contained' : 'outlined'}
-            onClick={() => {
-              setView(item.id);
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1.5, flexShrink: 0 }}>
+        <FormControl size="small" sx={{ minWidth: 168 }}>
+          <Select
+            value={view}
+            onChange={(event) => {
+              setView(event.target.value as MapViewId);
               setFilters((current) => ({ ...current, jobIds: [] }));
             }}
-            sx={{ textTransform: 'none', minWidth: 0 }}
+            sx={{ textTransform: 'none' }}
           >
-            {item.label}
-          </Button>
-        ))}
+            {VIEWS.map((item) => (
+              <MenuItem key={item.id} value={item.id}>
+                {item.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <Button
           size="small"
-          variant={filtersOpen ? 'contained' : 'outlined'}
+          variant={filtersOpen || filtersActive ? 'contained' : 'outlined'}
           onClick={() => setFiltersOpen((open) => !open)}
           sx={{ textTransform: 'none', minWidth: 0, ml: 'auto' }}
         >
@@ -615,15 +617,6 @@ export default function OrangeCountyJobMap({
           ) : null}
         </Box>
       ) : null}
-      <Box sx={{ mb: 1, flexShrink: 0 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-          Orange County jobs
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {visiblePins.length} mapped{filtersActive ? ' · filtered' : ''} · hover a pin for the job ·
-          click to open · orange not scheduled · green scheduled · gray archived
-        </Typography>
-      </Box>
       <Box
         sx={{
           position: 'relative',

@@ -25,6 +25,7 @@ import {
   LightMode as LightModeIcon,
   Menu as MenuIcon,
   Search as SearchIcon,
+  Tv as TvIcon,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -69,6 +70,11 @@ function TopBar({ onMenuClick }) {
   const handleAccountSettings = () => {
     handleClose();
     navigate('/account-settings');
+  };
+
+  const handleKioskView = () => {
+    handleClose();
+    navigate('/dashboard-view');
   };
 
   const handleLogout = async () => {
@@ -261,6 +267,10 @@ function TopBar({ onMenuClick }) {
           <MenuItem onClick={handleAccountSettings}>
             <PersonIcon sx={{ mr: 1, fontSize: 20 }} />
             Account settings
+          </MenuItem>
+          <MenuItem onClick={handleKioskView}>
+            <TvIcon sx={{ mr: 1, fontSize: 20 }} />
+            Kiosk view
           </MenuItem>
           {isMobile && (
             <MenuItem

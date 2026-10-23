@@ -16,7 +16,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 | Component | Path | Role |
 |-----------|------|------|
 | `PipelineBoard` | `components/pipeline/PipelineBoard.tsx` | Drag-and-drop kanban columns |
-| `JobCard` | `components/pipeline/JobCard.tsx` | Single card in a column; `(+n)` when the customer has unread texts |
+| `JobCard` | `components/pipeline/JobCard.tsx` | Single card in a column; payment squares (green = paid); `(+n)` when the customer has unread texts |
 | `JobDetailModal` | `components/jobs/JobDetailModal.tsx` | Full job view: notes, files, tasks, AI summary |
 | `AddJobModal` | `components/jobs/AddJobModal.tsx` | Create job form |
 | `JobContextMenu` | `components/jobs/JobContextMenu.tsx` | Right-click actions on cards |

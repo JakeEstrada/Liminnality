@@ -1,32 +1,52 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
   Box,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   List,
   ListItemButton,
+  ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
   DeleteOutline as DeleteOutlineIcon,
+  DriveFileRenameOutline as RenameIcon,
   Edit as EditIcon,
+  Refresh as RefreshIcon,
   Schedule as ScheduleIcon,
   Send as SendIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { format, isSameDay, isToday, isYesterday } from 'date-fns';
 import { useTheme } from '@mui/material/styles';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { formatPhoneForDisplay, nanpDigitsOnly } from '../../utils/phoneFormat';
+import { formatPhoneForDisplay } from '../../utils/phoneFormat';
 import type { SmsRow } from '../../utils/twilioApi';
 import api from '../../utils/axios';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
 import { getTenantRoom } from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
+import toast from 'react-hot-toast';
+import {
+  conversationPhoneKey,
+  loadConversationAliases,
+  mergeConversationNames,
+  namesFromCustomers,
+  namesFromEmployees,
+  setConversationAlias,
+} from '../../utils/smsConversationNames';
 
 export type ChatDirection = 'inbound' | 'outbound';
 
@@ -48,42 +68,7 @@ function partyPhone(row: SmsRow, direction: ChatDirection) {
 }
 
 function conversationKey(phone: string) {
-  const digits = nanpDigitsOnly(phone);
-  if (digits.length === 10) return digits;
-  return String(phone || '').trim().toLowerCase() || 'unknown';
-}
-
-type CustomerContact = {
-  name?: string;
-  primaryPhone?: string;
-  phones?: string[];
-  contactPhones?: Array<{ value?: string }>;
-};
-
-function customerPhoneKeys(customer: CustomerContact): string[] {
-  const raw = [
-    customer.primaryPhone,
-    ...(Array.isArray(customer.phones) ? customer.phones : []),
-    ...(Array.isArray(customer.contactPhones) ? customer.contactPhones.map((row) => row?.value) : []),
-  ];
-  const keys = new Set<string>();
-  for (const value of raw) {
-    const key = conversationKey(String(value || ''));
-    if (key && key !== 'unknown') keys.add(key);
-  }
-  return Array.from(keys);
-}
-
-function buildCustomerNameByPhone(customers: CustomerContact[]): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const customer of customers) {
-    const name = String(customer.name || '').trim();
-    if (!name) continue;
-    for (const key of customerPhoneKeys(customer)) {
-      if (!map[key]) map[key] = name;
-    }
-  }
-  return map;
+  return conversationPhoneKey(phone);
 }
 
 function messageTime(row: SmsRow) {
@@ -205,7 +190,13 @@ export default function SmsConversationView({
   const isMobile = useIsMobile();
   const isDark = theme.palette.mode === 'dark';
   const { tenantIdForBranding } = useAuth();
-  const [nameByPhone, setNameByPhone] = useState<Record<string, string>>({});
+  const tenantKey = tenantIdForBranding ? String(tenantIdForBranding) : '';
+  const [directoryNames, setDirectoryNames] = useState<Record<string, string>>({});
+  const [aliases, setAliases] = useState<Record<string, string>>(() => loadConversationAliases(tenantKey));
+  const nameByPhone = useMemo(
+    () => mergeConversationNames(directoryNames, aliases),
+    [directoryNames, aliases],
+  );
   const conversations = useMemo(
     () => buildConversations(sent, received, scheduled, nameByPhone),
     [sent, received, scheduled, nameByPhone],
@@ -215,6 +206,15 @@ export default function SmsConversationView({
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
   const [scheduleMode, setScheduleMode] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    left: number;
+    top: number;
+    conv: Conversation;
+  } | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameKey, setRenameKey] = useState('');
+  const [syncingNames, setSyncingNames] = useState(false);
   const [sendAtLocal, setSendAtLocal] = useState(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() + 60);
@@ -230,24 +230,36 @@ export default function SmsConversationView({
     ? toDisplay.trim()
     : String(selected.phone || selected.displayPhone || toDisplay).trim();
 
-  const loadCustomerNames = useCallback(async () => {
+  const loadDirectoryNames = useCallback(async () => {
+    setAliases(loadConversationAliases(tenantKey));
     try {
-      const { data } = await api.get('/customers', { params: { limit: 1000 } });
-      const rows = Array.isArray(data?.customers) ? data.customers : [];
-      setNameByPhone(buildCustomerNameByPhone(rows));
+      const [customersRes, employeesRes] = await Promise.all([
+        api.get('/customers', { params: { limit: 1000 } }),
+        api.get('/users/employees-for-sms').catch(() => ({ data: {} })),
+      ]);
+      const customers = Array.isArray(customersRes.data?.customers) ? customersRes.data.customers : [];
+      const employees = Array.isArray(employeesRes.data?.recipients)
+        ? employeesRes.data.recipients
+        : Array.isArray(employeesRes.data?.employees)
+          ? employeesRes.data.employees
+          : [];
+      setDirectoryNames({
+        ...namesFromCustomers(customers),
+        ...namesFromEmployees(employees),
+      });
     } catch {
-      /* names stay as phone numbers */
+      /* names stay as phone numbers or saved aliases */
     }
-  }, []);
+  }, [tenantKey]);
 
   useEffect(() => {
-    void loadCustomerNames();
-  }, [loadCustomerNames]);
+    void loadDirectoryNames();
+  }, [loadDirectoryNames]);
 
   useSocketSubscription(
     tenantIdForBranding ? getTenantRoom(tenantIdForBranding) : null,
     'customer.changed',
-    loadCustomerNames,
+    loadDirectoryNames,
   );
 
   useEffect(() => {
@@ -285,6 +297,48 @@ export default function SmsConversationView({
     setToDisplay(conv.displayPhone);
     setBody('');
     setScheduleMode(false);
+  };
+
+  const openContextMenu = (event: MouseEvent, conv: Conversation) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ left: event.clientX, top: event.clientY, conv });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const startRename = (conv: Conversation) => {
+    setRenameKey(conv.key);
+    setRenameValue(conv.customerName || conv.displayPhone);
+    setRenameOpen(true);
+    closeContextMenu();
+  };
+
+  const saveRename = () => {
+    if (!renameKey) return;
+    const next = setConversationAlias(tenantKey, renameKey, renameValue);
+    setAliases(next);
+    setRenameOpen(false);
+    toast.success('Conversation name saved');
+  };
+
+  const useDirectoryName = (conv: Conversation) => {
+    const next = setConversationAlias(tenantKey, conv.key, '');
+    setAliases(next);
+    closeContextMenu();
+    const live = directoryNames[conv.key];
+    if (live) toast.success(`Using ${live}`);
+    else toast('No customer or employee match for this number yet');
+  };
+
+  const refreshAllNames = async () => {
+    setSyncingNames(true);
+    try {
+      await loadDirectoryNames();
+      toast.success('Names refreshed from customers and the employee list');
+    } finally {
+      setSyncingNames(false);
+    }
   };
 
   const startNew = () => {
@@ -336,6 +390,7 @@ export default function SmsConversationView({
   const inboundColor = theme.palette.text.primary;
 
   return (
+    <>
     <Paper
       variant="outlined"
       sx={{
@@ -357,13 +412,22 @@ export default function SmsConversationView({
             bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'grey.50',
           }}
         >
-          <Box sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Conversations
             </Typography>
-            <Button size="small" startIcon={<EditIcon />} onClick={startNew} sx={{ textTransform: 'none' }}>
-              New
-            </Button>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Tooltip title="Refresh names from customers and employees">
+                <span>
+                  <IconButton size="small" onClick={() => void refreshAllNames()} disabled={syncingNames} aria-label="Refresh names">
+                    {syncingNames ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Button size="small" startIcon={<EditIcon />} onClick={startNew} sx={{ textTransform: 'none' }}>
+                New
+              </Button>
+            </Box>
           </Box>
           {loading && conversations.length === 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -380,6 +444,7 @@ export default function SmsConversationView({
                   key={conv.key}
                   selected={conv.key === selectedKey && !composingNew}
                   onClick={() => openConversation(conv)}
+                  onContextMenu={(event) => openContextMenu(event, conv)}
                   sx={{
                     alignItems: 'flex-start',
                     py: 1.25,
@@ -465,7 +530,10 @@ export default function SmsConversationView({
                 <ArrowBackIcon />
               </IconButton>
             ) : null}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box
+              sx={{ flex: 1, minWidth: 0 }}
+              onContextMenu={selected && !composingNew ? (event) => openContextMenu(event, selected) : undefined}
+            >
               {composingNew || !selected ? (
                 <TextField
                   size="small"
@@ -638,5 +706,60 @@ export default function SmsConversationView({
         </Box>
       ) : null}
     </Paper>
+    <Menu
+      open={Boolean(contextMenu)}
+      onClose={closeContextMenu}
+      anchorReference="anchorPosition"
+      anchorPosition={
+        contextMenu ? { top: contextMenu.top, left: contextMenu.left } : undefined
+      }
+    >
+      <MenuItem
+        onClick={() => {
+          if (contextMenu) startRename(contextMenu.conv);
+        }}
+      >
+        <ListItemIcon>
+          <RenameIcon fontSize="small" />
+        </ListItemIcon>
+        Rename
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          if (contextMenu) useDirectoryName(contextMenu.conv);
+        }}
+      >
+        <ListItemIcon>
+          <SyncIcon fontSize="small" />
+        </ListItemIcon>
+        Use customer / employee name
+      </MenuItem>
+    </Menu>
+    <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} maxWidth="xs" fullWidth>
+      <DialogTitle>Conversation name</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus
+          fullWidth
+          label="Name"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          sx={{ mt: 1 }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              saveRename();
+            }
+          }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setRenameOpen(false)}>Cancel</Button>
+        <Button variant="contained" onClick={saveRename} disabled={!renameValue.trim()}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

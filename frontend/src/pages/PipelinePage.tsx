@@ -466,34 +466,13 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
       <Container
         maxWidth="xl"
         sx={{
-          py: tvMode ? { xs: 1, sm: 1.5 } : { xs: 2, sm: 4 },
+          py: tvMode ? { xs: 1, sm: 1.5 } : { xs: 1.5, sm: 2 },
           px: { xs: 1, sm: 2 },
         }}
       >
         {/* Page Header */}
-        <Box sx={{ mb: tvMode ? 2 : { xs: 2, sm: 4 } }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-            <Box>
-              <Typography variant="h1" sx={{ mb: 1, fontSize: tvMode ? { xs: '1.35rem', sm: '1.6rem' } : undefined }}>
-                {tvMode
-                  ? isShopViewRole
-                    ? 'Shop pipeline view'
-                    : 'Pipeline view'
-                  : isShopViewRole
-                    ? 'Shop View'
-                    : 'Operations Pipeline'}
-              </Typography>
-              {/* Phones get the title only — the strapline eats a third of the screen. */}
-              {!isMobile && (
-                <Typography variant="body1" color="text.secondary">
-                  {tvMode
-                    ? 'Fullscreen board — use Exit to return to the app'
-                    : isShopViewRole
-                      ? 'Pipeline board — job stages and scheduling context for the shop floor'
-                      : 'Manage your projects from first contact to final payment'}
-                </Typography>
-              )}
-            </Box>
+        <Box sx={{ mb: tvMode ? 2 : { xs: 1, sm: 2 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
               {!tvMode && (
                 <Button

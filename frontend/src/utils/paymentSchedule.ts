@@ -459,3 +459,22 @@ export function createEmptyScheduleItem(sortOrder = 0) {
     sortOrder,
   };
 }
+
+function paymentSquareLabel(item, index) {
+  const named = String(item?.label || '').trim();
+  if (named) return named;
+  const due = item?.dueType || inferDueTypeFromLabel(item?.label);
+  if (due === 'deposit') return 'Deposit';
+  if (due === 'final') return 'Final';
+  if (due === 'progress') return 'Progress';
+  return `Payment ${index + 1}`;
+}
+
+/** One square per schedule line for pipeline cards: deposit / progress / final, etc. */
+export function paymentSquaresForJob(job) {
+  const items = resolvePaymentScheduleForCommission(job).items || [];
+  return items.map((item, index) => ({
+    label: paymentSquareLabel(item, index),
+    paid: item?.status === 'paid',
+  }));
+}

@@ -92,7 +92,7 @@ Templates are configured per stage and stored on the tenant, so each business wr
 
 ### The job card
 
-Cards are deliberately sparse. A column is narrow, and a board with sixty jobs on it has to be readable at a glance from across a room, so a card shows the customer or job name, a coloured left edge, and nothing else it can avoid.
+Cards are deliberately sparse. A column is narrow, and a board with sixty jobs on it has to be readable at a glance from across a room, so a card shows the customer or job name, a coloured left edge, and a row of payment squares on the right — two for deposit and final, three when there is a progress payment, and so on. A square fills green when that line is paid and stays empty until then.
 
 Opening a card is the rest of the job: **Overview**, **Messages**, **Schedule**, **Payments**, **Files**, **Notes**. Messages is the customer text thread. Overview’s Recent Activity (and the Notes list) includes timestamped `Text sent` / `Text received` lines. A pipeline card shows `(+n)` when the customer has unread replies, and a map-error icon when the site address is not on the county map.
 

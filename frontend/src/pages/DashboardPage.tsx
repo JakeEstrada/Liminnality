@@ -8,7 +8,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box,
-  GridLegacy as Grid,
   Paper,
   Typography,
   CircularProgress,
@@ -31,16 +30,7 @@ import {
   ListItemText,
 } from '@mui/material';
 import {
-  AccountTree as JobsIcon,
   AttachMoney as MoneyIcon,
-  CalendarToday as CalendarIcon,
-  Assignment as TasksIcon,
-  Dashboard as DashboardHomeIcon,
-  TrendingUp as TrendingUpIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
-  People as PeopleIcon,
   Note as NoteIcon,
   Print as PrintIcon,
   Delete as DeleteIcon,
@@ -63,7 +53,6 @@ import { renderSummaryBlocks } from '../utils/summaryMarkdown';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
 import DashboardInsightGrid from '../components/dashboard/DashboardInsightGrid';
-import KioskViewNav from '../components/layout/KioskViewNav';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const ESTIMATE_STAGES = [
@@ -262,99 +251,6 @@ function dashboardPanelSx(theme) {
   };
 }
 
-function DashboardStatCard({ label, value, icon: Icon, accentColor, theme }) {
-  return (
-    <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), borderLeft: `4px solid ${accentColor}` }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem' }}
-          >
-            {label}
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.75, lineHeight: 1.15, fontSize: { xs: '1.35rem', sm: '1.75rem' } }}>
-            {value}
-          </Typography>
-        </Box>
-        <Box
-          sx={{
-            width: 42,
-            height: 42,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: alpha(accentColor, theme.palette.mode === 'dark' ? 0.18 : 0.1),
-          }}
-        >
-          <Icon sx={{ fontSize: 22, color: accentColor }} />
-        </Box>
-      </Box>
-    </Paper>
-  );
-}
-
-function DashboardQuickTile({ label, value, icon: Icon, accentColor, onClick, alert, theme }) {
-  return (
-    <Paper
-      elevation={0}
-      onClick={onClick}
-      sx={{
-        p: { xs: 1.75, sm: 2 },
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: alert ? 'error.main' : 'divider',
-        bgcolor: alert ? alpha(theme.palette.error.main, 0.06) : 'background.paper',
-        cursor: onClick ? 'pointer' : 'default',
-        width: '100%',
-        minWidth: 0,
-        display: 'flex',
-        alignItems: 'center',
-        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-        '&:hover': onClick
-          ? {
-              transform: 'translateY(-1px)',
-              boxShadow: theme.palette.mode === 'dark' ? '0 6px 18px rgba(0,0,0,0.35)' : '0 6px 16px rgba(15,23,42,0.08)',
-            }
-          : undefined,
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, width: '100%', minWidth: 0 }}>
-        <Box
-          sx={{
-            width: 36,
-            height: 36,
-            borderRadius: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: alpha(accentColor, 0.12),
-            flexShrink: 0,
-          }}
-        >
-          <Icon sx={{ fontSize: 20, color: accentColor }} />
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            {value}
-          </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            noWrap
-            sx={{ display: 'block', fontWeight: 500 }}
-          >
-            {label}
-          </Typography>
-        </Box>
-      </Box>
-    </Paper>
-  );
-}
-
 function DashboardPanelHeader({ title, actionLabel, onAction, subtitle, headerActions }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2, gap: 1 }}>
@@ -417,15 +313,6 @@ function DashboardPage() {
   const canOpenFinanceHub = user?.role === 'super_admin';
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    totalJobs: 0,
-    activeJobs: 0,
-    totalRevenue: 0,
-    contractedRevenue: 0,
-    potentialRevenue: 0,
-    upcomingAppointments: [],
-    pendingTasks: [],
-    urgentTasks: [],
-    totalCustomers: 0,
     pipelineMix: [
       { label: 'Estimate', value: 0, color: '#f59e0b' },
       { label: 'In production', value: 0, color: '#6366f1' },
@@ -494,11 +381,8 @@ function DashboardPage() {
       const paymentHistoryEnd = format(new Date(), 'yyyy-MM-dd');
       const chartStart = format(subDays(new Date(), 29), 'yyyy-MM-dd');
       const superAdmin = user?.role === 'super_admin';
-      const [jobsRes, appointmentsRes, tasksRes, customersRes, activitiesRes, markedPaidRes, chartActivitiesRes, trafficRes, teamRes] = await Promise.all([
+      const [jobsRes, activitiesRes, markedPaidRes, chartActivitiesRes, trafficRes, teamRes] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
-        axios.get(`${API_URL}/appointments?status=scheduled&limit=50`),
-        axios.get(`${API_URL}/tasks`),
-        axios.get(`${API_URL}/customers?limit=1`),
         axios.get(`${API_URL}/activities/recent?limit=100`).catch(() => ({ data: [] })),
         axios
           .get(
@@ -520,50 +404,11 @@ function DashboardPage() {
       ]);
 
       const jobs = jobsRes.data.jobs || jobsRes.data || [];
-      const jobsById = new Map(jobs.map((job) => [String(job._id), job]));
-      const appointments = appointmentsRes.data.appointments || appointmentsRes.data || [];
-      const tasks = tasksRes.data.tasks || tasksRes.data || [];
-      const customersResData = customersRes.data;
-      const customerTotal = customersResData?.total ?? (Array.isArray(customersResData?.customers) ? customersResData.customers.length : 0);
       const allActivities = activitiesRes.data || [];
       const paidActivities = Array.isArray(markedPaidRes.data) ? markedPaidRes.data : [];
 
       // Filter out archived and dead estimates
       const activeJobs = jobs.filter(job => !job.isArchived && !job.isDeadEstimate);
-
-      // Calculate revenue
-      const totalRevenue = activeJobs.reduce((sum, job) => sum + (job.valueEstimated || 0), 0);
-      const contractedRevenue = activeJobs
-        .filter(job => ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE', 'SCHEDULED', 'IN_PRODUCTION', 'INSTALLED', 'FINAL_PAYMENT_CLOSED'].includes(job.stage))
-        .reduce((sum, job) => sum + (job.valueContracted || job.valueEstimated || 0), 0);
-      const potentialRevenue = activeJobs
-        .filter(job => ['APPOINTMENT_SCHEDULED', 'ESTIMATE_IN_PROGRESS', 'ESTIMATE_SENT', 'ENGAGED_DESIGN_REVIEW', 'CONTRACT_OUT'].includes(job.stage))
-        .reduce((sum, job) => sum + (job.valueEstimated || 0), 0);
-
-      // Upcoming appointments: scheduled, date in next 7 days (use date field; model has date + time)
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      const nextWeekEnd = new Date(todayStart.getTime() + 8 * 24 * 60 * 60 * 1000);
-      const upcomingAppointments = appointments
-        .filter(apt => {
-          if (!apt.date) return false;
-          const aptDate = new Date(apt.date);
-          const aptDayStart = new Date(aptDate.getFullYear(), aptDate.getMonth(), aptDate.getDate(), 0, 0, 0, 0);
-          return aptDayStart >= todayStart && aptDayStart < nextWeekEnd;
-        })
-        .sort((a, b) => {
-          const dA = new Date(a.date);
-          const dB = new Date(b.date);
-          if (dA.getTime() !== dB.getTime()) return dA - dB;
-          const tA = (a.time || '').toLowerCase();
-          const tB = (b.time || '').toLowerCase();
-          return tA.localeCompare(tB);
-        })
-        .slice(0, 5);
-
-      // Tasks
-      const pendingTasks = tasks.filter(task => !task.completedAt).slice(0, 5);
-      const urgentTasks = tasks.filter(task => !task.completedAt && !!task.isUrgent).slice(0, 5);
 
       // Sort activities by date (most recent first)
       const sortedActivities = [...allActivities].sort((a, b) => {
@@ -573,15 +418,6 @@ function DashboardPage() {
       });
 
       setStats({
-        totalJobs: activeJobs.length,
-        activeJobs: activeJobs.length,
-        totalRevenue,
-        contractedRevenue,
-        potentialRevenue,
-        upcomingAppointments,
-        pendingTasks,
-        urgentTasks,
-        totalCustomers: customerTotal,
         pipelineMix: (() => {
           const estimate = activeJobs.filter((job) => ESTIMATE_STAGES.includes(job.stage)).length;
           const production = activeJobs.filter((job) => PRODUCTION_STAGES.includes(job.stage)).length;
@@ -1434,11 +1270,10 @@ function DashboardPage() {
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
           gap: 1.5,
         }}
       >
-        <KioskViewNav currentView="dashboard" />
         <Typography variant="body2" color="text.secondary">
           {todayLabel}
         </Typography>
@@ -1455,159 +1290,6 @@ function DashboardPage() {
         pipeline={stats.pipelineMix}
         canOpenFinance={canOpenFinanceHub}
       />
-
-      {/* Quick stats strip */}
-      <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardQuickTile
-            label="Customers"
-            value={stats.totalCustomers}
-            icon={PeopleIcon}
-            accentColor={theme.palette.primary.main}
-            onClick={() => navigate('/customers')}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardQuickTile
-            label="Upcoming"
-            value={stats.upcomingAppointments.length}
-            icon={CalendarIcon}
-            accentColor={theme.palette.primary.main}
-            onClick={() => navigate('/calendar')}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardQuickTile
-            label="Pending tasks"
-            value={stats.pendingTasks.length}
-            icon={TasksIcon}
-            accentColor={theme.palette.primary.main}
-            onClick={() => navigate('/tasks')}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={6} md={3} sx={{ display: 'flex' }}>
-          <DashboardQuickTile
-            label="Urgent"
-            value={stats.urgentTasks.length}
-            icon={WarningIcon}
-            accentColor={stats.urgentTasks.length > 0 ? theme.palette.error.main : theme.palette.text.secondary}
-            onClick={() => navigate('/tasks')}
-            alert={stats.urgentTasks.length > 0}
-            theme={theme}
-          />
-        </Grid>
-      </Grid>
-
-      {/* Main panels */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), width: '100%' }}>
-            <DashboardPanelHeader title="Pending tasks" actionLabel="View all" onAction={() => navigate('/tasks')} />
-            {stats.pendingTasks.length === 0 ? (
-              <DashboardEmptyState message="You're caught up — no pending tasks." />
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {stats.pendingTasks.map((task) => (
-                  <Box
-                    key={task._id}
-                    onClick={() => navigate('/tasks')}
-                    sx={{
-                      p: 1.5,
-                      borderRadius: 2,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.15s',
-                      '&:hover': { bgcolor: 'action.hover' },
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>
-                      {task.title}
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-                      {task.dueDate && (
-                        <Typography variant="caption" color="text.secondary">
-                          Due {formatDate(task.dueDate)}
-                        </Typography>
-                      )}
-                      {task.assignedTo?.name && (
-                        <Typography variant="caption" color="text.secondary">
-                          {task.assignedTo.name}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-          <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), width: '100%' }}>
-            <DashboardPanelHeader title="Upcoming appointments" actionLabel="Calendar" onAction={() => navigate('/calendar')} />
-            {stats.upcomingAppointments.length === 0 ? (
-              <DashboardEmptyState message="Nothing scheduled ahead — check the calendar to book time." />
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {stats.upcomingAppointments.map((apt) => (
-                  <Box
-                    key={apt._id}
-                    onClick={() => navigate('/calendar')}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 1.5,
-                      p: 1.5,
-                      borderRadius: 2,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: 'action.hover' },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 2,
-                        flexShrink: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bgcolor: alpha(theme.palette.primary.main, 0.1),
-                      }}
-                    >
-                      <ScheduleIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {apt.jobId?.title || apt.customerId?.name || apt.title || 'Appointment'}
-                        </Typography>
-                        <Chip
-                          label={`${formatDate(apt.date)}${apt.time ? ` · ${apt.time}` : ''}`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 22, fontSize: '0.7rem' }}
-                        />
-                      </Box>
-                      {(apt.customerId?.name || apt.location) && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                          {[apt.customerId?.name, apt.location].filter(Boolean).join(' · ')}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
 
       {/* Payments marked paid — ordered by when PAID was clicked */}
       <Paper elevation={0} sx={{ ...dashboardPanelSx(theme), mb: 3 }}>

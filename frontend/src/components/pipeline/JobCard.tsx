@@ -4,6 +4,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings';
 import { getJobCardAccent } from '../../utils/taskDisplay';
 import { jobMapFixLabel, jobNeedsMapFix } from '../../utils/jobGeo';
+import { paymentSquaresForJob } from '../../utils/paymentSchedule';
 
 function JobCard(props: Record<string, unknown>) {
   const {
@@ -76,26 +77,10 @@ function JobCard(props: Record<string, unknown>) {
   };
 
   const { color: statusColor } = getJobCardAccent(job, theme);
-  const readinessStages = ['DEPOSIT_PENDING', 'JOB_PREP', 'TAKEOFF_COMPLETE', 'READY_TO_SCHEDULE'];
-  const hasSchedule =
-    !!(job.schedule?.startDate) ||
-    (Array.isArray(job.schedule?.entries) && job.schedule.entries.some((e) => e?.startDate));
-  const isScheduledJob =
-    (hasSchedule || job.stage === 'SCHEDULED') && !job.isArchived && !job.isDeadEstimate;
-  const isBenchJob =
-    readinessStages.includes(job.stage) &&
-    !job.isArchived &&
-    !job.isDeadEstimate &&
-    !hasSchedule;
-
-  let statusLabel = 'Open: not on bench or scheduled yet';
-  if (isScheduledJob) {
-    statusLabel =
-      'Scheduled: job has scheduled dates or is in the Scheduled stage.';
-  } else if (isBenchJob) {
-    statusLabel =
-      'On bench: job is in a readiness stage and not yet scheduled on the calendar.';
-  }
+  const paymentSquares = paymentSquaresForJob(job);
+  const paymentTooltip = paymentSquares
+    .map((row) => `${row.label}: ${row.paid ? 'paid' : 'not paid'}`)
+    .join('\n');
 
   const needsMapFix = jobNeedsMapFix(job);
   const mapFixLabel = jobMapFixLabel(job);
@@ -104,7 +89,7 @@ function JobCard(props: Record<string, unknown>) {
   const contentPy = narrow ? 0.5 : compactCard ? 0.75 : 1.5;
   const titleFontRem = narrow ? '0.6875rem' : ultraCompact ? '0.75rem' : compactCard ? '0.8125rem' : '0.875rem';
   const descFontRem = ultraCompact ? '0.6875rem' : '0.75rem';
-  const dotSize = ultraCompact ? 8 : 10;
+  const squareSize = narrow ? 7 : ultraCompact ? 8 : 9;
   const cardMinHeight = narrow ? 32 : minHeightPx;
   const unreadSms = Math.max(0, Number(job.unreadCustomerSmsCount) || 0);
 
@@ -213,8 +198,7 @@ function JobCard(props: Record<string, unknown>) {
             </>
           )}
           </Box>
-        {/* The dot repeats what the coloured left edge already says — drop it in narrow columns. */}
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.4, flexShrink: 0 }}>
           {needsMapFix ? (
             <Tooltip title={mapFixLabel}>
               <IconButton
@@ -236,21 +220,42 @@ function JobCard(props: Record<string, unknown>) {
               </IconButton>
             </Tooltip>
           ) : null}
-          {!narrow && (
-            <Tooltip title={statusLabel}>
+          {paymentSquares.length ? (
+            <Tooltip
+              title={
+                <Box sx={{ whiteSpace: 'pre-line' }}>
+                  {paymentTooltip}
+                </Box>
+              }
+            >
               <Box
+                aria-label={paymentTooltip.replace(/\n/g, ', ')}
                 sx={{
-                  flexShrink: 0,
-                  width: dotSize,
-                  height: dotSize,
-                  borderRadius: '50%',
-                  backgroundColor: statusColor,
-                  border: `2px solid ${theme.palette.background.paper}`,
-                  mt: ultraCompact ? 0.25 : 0.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  mt: ultraCompact ? 0.2 : 0.35,
                 }}
-              />
+              >
+                {paymentSquares.map((row, index) => (
+                  <Box
+                    key={`${row.label}-${index}`}
+                    sx={{
+                      width: squareSize,
+                      height: squareSize,
+                      borderRadius: '2px',
+                      boxSizing: 'border-box',
+                      backgroundColor: row.paid ? 'success.main' : 'transparent',
+                      border: row.paid
+                        ? '1px solid'
+                        : `1.5px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)'}`,
+                      borderColor: row.paid ? 'success.main' : undefined,
+                    }}
+                  />
+                ))}
+              </Box>
             </Tooltip>
-          )}
+          ) : null}
         </Box>
       </Box>
       </CardContent>
