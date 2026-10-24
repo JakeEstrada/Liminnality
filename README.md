@@ -1,8 +1,8 @@
-# Paarth
+# Liminnality
 
 **An operations platform built to run a custom woodworking and stair-manufacturing business — not a generic CRM with a construction theme.**
 
-Paarth is the system of record for San Clemente Woodworking. Every job that enters the shop lives here from the first phone call to the final payment: the estimate, the signed contract, the deposit that cleared the bank, the takeoff measurements, the installer assigned to Tuesday, the text message that told the customer their stairs were ready, and the commission the salesman earned when the check arrived. One database, one timeline per job, one place to look.
+Liminnality is the system of record for San Clemente Woodworking. Every job that enters the shop lives here from the first phone call to the final payment: the estimate, the signed contract, the deposit that cleared the bank, the takeoff measurements, the installer assigned to Tuesday, the text message that told the customer their stairs were ready, and the commission the salesman earned when the check arrived. One database, one timeline per job, one place to look.
 
 It is built for the way a real shop actually works. The owner opens it on a laptop. The salesman checks the pipeline from a phone in a customer's driveway. A TV on the shop wall shows the board, the install calendar, and the county map all day without anyone touching it. A Raspberry Pi by the door reads RFID badges, and a text to the shop line clocks the same timesheet. Nobody has to be at a desk for the business to keep running.
 
