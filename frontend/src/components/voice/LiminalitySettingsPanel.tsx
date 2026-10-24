@@ -17,11 +17,10 @@ import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { DEFAULT_NEURAL_VOICE_URI, ELEVEN_VOICES, neuralVoiceIdFromUri } from '../../voice/neuralVoices';
 
 const SAMPLE_LINES = [
-  "What's cookin, good lookin?",
-  'Ugh. What now?',
-  "Hey you. What's up?",
-  "I'm here. Spill it.",
-  'You rang?',
+  "I'm listening.",
+  'What would you like to work on?',
+  'Ready. What do you need?',
+  'Would you like to open the pipeline or calendar?',
 ];
 
 export default function LiminalitySettingsPanel() {
@@ -73,9 +72,9 @@ export default function LiminalitySettingsPanel() {
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Voice on desktop. Call “Liminnality” or “Motherfucker” — listen cue, then 15 seconds of
-        commands. The same cue plays when that window ends. “Send Hammer to Jake” texts that customer
-        card to someone on the employee rolodex. Nothing is recorded while this is off.
+        Voice on desktop. Call “Liminnality” — listen cue, then 15 seconds of commands. The same
+        cue plays when that window ends. “Send Hammer to Jake” texts that customer card to someone
+        on the employee rolodex. Nothing is recorded while this is off.
       </Typography>
       <FormControlLabel
         control={

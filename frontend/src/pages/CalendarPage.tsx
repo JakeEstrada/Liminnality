@@ -601,17 +601,17 @@ function EventModal({ open, onClose, selectedDate, job, onSave, onViewJob, insta
                 (msg.includes('not configured') || msg.includes('Please configure Google Calendar')));
             if (notConfigured) {
               toast.success(
-                'Job saved in Paarth (schedule and color). Google Calendar is not set up on the server, so nothing was sent to Google.',
+                'Job saved in Liminnality (schedule and color). Google Calendar is not set up on the server, so nothing was sent to Google.',
                 { duration: 7000 },
               );
             } else if (status === 503 || msg.toLowerCase().includes('sync failed')) {
               toast.success(
-                'Job saved in Paarth (schedule and color). Google Calendar sync failed — your changes are still stored here.',
+                'Job saved in Liminnality (schedule and color). Google Calendar sync failed — your changes are still stored here.',
                 { duration: 6000 },
               );
             } else {
               toast.success(
-                'Job saved in Paarth. Google Calendar sync failed — your changes are still stored here.',
+                'Job saved in Liminnality. Google Calendar sync failed — your changes are still stored here.',
                 { duration: 6000 },
               );
             }

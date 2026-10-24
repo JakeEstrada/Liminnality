@@ -24,9 +24,9 @@ MONGODB_URI=mongodb://localhost:27017/paarth
 MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster.mongodb.net/paarth?retryWrites=true&w=majority
 ```
 
-Use the **exact same URI** (same cluster, same database name `paarth`) to read/write the same data.
+Use the **exact same URI** (same cluster, same database name `paarth`) only when two apps must read and write the same live data.
 
-You do **not** need a second database unless you want an isolated dev/test copy.
+Local development should use its own database, such as `mongodb://localhost:27017/liminnality-dev`, loaded with synthetic records or a clone that was anonymized. Do not point a laptop, a test script, or a second API at the production connection string.
 
 ---
 
@@ -424,7 +424,7 @@ After wiring MongoDB in .NET:
 
 ## Purposeful rules for agents
 
-1. **Same URI = same data** — `MONGODB_URI` / `ConnectionStrings:MongoDB` is the only DB switch.
+1. **Same URI = same data** — `MONGODB_URI` / `ConnectionStrings:MongoDB` is the only DB switch. Development uses a separate URI from production.
 2. **Database name is `paarth`** in standard installs (last path segment of URI).
 3. **Always filter by `tenantId`** on tenant-scoped collections — no plugin in .NET means you enforce it manually.
 4. **Keep camelCase BSON keys** — match Node JSON exactly for interoperability.

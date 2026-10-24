@@ -587,7 +587,7 @@ Documented honestly, because knowing where the edges are is part of running the 
 - **Touch drag on the pipeline.** The board uses native HTML5 drag and drop, which does not fire on touch devices. The mobile board is intentionally read-only as a result; moving a job on a phone needs a pointer-event or dnd-kit implementation.
 - **Recurring installs.** Jobs carry a recurrence field and the API preserves it, but there is no interface to configure a repeating schedule.
 - **Dragging onto a calendar day.** Scheduling is done by clicking a day and filling the dialog; the day cells themselves are not drop targets.
-- **`read_only` role.** It is assignable and excluded from pipeline modification, but has no dedicated enforcement layer beyond that.
+- **`read_only` role.** The API rejects creates, updates, and deletes for that role. Logout, the activity audit ping, and voice speech requests still go through. The office screens are not separately locked in the browser, so a read-only user who tampers with the page still cannot save.
 - **Loading states** are spinners throughout; skeleton placeholders would make the heavier grids feel faster.
 - **Liminality voice** is Chrome/Edge on desktop only. Safari and phones have no wake listening. Spoken answers need ElevenLabs configured on the API. Speech-to-text is still the browser’s, so shop names sometimes need a second try.
 

@@ -125,7 +125,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 
 ### PayrollPage.tsx
 - **Route:** `/payroll`
-- **Purpose:** RFID payroll (default) plus a Manual timesheet tab. Mileage 0.725/mi, PDF print, SMS share. Daniel uses a Mon–Sun pay week.
+- **Purpose:** RFID payroll (default) plus a Manual timesheet tab. Mileage 0.725/mi, PDF print, SMS share. Pay weeks are configurable, including a different week for one person.
 - **APIs:** User/time endpoints, `POST /activities/payroll/print`, `POST /twilio/send-sms`
 
 ### CommissionLogsPage.tsx

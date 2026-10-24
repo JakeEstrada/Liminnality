@@ -3,6 +3,16 @@ const { verifyAccessToken } = require('../utils/generateToken');
 const User = require('../models/User');
 const { runWithTenantContext } = require('./tenantContext');
 
+function readOnlyRequestAllowed(method, originalUrl) {
+  const verb = String(method || 'GET').toUpperCase();
+  if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return true;
+  const path = String(originalUrl || '').split('?')[0];
+  if (verb === 'POST' && /\/auth\/logout$/.test(path)) return true;
+  if (verb === 'POST' && /\/audit-logs\/?$/.test(path)) return true;
+  if (verb === 'POST' && /\/tts\/(speech|speech-stream|transcribe)$/.test(path)) return true;
+  return false;
+}
+
 async function requireAuth(req, res, next) {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -33,6 +43,10 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'User not found or inactive' });
     }
     
+    if (user.role === 'read_only' && !readOnlyRequestAllowed(req.method, req.originalUrl || req.url)) {
+      return res.status(403).json({ error: 'Read-only accounts cannot change data' });
+    }
+
     // Attach user to request
     req.user = user;
     runWithTenantContext(
@@ -61,4 +75,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireSuperAdmin, requireAdmin };
+module.exports = { requireAuth, requireSuperAdmin, requireAdmin, readOnlyRequestAllowed };

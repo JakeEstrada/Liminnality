@@ -760,8 +760,8 @@ function MessagePage() {
         <DialogContent>
           <Typography variant="body2">
             {pendingDelete?.kind === 'conversation'
-              ? `Remove the thread with ${pendingDelete.label} from Paarth. It does not unsend texts that already went out.`
-              : 'Remove this text from Paarth. It does not unsend anything already delivered.'}
+              ? `Remove the thread with ${pendingDelete.label} from Liminnality. It does not unsend texts that already went out.`
+              : 'Remove this text from Liminnality. It does not unsend anything already delivered.'}
           </Typography>
         </DialogContent>
         <DialogActions>

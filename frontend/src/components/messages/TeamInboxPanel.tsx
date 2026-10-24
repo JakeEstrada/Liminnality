@@ -270,7 +270,7 @@ export default function TeamInboxPanel({ embedded = false }: { embedded?: boolea
         </Alert>
       ) : (
         <Alert severity="info" sx={{ mb: 3 }}>
-          Connect the mailbox that receives Joe’s worksheets. Then add team addresses (Joe’s email) so Paarth only flags their mail.
+          Connect the mailbox that receives Joe’s worksheets. Then add team addresses (Joe’s email) so Liminnality only flags their mail.
         </Alert>
       )}
 

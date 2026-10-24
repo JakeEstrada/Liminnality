@@ -9,7 +9,7 @@ Reusable UI outside `pages/`. Pages compose these; business rules often live in 
 | `MainLayout` | `components/layout/MainLayout.tsx` | Sidebar + TopBar + outlet for pages |
 | `Sidebar` | `components/layout/Sidebar.tsx` | Nav groups: Workspace, Finance, Operations, Archive |
 | `ViewModeFrame` | `components/layout/ViewModeFrame.tsx` | Full-screen kiosk wrapper for TV views |
-| `SiteAssistantChat` | `components/assistant/SiteAssistantChat.tsx` | Floating “Paarth help” chat (OpenAI tools) |
+| `SiteAssistantChat` | `components/assistant/SiteAssistantChat.tsx` | Floating “Liminnality help” chat (OpenAI tools) |
 
 ## Pipeline & jobs
 

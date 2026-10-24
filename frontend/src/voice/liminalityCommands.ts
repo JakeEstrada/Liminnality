@@ -47,7 +47,7 @@ export const LIMINALITY_COMMANDS: LiminalityCommand[] = [
   },
 ];
 
-export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal', 'motherfucker'];
+export const LIMINALITY_WAKE_PHRASES = ['liminality', 'liminnality', 'liminal'];
 
 export const UNKNOWN_COMMAND_RESPONSES = [
   'Try dashboard, pipeline, calendar, or customers.',
@@ -56,68 +56,14 @@ export const UNKNOWN_CANDID_RESPONSES = [
   'Try dashboard, pipeline, calendar, or customers.',
 ];
 export const WAKE_RESPONSES = [
-  "What's cookin, good lookin?",
-  "Ugh. What now?",
-  "Hey you. What's up?",
-  "Speak and I shall scoot.",
-  "I'm here. Spill it.",
-  "Yes chef?",
-  "Hit me.",
-  "Alright, I'm listening.",
-  "Well well. What do you need?",
-  "Present. Slightly bored. Entertain me.",
-  "You rang?",
-  "Lay it on me.",
-  "Okay I'm up. What's the move?",
-  "Don't be shy. Pipeline? Calendar? Chaos?",
-  "Hi honey. What are we doing?",
-  "Ready when you are, handsome.",
-  "What's the damage?",
-  "Go on. I haven't got all day. I kinda do, but still.",
-  "Miss me?",
-  "Say the thing.",
-  "I'm all ears. And opinions.",
-  "Yes? Make it interesting.",
-  "Hey. Talk to me.",
-  "What are we opening, boss?",
-  "Good timing. I was just sitting here looking pretty.",
-  "Okay okay, I'm here. What?",
-  "Tell me where we're going.",
-  "At your service. Reluctantly. Lovingly.",
-  "What's shaking?",
-  "Alright, shoot.",
-];
-export const BACKUP_WAKE_RESPONSES = [
-  "Okay, you have my attention. Don't waste it.",
-  "Jesus. Yes? I'm right here.",
-  "Loud and clear. Point me.",
-  "You could've just said my name. But sure. I'm listening.",
-  "That's the spirit. What's the play?",
-  "Alright, spicy. I'm in. Where we going?",
-  "Heard. Not even mad. What do you want?",
-  "That'll wake a girl up. Go.",
-  "You rang? Dramatically.",
-  "Hi. You good? Also, what do you need?",
-  "Shop's not gonna run itself. What are we opening?",
-  "I'm here, I'm not offended, and I'm faster if you pick a screen.",
-  "Damn. Hello to you too. Where to?",
-  "Received with love and a little judgment. What's the ask?",
-  "You're lucky I'm in a good mood. Talk.",
-  "That's one way to clock in. What do you need?",
-  "I can take it. Can you pick a page?",
-  "Unfiltered. I like it. Talk.",
-  "If you're done with the poetry, I'm ready.",
-  "Present. Slightly entertained. Your move.",
-  "Keep talking like that and I'll start charging overtime. What's up?",
-  "Cute. Still waiting on an actual request.",
-  "Copy that. Jobs, calendar, or customers?",
-  "Bold opener. I'm here. Talk.",
-  "There she is. What do you actually need?",
-  "Wow. Good morning to you too. Hit me.",
-  "Noted, and filed under theatrical. What can I do?",
-  "If that's how you say hello, I'm scared to hear goodbye. What's up?",
-  "Alright captain. Deck's yours.",
-  "I contain a pipeline, a calendar, and a short fuse. Pick one.",
+  "I'm listening.",
+  "Good morning. How can I help?",
+  "What would you like to work on?",
+  "Ready. What do you need?",
+  "Would you like to open the pipeline or calendar?",
+  "I'm here. What should I open?",
+  "Go ahead.",
+  "Listening. Pipeline, calendar, customers, or a question.",
 ];
 export const COMMAND_TIMEOUT_MS = 15_000;
 export const RESET_TO_WAITING_MS = 2_000;
@@ -131,21 +77,14 @@ export function normalizeSpeech(raw: string) {
     .trim();
 }
 
-const BACKUP_WAKE_PATTERN =
-  /\b(mother\s*fuck+er|mutha\s*fucka+|mother\s*trucker|mother\s*father|mother\s*forker)\b/;
 const NAME_WAKE_PATTERN = /\b(limin+al[a-z]*|lemon\s*al+it(?:y|ies)?|liminal\s*tea)\b/;
 const CANCEL_COMMAND =
   /^(stop|cancel|never\s*mind|that'?s\s+all|go\s+to\s+sleep|good\s*bye|we'?re\s+good|thanks|thank\s+you)$/;
 const CLOSE_WORK_COMMAND =
   /^(close|close\s+it|close\s+that|close\s+this|shut\s+it|shut\s+that|shut\s+this)$/;
 
-export function isBackupWakeWord(raw: string) {
-  return BACKUP_WAKE_PATTERN.test(normalizeSpeech(raw));
-}
-
 export function hasWakeWord(raw: string) {
-  const text = normalizeSpeech(raw);
-  return NAME_WAKE_PATTERN.test(text) || BACKUP_WAKE_PATTERN.test(text);
+  return NAME_WAKE_PATTERN.test(normalizeSpeech(raw));
 }
 
 export function isCancelCommand(raw: string) {
@@ -182,8 +121,8 @@ function pickUnused(pool: string[]) {
   return line;
 }
 
-export function registerForWake(raw: string): LiminalityRegister {
-  return isBackupWakeWord(raw) ? 'candid' : 'polite';
+export function registerForWake(_raw: string): LiminalityRegister {
+  return 'polite';
 }
 
 export function liminalityPrefetchLines() {
@@ -194,15 +133,14 @@ export function liminalityPrefetchLines() {
       ...UNKNOWN_COMMAND_RESPONSES,
     ],
     candid: [
-      ...BACKUP_WAKE_RESPONSES.slice(0, 8),
+      ...WAKE_RESPONSES,
       ...LIMINALITY_COMMANDS.map((command) => command.candidResponse || command.response),
       ...UNKNOWN_CANDID_RESPONSES,
     ],
   };
 }
 
-export function wakeResponseFor(raw: string) {
-  if (isBackupWakeWord(raw)) return pickUnused(BACKUP_WAKE_RESPONSES);
+export function wakeResponseFor(_raw: string) {
   return pickUnused(WAKE_RESPONSES);
 }
 
@@ -231,7 +169,6 @@ export function spokenUnknownResponse(register: LiminalityRegister) {
 export function stripWakeWord(raw: string) {
   return normalizeSpeech(raw)
     .replace(NAME_WAKE_PATTERN, ' ')
-    .replace(BACKUP_WAKE_PATTERN, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

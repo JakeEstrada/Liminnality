@@ -79,8 +79,7 @@ export default function LiminalityCommandsGuide() {
         title="Wake her up"
         body="Say either name. You get a listen sound, not a spoken hello. The bar at the bottom lights up and slowly fades. When it chimes off, say her name again. You do not have to say the name again while the bar is still lit."
         examples={[
-          { say: 'Liminnality', does: 'Primary wake. Liminality / liminal also work if speech-to-text mangles it.' },
-          { say: 'Motherfucker', does: 'Backup wake. Chrome often censors it; mother trucker / mother father still count.' },
+          { say: 'Liminnality', does: 'Primary wake. Liminality and liminal also work if speech-to-text mangles it.' },
         ]}
       />
 
@@ -132,7 +131,7 @@ export default function LiminalityCommandsGuide() {
 
       <Section
         title="Ask about the shop"
-        body="Anything that sounds like a question goes to Paarth Help with live tenant data. Keep it to one ask at a time. She answers out loud in a couple of short sentences."
+        body="Anything that sounds like a question goes to Liminnality Help with live tenant data. Keep it to one ask at a time. She answers out loud in a couple of short sentences."
         examples={[
           { say: 'What’s the most recent payment?', does: 'Last customer payments marked received.' },
           { say: 'What’s the most recent deposit?', does: 'Latest customer/job deposit (paid deposit line on a job). Unlinked bank inflows are ignored.' },

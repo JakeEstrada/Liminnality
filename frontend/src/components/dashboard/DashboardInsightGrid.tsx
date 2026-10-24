@@ -298,8 +298,8 @@ export default function DashboardInsightGrid({
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
             {auditHasData
-              ? 'Pages, clicks, and sign-ins in Paarth · click a day to see what happened'
-              : `Shop work logged in Paarth · ${activityTotal} events · click a day to see what happened`}
+              ? 'Pages, clicks, and sign-ins in Liminnality · click a day to see what happened'
+              : `Shop work logged in Liminnality · ${activityTotal} events · click a day to see what happened`}
           </Typography>
           <AreaChart
             data={teamSeries}

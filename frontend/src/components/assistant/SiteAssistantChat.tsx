@@ -107,7 +107,7 @@ export default function SiteAssistantChat() {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
           <Typography component="span" variant="h6" sx={{ fontWeight: 600 }}>
-            Paarth help
+            Liminnality help
           </Typography>
           <IconButton aria-label="Close" onClick={() => !sending && setOpen(false)} disabled={sending} size="small">
             <CloseIcon />

@@ -1,6 +1,6 @@
 # Liminality voice — how it is built
 
-Shop-floor voice assistant for Paarth (San Clemente Woodworking ops). Desktop only. The user wakes it by name, speaks a command, and it either jumps to a screen or asks the in-app assistant for live shop data, then talks back.
+Shop-floor voice assistant for Liminnality (San Clemente Woodworking ops). Desktop only. The user wakes it by name, speaks a command, and it either jumps to a screen or asks the in-app assistant for live shop data, then talks back.
 
 This note is the current stack, the request path, and where time is spent — so another model can propose faster or simpler options.
 
@@ -110,7 +110,7 @@ model chain: ELEVENLABS_TTS_MODEL || eleven_flash_v2_5
              then eleven_turbo_v2_5, eleven_multilingual_v2
 ```
 
-Paarth wraps that as:
+Liminnality wraps that as:
 
 ```
 POST /tts/speech
@@ -133,8 +133,7 @@ This layer runs in the browser **before** OpenAI. It is regex + keyword sets, no
 **Wake**
 
 - Name: `liminality`, `liminnality`, `liminal`, STT mangles like `lemon ality`
-- Backup: `motherfucker` and censored cousins (`mother trucker`, …)
-- Sets register `polite` vs `candid` (TTS tone only; replies are both short now)
+- Spoken replies stay short and professional
 
 **Listen window:** 30 seconds from wake (`COMMAND_TIMEOUT_MS`). Start SFX on wake, close SFX when the window ends.
 
@@ -180,7 +179,7 @@ flowchart LR
     UI[Router / Job overlay / OC map]
   end
 
-  subgraph api [Paarth Express]
+  subgraph api [Liminnality Express]
     CHAT["POST /assistant/chat"]
     TTS["POST /tts/speech"]
     DATA[Mongo tenant tools]
@@ -251,7 +250,7 @@ What is already cheap: local nav keywords, clip cache for “Opening pipeline.�
 
 Use the doc above plus:
 
-> Here is how Liminality voice works in Paarth today (see liminalVoice.md).
+> Here is how Liminality voice works in Liminnality today (see liminalVoice.md).
 >
 > I want options that are **faster** and **more reliable** than:
 > Chrome Web Speech → regex → OpenAI gpt-4o-mini tool loop → ElevenLabs full MP3 blob.

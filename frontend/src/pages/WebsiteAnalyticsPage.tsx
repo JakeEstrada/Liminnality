@@ -1125,7 +1125,7 @@ function WebsiteAnalyticsPage() {
               <TrafficChart series={report.series} theme={theme} />
             ) : (
               <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>
-                {loading ? 'Loading…' : 'No visits yet. After the public site is deployed, open it and click around — this log stores in Paarth.'}
+                {loading ? 'Loading…' : 'No visits yet. After the public site is deployed, open it and click around — this log stores in Liminnality.'}
               </Typography>
             )}
           </Paper>
@@ -1317,7 +1317,7 @@ function WebsiteAnalyticsPage() {
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                         <Typography color="text.secondary">
-                          No hits yet. This is stored in Paarth when someone uses the public website.
+                          No hits yet. This is stored in Liminnality when someone uses the public website.
                         </Typography>
                       </TableCell>
                     </TableRow>
