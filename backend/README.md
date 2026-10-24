@@ -1,6 +1,6 @@
 # Backend
 
-Express API for Paarth.
+Express API for Liminnality.
 
 ## Scripts
 

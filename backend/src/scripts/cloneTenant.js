@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 require('dotenv').config();
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -100,8 +101,18 @@ function anonymizeUser(doc, idx, context = {}) {
     .slice(0, 24) || 'tenant';
   const idSuffix = String(doc?._id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-10) || String(n);
   doc.email = `demo.${targetSlugPart}.${idSuffix}@example.com`;
+  doc.mobile = '';
+  doc.previousPhoneNumbers = [];
+  doc.address = '';
+  doc.password = bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
   doc.isActive = true;
   doc.isPending = false;
+}
+
+function anonymizeAddress(address, n) {
+  if (!address || typeof address !== 'object') return;
+  address.street = `${100 + (n % 800)} Demo Street`;
+  if ('fullAddress' in address) address.fullAddress = `${address.street}`;
 }
 
 function anonymizeCustomer(doc, idx) {
@@ -109,6 +120,8 @@ function anonymizeCustomer(doc, idx) {
   doc.name = `Customer ${n}`;
   doc.primaryPhone = `555-010${String(n % 10)}`;
   doc.primaryEmail = `customer.${n}@example.com`;
+  doc.notes = '';
+  doc.gateCode = '';
   if (Array.isArray(doc.phones)) doc.phones = doc.phones.map(() => doc.primaryPhone);
   if (Array.isArray(doc.emails)) doc.emails = doc.emails.map(() => doc.primaryEmail);
   if (Array.isArray(doc.contactPhones)) {
@@ -117,12 +130,28 @@ function anonymizeCustomer(doc, idx) {
   if (Array.isArray(doc.contactEmails)) {
     doc.contactEmails = doc.contactEmails.map((e, i) => ({ ...e, value: `contact.${n}.${i}@example.com` }));
   }
+  anonymizeAddress(doc.address, n);
+  if (Array.isArray(doc.addresses)) doc.addresses.forEach((address) => anonymizeAddress(address, n));
 }
 
 function anonymizeJob(doc, idx) {
   const n = idx + 1;
-  if (doc.jobContact?.phone) doc.jobContact.phone = `555-030${String(n % 10)}`;
-  if (doc.jobContact?.email) doc.jobContact.email = `job.contact.${n}@example.com`;
+  doc.title = `Job ${n}`;
+  doc.description = '';
+  doc.commissionLog = undefined;
+  if (doc.jobContact) {
+    doc.jobContact.phone = `555-030${String(n % 10)}`;
+    doc.jobContact.email = `job.contact.${n}@example.com`;
+  }
+  anonymizeAddress(doc.jobAddress, n);
+  if (doc.geo) doc.geo.sourceAddress = '';
+  if (Array.isArray(doc.notes)) {
+    doc.notes = doc.notes.map((note) => ({
+      ...note,
+      content: 'Note',
+      createdByName: 'Demo User',
+    }));
+  }
 }
 
 function anonymizeAppointment(doc, idx) {
@@ -146,6 +175,27 @@ function anonymizeByCollection(name, doc, idx, context = {}) {
     case 'appointments':
       anonymizeAppointment(doc, idx);
       break;
+    case 'activities':
+      doc.note = doc.note ? 'Activity note' : '';
+      doc.changes = undefined;
+      break;
+    case 'bills':
+      doc.title = `Bill ${idx + 1}`;
+      doc.description = '';
+      break;
+    case 'estimates':
+    case 'invoices':
+    case 'contracts':
+      doc.description = '';
+      if ('notes' in doc) doc.notes = '';
+      break;
+    case 'files': {
+      const ext = String(doc.originalName || '').includes('.')
+        ? `.${String(doc.originalName).split('.').pop()}`
+        : '';
+      doc.originalName = `file-${idx + 1}${ext}`;
+      break;
+    }
     default:
       break;
   }
@@ -343,15 +393,19 @@ async function main() {
   const targetSlug = String(args.target || '').trim();
   const targetName = String(args.targetName || targetSlug || '').trim();
   const dryRun = bool(args.dryRun, true);
-  const anonymize = bool(args.anonymize, false);
+  const anonymize = bool(args.anonymize, true);
   const demoEmail = String(args.demoEmail || '').trim().toLowerCase();
   const demoPassword = String(args.demoPassword || '').trim();
 
   if ((!sourceSlug && !sourceTenantIdArg) || !targetSlug || !targetName) {
     console.error(
-      'Usage: node src/scripts/cloneTenant.js (--source <source-slug>|--sourceTenantId <tenant-id>) --target <target-slug> --targetName "<Tenant Name>" [--dryRun true|false] [--anonymize true|false] [--demoEmail email --demoPassword password]'
+      'Usage: node src/scripts/cloneTenant.js (--source <source-slug>|--sourceTenantId <tenant-id>) --target <target-slug> --targetName "<Tenant Name>" [--dryRun true|false] [--anonymize true|false] [--demoEmail email --demoPassword password]\nAnonymize defaults to true. Pass --anonymize false only for a private copy of your own tenant.'
     );
     process.exit(1);
+  }
+
+  if (!anonymize) {
+    console.warn('WARNING: --anonymize false copies names, contact details, notes, and password hashes.');
   }
 
   if (!process.env.MONGODB_URI) {
@@ -442,6 +496,11 @@ async function main() {
       const docs = sourceDocs[col];
       if (!docs.length) continue;
 
+      if (anonymize && col === 'plaidregistercaches') {
+        console.log('Skipped plaidregistercaches (bank cache is not copied into an anonymized demo)');
+        continue;
+      }
+
       if (col === 'documentfolders') {
         const { cloned, reused } = await cloneDocumentFoldersWithFallback({
           db,
@@ -479,7 +538,7 @@ async function main() {
           tenantId: targetTenantId,
           name: 'Demo Admin',
           password: hash,
-          role: 'super_admin',
+          role: 'admin',
           isActive: true,
           isPending: false,
           createdAt: now,
@@ -506,9 +565,9 @@ async function main() {
           throw new Error(`Could not create demo login due to duplicate email conflicts for base: ${demoEmail}`);
         }
         if (createdEmail === demoEmail) {
-          console.log(`Created demo login: ${createdEmail}`);
+          console.log(`Created demo login: ${createdEmail} (role: admin)`);
         } else {
-          console.log(`Created demo login with fallback email: ${createdEmail} (requested: ${demoEmail})`);
+          console.log(`Created demo login with fallback email: ${createdEmail} (requested: ${demoEmail}, role: admin)`);
         }
       }
     }
@@ -522,8 +581,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('cloneTenant failed:', err?.message || err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('cloneTenant failed:', err?.message || err);
+    process.exit(1);
+  });
+}
+
+module.exports = { anonymizeByCollection };
 

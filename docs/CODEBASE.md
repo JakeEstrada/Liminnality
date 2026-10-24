@@ -1,6 +1,6 @@
 # Codebase guide
 
-How Paarth is organized and how data flows through the app.
+How Liminnality is organized and how data flows through the app. The hosted ERP in this repository is React, Node.js, Express, and MongoDB. `local-crm/Liminnality.md` is a separate desktop plan.
 
 ## High-level flow
 

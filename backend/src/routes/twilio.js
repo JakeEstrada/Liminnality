@@ -21,13 +21,13 @@ const {
   getUnreadSmsCount,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
+const { requireTwilioSignature } = require('../utils/twilioWebhook');
 
 const router = express.Router();
 
-// Public Twilio webhooks (no auth middleware)
-router.post('/sms', inboundSms);
-router.post('/sms-status', smsStatusCallback);
-router.post('/voice', inboundVoice);
+router.post('/sms', requireTwilioSignature, inboundSms);
+router.post('/sms-status', requireTwilioSignature, smsStatusCallback);
+router.post('/voice', requireTwilioSignature, inboundVoice);
 router.get('/media/:id', twilioMediaDownload);
 router.get('/config-status', requireAuth, getTwilioConfigStatus);
 router.post('/sync-inbound', requireAuth, syncInboundFromTwilio);

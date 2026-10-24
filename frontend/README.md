@@ -1,6 +1,6 @@
 # Frontend
 
-React + Vite SPA for Paarth.
+React + Vite SPA for Liminnality.
 
 ## Scripts
 

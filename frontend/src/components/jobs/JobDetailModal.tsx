@@ -460,6 +460,15 @@ function JobDetailModal({
   useEffect(() => {
     if (open && jobId) {
       setActiveTab(resolveJobModalTab(initialTab));
+      setJob((prev) => (prev && String(prev._id) === String(jobId) ? prev : null));
+      setEditedJob((prev) => (prev && String(prev._id) === String(jobId) ? prev : null));
+      setFiles([]);
+      setJobTasks([]);
+      setIsEditing(false);
+      setAiSummaryOpen(false);
+      setAiSummaryText('');
+      setAiSummaryMeta(null);
+      setMessagesRefreshKey((key) => key + 1);
       fetchJobDetails();
       fetchJobFiles();
     } else {
@@ -987,11 +996,14 @@ function JobDetailModal({
     );
   };
 
-  if (!open || !job) return null;
+  if (!open) return null;
+  const jobReady = Boolean(job && String(job._id) === String(jobId));
   const customerEntityId =
-    job?.customerId && typeof job.customerId === 'object'
+    jobReady && job?.customerId && typeof job.customerId === 'object'
       ? job.customerId?._id
-      : job?.customerId || null;
+      : jobReady
+        ? job?.customerId || null
+        : null;
 
   const handleCloseShareDialog = () => {
     setShareDialogOpen(false);
@@ -1091,6 +1103,37 @@ function JobDetailModal({
     setAiSummaryOpen(true);
     handleGenerateAiSummary();
   };
+
+  if (!jobReady) {
+    return (
+      <Dialog
+        open={open}
+        onClose={onClose}
+        maxWidth="lg"
+        fullWidth
+        disableEnforceFocus={financialPin.dialogOpen}
+        sx={sx}
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            maxHeight: '90vh',
+          },
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 280,
+            py: 6,
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

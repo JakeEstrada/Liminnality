@@ -1,7 +1,9 @@
 # Liminnality Lite — Product & Build Specification
 
+**This is not the ERP in this repository.** The current product is the hosted app at the repo root: React, Node.js, Express, and MongoDB. This file is a plan for a separate desktop product.
+
 **Status:** Planning document for a **new, separate project** (new directory / repo).  
-**Reference only:** The existing **Paarth** codebase (`Paarth/backend`, `Paarth/frontend`) — do **not** modify Paarth to build this.  
+**Reference only:** The existing hosted codebase (`backend/`, `frontend/`) — do **not** modify it to build the desktop app.  
 **Database source of truth:** [`schema.sql`](./schema.sql) (SQLite).
 
 ---

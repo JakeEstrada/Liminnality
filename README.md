@@ -1,6 +1,8 @@
 # Liminnality
 
-**An operations platform built to run a custom woodworking and stair-manufacturing business — not a generic CRM with a construction theme.**
+**An ERP for shops that build and install: pipeline, scheduling, payroll, and the money on every job.**
+
+This repository is that hosted ERP (React, Node.js, Express, MongoDB). The desktop plan in `local-crm/` is a separate product and is not this application.
 
 Liminnality is the system of record for San Clemente Woodworking. Every job that enters the shop lives here from the first phone call to the final payment: the estimate, the signed contract, the deposit that cleared the bank, the takeoff measurements, the installer assigned to Tuesday, the text message that told the customer their stairs were ready, and the commission the salesman earned when the check arrived. One database, one timeline per job, one place to look.
 
@@ -17,7 +19,7 @@ The first half of the month went into the wall display, the county map, and talk
 - **Job messages** — the job card has a Messages tab right after Overview. It is the back-and-forth with that customer: canned texts, replies, and a composer. New customer replies put `(+n)` on the pipeline card until someone opens the tab. Sent and received texts are timestamped on Recent Activity, on Notes, and in the shop activity log.
 - **Cover pages** — from the job card, two US-letter pages open in a print tab (estimate number, payment terms from the job schedule, Zelle QR, California contract language, signature block). The browser’s print dialog is the export, so it does not save as a grey PDF.
 - **Print bench and print calendar** — both live in the calendar bench gear. Print bench is a landscape worksheet of the current bench: address, deposit date, payment split (40/60 or custom), payments, total, and blank start / finish / who. Print calendar is this month and next month, each on its own landscape letter page, with job chips, installers, and holidays.
-- **Payroll** — the RFID timesheet is the first tab; Manual is the handwritten sheet. Daniel’s paid week is Monday–Sunday. Hours you lock with Edit stay locked when a later RFID OUT arrives.
+- **Payroll** — the RFID timesheet is the first tab; Manual is the handwritten sheet. Pay weeks are configurable. Hours you lock with Edit stay locked when a later RFID OUT arrives.
 - **Archive search** — finding an archived job opens the archive on that year. The card does not auto-open; you pick it.
 - **Takeoff** — any row, including the first, can be made double height from a `2×` control. Add double row converts the first empty single-height row instead of only appending at the bottom.
 - **Website slideshow** — the website CMS can download every homepage photo as a shuffled zip.
@@ -140,7 +142,7 @@ On a phone the calendar becomes read-only and reshapes completely — see [the m
 
 ## Mobile messaging
 
-Paarth sends and receives real SMS through Twilio, in both directions, and keeps the whole conversation in the job record.
+Liminnality sends and receives real SMS through Twilio, in both directions, and keeps the whole conversation in the job record.
 
 ### Outbound
 
@@ -157,7 +159,7 @@ Recipients can be resolved from the employee roster rather than retyped, and mes
 
 ### Inbound
 
-Replies come back. A public webhook at `POST /twilio/sms` receives Twilio's callback, infers which tenant the message belongs to (by prior conversation thread, then by the number it was sent from, then by fallback), and stores it as an inbound message. Delivery receipts arrive on a separate status callback and update each message's delivery state.
+Replies come back on a signed webhook. The API checks the signature before it stores the message, then infers which tenant it belongs to (by prior conversation thread, then by the number it was sent from, then by fallback). Delivery receipts arrive on a separate signed callback and update each message's delivery state.
 
 Because webhooks can be misconfigured or miss a window, the API also **polls Twilio every 10 seconds** for recent inbound messages and records any clock-in texts it finds. There is still an admin-only **backfill**: one button pulls recent messages straight from the Twilio API and reconciles anything both paths missed.
 
@@ -175,7 +177,7 @@ A scheduler inside the API process wakes every minute, claims scheduled messages
 
 Hands-busy help for the shop floor and the office, not a generic chatbot bolted on the side.
 
-**Paarth Help** is the typed assistant (floating chat). It only answers about this app and this tenant. Tools pull live data the signed-in user is already allowed to see: global search, job notes, job details, recent payments, recent deposits, jobs by city or name, the upcoming calendar, the employee rolodex, and the job map. It can jump the browser to a whitelisted path, open a job card, or filter the map. It does not invent customer or financial numbers.
+**Liminnality Help** is the typed assistant (floating chat). It only answers about this app and this tenant. Tools pull live data the signed-in user is already allowed to see: global search, job notes, job details, recent payments, recent deposits, jobs by city or name, the upcoming calendar, the employee rolodex, and the job map. It can jump the browser to a whitelisted path, open a job card, or filter the map. It does not invent customer or financial numbers.
 
 **Voice** is the same brain, spoken. On desktop Chrome or Edge, Account Settings → Liminality turns the microphone on and picks the ElevenLabs voice (Sarah by default). Nothing is listened to while it is off.
 
@@ -224,7 +226,7 @@ The basemap is Mapbox satellite streets when `VITE_MAPBOX_ACCESS_TOKEN` is set, 
 
 ## Real-time updates
 
-Paarth is a multi-user application where two people genuinely do touch the same job at the same time — a salesman moving a card while the shop lead schedules it. Rather than making users refresh, the server pushes changes over Socket.IO.
+Liminnality is a multi-user application where two people genuinely do touch the same job at the same time — a salesman moving a card while the shop lead schedules it. Rather than making users refresh, the server pushes changes over Socket.IO.
 
 **Rooms are per tenant.** On connect, an authenticated socket joins `tenant:{tenantId}`, and every broadcast is scoped to that room, so one business never receives another's events. Clients can additionally subscribe to a specific `project:` or `task:` topic for finer-grained updates.
 
@@ -307,13 +309,13 @@ The **activity log** deserves a mention on its own: it recognises more than fort
 
 ## Money
 
-A woodworking business lives or dies on deposits, progress payments, and final balances actually being collected. Paarth treats that as a first-class workflow rather than an export to a spreadsheet.
+A woodworking business lives or dies on deposits, progress payments, and final balances actually being collected. Liminnality treats that as a first-class workflow rather than an export to a spreadsheet.
 
 ### Documents
 
 **Estimates, contracts, and invoices** are separate numbered document types, each with its own per-tenant sequence counter so numbers never collide or repeat. An estimate carries line items, tax, discounts, and a grand total, and moves through a real lifecycle — draft, sent, approved, rejected, superseded, converted, archived. Approved estimates convert into contracts and invoices, and the derived documents stay linked back to the estimate that produced them, so a disputed invoice can be traced to the quote it came from. Invoices know what kind they are (deposit, final, full, or change order) and track a running balance due. PDFs are generated in the browser.
 
-**Cover pages** are the packet that goes in the truck, not the numbered CRM contract. From the job card, Paarth asks for the QuickBooks estimate number and confirms customer details, then opens two US-letter pages in a print tab: a bordered cover (shop letterhead, terms from the job’s payment schedule, Zelle QR) and a California contract page with mechanics’-lien notice and a signature block. Print or Save as PDF from the browser — the same path as the bench and calendar sheets — so Windows and Firefox do not get a grey file. The action stays on the job header even when dollar amounts are hidden on a shared screen.
+**Cover pages** are the packet that goes in the truck, not the numbered sales contract. From the job card, Liminnality asks for the QuickBooks estimate number and confirms customer details, then opens two US-letter pages in a print tab: a bordered cover (shop letterhead, terms from the job’s payment schedule, Zelle QR) and a California contract page with mechanics’-lien notice and a signature block. Print or Save as PDF from the browser — the same path as the bench and calendar sheets — so Windows and Firefox do not get a grey file. The action stays on the job header even when dollar amounts are hidden on a shared screen.
 
 ### Payment schedules
 
@@ -330,7 +332,7 @@ The commission log is a dense, purpose-built grid rather than a report. It shows
 ### Also
 
 - **Bills** — recurring company obligations (utilities, rent, insurance, software) with a due day of the month and a link to the payment portal
-- **Payroll** — RFID timesheets first, then a Manual tab for the handwritten sheet. Default pay week is Friday–Thursday; Daniel is Monday–Sunday. Mileage 0.725/mi, PDF print, SMS share. Hours locked with Edit are not overwritten by a later RFID OUT.
+- **Payroll** — RFID timesheets first, then a Manual tab for the handwritten sheet. The pay week is configurable per person. Mileage 0.725/mi, PDF print, SMS share. Hours locked with Edit are not overwritten by a later RFID OUT.
 
 ---
 
@@ -342,7 +344,7 @@ The parts of the business that happen away from a computer.
 
 **Text clock-in.** The same timesheet accepts a punch from a phone. On the RFID page, a mobile number is registered to an employee name. That person texts the shop Twilio line `in`, `out`, a period, or a blank message (a space counts). Anything else stays a normal customer text and is not a punch. The shop replies with the clock time. A second punch from the same number inside two minutes is ignored, so a webhook and the inbound poll cannot double-book the same text. The scan is stored like a badge read, with the source marked as SMS, and it rolls into the same Friday-to-Thursday timesheet.
 
-**Timesheets.** Raw scans are compiled into weekly timesheets. Most of the shop is Friday–Thursday; Daniel is Monday–Sunday. The week being paid is still editable — because readers get missed and people forget to clock out — then it locks after payday. An explicit Edit lock stays put when another RFID OUT arrives later. Each employee has shift defaults, a break allowance, and an hourly rate, and each week can carry extra hours, expense receipts, and travel mileage.
+**Timesheets.** Raw scans are compiled into weekly timesheets. The pay period is configurable per person. The week being paid is still editable — because readers get missed and people forget to clock out — then it locks after payday. An explicit Edit lock stays put when another RFID OUT arrives later. Each employee has shift defaults, a break allowance, and an hourly rate, and each week can carry extra hours, expense receipts, and travel mileage.
 
 **Takeoff sheet.** A measurement tool built for the way takeoffs are actually written: room-by-room rows, fractional measurements, double-height rows (including the first line), autofill from the job, tab-completion for repeated values, local persistence so a half-finished sheet survives a closed tab, and PDF export. The completed sheet saves back onto the job as structured data.
 
@@ -410,7 +412,7 @@ A board on a shop wall should not display what every job is worth to anyone walk
 | Backend | Node.js, Express 5, Mongoose 9, JSON Web Tokens, Socket.IO |
 | Database | MongoDB, multi-tenant |
 | Files | AWS S3 in production, local disk in development, chosen automatically |
-| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and Paarth Help / Liminality), ElevenLabs (spoken replies, streamed), US Census and OpenStreetMap (job-site geocoding), Mapbox or Esri (map tiles) |
+| Integrations | Twilio (SMS), Plaid (banking), Microsoft Graph (email), Google Calendar, OpenAI (summaries and Liminnality Help / Liminality), ElevenLabs (spoken replies, streamed), US Census and OpenStreetMap (job-site geocoding), Mapbox or Esri (map tiles) |
 
 ### Multi-tenancy
 
@@ -452,7 +454,7 @@ Eight roles exist:
 |------|-------------|
 | `super_admin` | Owner — finance, users, website, bank links, analytics |
 | `admin` | Office manager — everything operational, plus the team inbox |
-| `manager`, `sales` | Day-to-day CRM work; may link banking |
+| `manager`, `sales` | Day-to-day operations; may link banking |
 | `installer`, `employee` | Field and shop staff |
 | `shop_view` | Wall displays and shop terminals; dollar amounts hidden |
 | `read_only` | Observers |
@@ -468,7 +470,7 @@ Every authenticated session also writes an audit trail — logins, logouts, page
 ## Repository layout
 
 ```
-Paarth/
+Liminnality/
 ├── frontend/                 React SPA
 │   └── src/
 │       ├── pages/            34 route-level pages
@@ -544,7 +546,7 @@ Everything below is optional; each integration degrades gracefully when its vari
 | Plaid | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, `PLAID_WEBHOOK_URL` |
 | Microsoft Graph | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI` |
 | Google Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_REFRESH_TOKEN` |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` — Paarth Help, Liminality answers, job summaries |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` — Liminnality Help, Liminality answers, job summaries |
 | ElevenLabs | `ELEVENLABS_API_KEY` on the **API** host (not the frontend). Optional `ELEVENLABS_TTS_MODEL` (default `eleven_flash_v2_5`). Voice replies stream from `POST /tts/speech-stream` |
 | Job map | `VITE_MAPBOX_ACCESS_TOKEN` on the **frontend**. Without it the map uses Esri satellite imagery. Geocoding needs no key |
 | RFID devices | `RFID_DEVICE_API_KEY`, `RFID_SHOP_TIMEZONE` |
@@ -583,7 +585,6 @@ Started by the API process once MongoDB connects — no separate worker to deplo
 Documented honestly, because knowing where the edges are is part of running the thing:
 
 - **Touch drag on the pipeline.** The board uses native HTML5 drag and drop, which does not fire on touch devices. The mobile board is intentionally read-only as a result; moving a job on a phone needs a pointer-event or dnd-kit implementation.
-- **Inbound webhook validation.** The Twilio inbound endpoint does not yet verify the `X-Twilio-Signature` header. It should.
 - **Recurring installs.** Jobs carry a recurrence field and the API preserves it, but there is no interface to configure a repeating schedule.
 - **Dragging onto a calendar day.** Scheduling is done by clicking a day and filling the dialog; the day cells themselves are not drop targets.
 - **`read_only` role.** It is assignable and excluded from pipeline modification, but has no dedicated enforcement layer beyond that.
@@ -596,6 +597,7 @@ Documented honestly, because knowing where the edges are is part of running the 
 
 | Document | Contents |
 |----------|----------|
+| [SECURITY.md](SECURITY.md) | How to report a vulnerability |
 | [docs/CODEBASE.md](docs/CODEBASE.md) | Architecture, authentication, tenancy, conventions |
 | [liminalVoice.md](liminalVoice.md) | How Liminality voice is wired: wake, tools, streamed speech |
 | [docs/PAGES.md](docs/PAGES.md) | Page-by-page reference: routes, APIs, key logic |
