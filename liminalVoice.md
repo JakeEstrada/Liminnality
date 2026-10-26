@@ -231,39 +231,3 @@ Bottlenecks, in order of pain:
 5. **No on-device or WebRTC voice session.** Every turn is HTTP request/response.
 
 What is already cheap: local nav keywords, clip cache for “Opening pipeline.”, Flash v2.5 + `optimize_streaming_latency=4`.
-
----
-
-## Product constraints to keep
-
-- Desktop / kiosk, not phone layout
-- Short answers. No feelings, no “I know you’re upset”
-- Live tenant data only — never invent payments or customers
-- Job card opens in place on Files; do not bounce to pipeline
-- Map: **in** city = exact city; **near** city = 10 miles
-- Do not print shop or financial PINs
-- Voice stays off on the mobile layout
-
----
-
-## Paste this into ChatGPT
-
-Use the doc above plus:
-
-> Here is how Liminality voice works in Liminnality today (see liminalVoice.md).
->
-> I want options that are **faster** and **more reliable** than:
-> Chrome Web Speech → regex → OpenAI gpt-4o-mini tool loop → ElevenLabs full MP3 blob.
->
-> Constraints: React/Vite desktop web app, Express/Mongo backend, must stay in the browser (no native app), must keep tool access to our shop data, short spoken answers, barge-in if possible.
->
-> Please compare, with rough latency and cost:
-> 1. Keep this architecture but stream TTS / stream the assistant
-> 2. OpenAI Realtime or WebRTC voice (audio in + audio out, tools still on our server)
-> 3. Deepgram / AssemblyAI / Whisper streaming STT instead of Chrome
-> 4. Cheaper/faster TTS (OpenAI streaming TTS, Cartesia, local)
-> 5. Push more intents off the LLM (classifier or grammar) so map/nav/close never wait on OpenAI
->
-> Rank by: time-to-first-audio, barge-in, wake-word accuracy, implementation effort on this repo, monthly cost at shop-floor volume (tens of commands per hour, not a call center).
->
-> Tell me what to change first for the biggest speed win with the least rewrite.
