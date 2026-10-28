@@ -21,6 +21,15 @@ const smsMessageSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    media: [
+      {
+        contentType: { type: String, trim: true, default: 'image/jpeg' },
+        fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+        filename: { type: String, trim: true },
+        path: { type: String, trim: true },
+        s3Key: { type: String, trim: true },
+      },
+    ],
     twilioSid: {
       type: String,
       trim: true,

@@ -2,7 +2,7 @@
 
 **An ERP for shops that build and install: pipeline, scheduling, payroll, and the money on every job.**
 
-This repository is that hosted ERP (React, Node.js, Express, MongoDB). The desktop plan in `local-crm/` is a separate product and is not this application.
+This repository is that hosted ERP (React, Node.js, Express, MongoDB).
 
 Liminnality is the system of record for San Clemente Woodworking. Every job that enters the shop lives here from the first phone call to the final payment: the estimate, the signed contract, the deposit that cleared the bank, the takeoff measurements, the installer assigned to Tuesday, the text message that told the customer their stairs were ready, and the commission the salesman earned when the check arrived. One database, one timeline per job, one place to look.
 
@@ -609,9 +609,3 @@ Documented honestly, because knowing where the edges are is part of running the 
 | [backend/S3_SETUP.md](backend/S3_SETUP.md) | File storage setup |
 
 `frontend/src/App.tsx` is the authoritative source for routes and access guards; where a document disagrees, trust the router.
-
----
-
-## Related
-
-**Liminnality Lite** — a separate desktop product on SQLite. See `local-crm/Liminnality.md`. It is not part of this deployment and the two should not be mixed.

@@ -32,7 +32,6 @@ Tracked removals so we do not re-introduce duplicate or legacy paths.
 | `CommissionLogsPage` | Finance sidebar entry |
 | `backend/src/scripts/*` | One-off maintenance scripts, not loaded at runtime |
 | Root `Csharp.md`, `Software.md` | Liminnality planning notes (not runtime code) |
-| `local-crm/` | Separate product spec — not Paarth runtime |
 
 ## Next cleanup candidates
 

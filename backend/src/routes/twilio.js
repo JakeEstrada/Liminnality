@@ -18,6 +18,7 @@ const {
   markJobSmsRead,
   getTwilioConfigStatus,
   syncInboundFromTwilio,
+  streamSmsMessageMedia,
   getUnreadSmsCount,
 } = require('../controllers/twilioController');
 const { requireAuth } = require('../middleware/auth');
@@ -36,6 +37,7 @@ router.post('/schedule-sms', requireAuth, scheduleSms);
 router.post('/send-sms-adhoc', requireAuth, sendSmsAdhoc);
 router.post('/schedule-sms-adhoc', requireAuth, scheduleSmsAdhoc);
 router.get('/unread-count', requireAuth, getUnreadSmsCount);
+router.get('/messages/:id/media/:index', requireAuth, streamSmsMessageMedia);
 router.get('/messages', requireAuth, listSms);
 router.delete('/messages/conversation', requireAuth, deleteSmsConversation);
 router.post('/messages/job/:jobId/read', requireAuth, markJobSmsRead);

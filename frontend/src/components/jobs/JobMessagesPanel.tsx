@@ -8,13 +8,14 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Send as SendIcon, Sms as SmsIcon } from '@mui/icons-material';
+import { Image as ImageIcon, Send as SendIcon, Sms as SmsIcon } from '@mui/icons-material';
 import { format, isSameDay, isToday, isYesterday } from 'date-fns';
 import { useTheme } from '@mui/material/styles';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import api from '../../utils/axios';
 import { fetchSmsLists, markJobSmsRead, type SmsRow } from '../../utils/twilioApi';
+import SmsMessagePhotos from '../messages/SmsMessagePhotos';
 import { formatPromptPhone, resolveCustomerPhone } from '../../utils/pipelineSmsTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
@@ -83,6 +84,9 @@ export default function JobMessagesPanel({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [body, setBody] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
@@ -144,17 +148,49 @@ export default function JobMessagesPanel({
     [messages],
   );
 
+  const clearPhoto = () => {
+    setPhoto(null);
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  };
+
+  const choosePhoto = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose a photo');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller');
+      return;
+    }
+    clearPhoto();
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
   const handleSend = async () => {
-    if (!phone.trim() || !body.trim() || sending) return;
+    if (!phone.trim() || sending || (!body.trim() && !photo)) return;
     setSending(true);
     try {
+      let mediaFileId = '';
+      if (photo) {
+        const form = new FormData();
+        form.append('file', photo);
+        const uploaded = await api.post('/twilio/mms-upload', form);
+        mediaFileId = String(uploaded.data?.fileId || '');
+      }
       await api.post('/twilio/send-sms-adhoc', {
         to: phone.trim(),
         message: body.trim(),
         jobId: jobId || undefined,
         customerId: customer?._id || undefined,
+        ...(mediaFileId ? { mediaFileId } : {}),
       });
       setBody('');
+      clearPhoto();
       toast.success(`Text sent to ${customerName || displayPhone || phone}`);
       await loadMessages();
     } catch (error) {
@@ -243,9 +279,12 @@ export default function JobMessagesPanel({
                         color: failed ? 'error.contrastText' : outbound ? outboundColor : inboundColor,
                       }}
                     >
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {row.body || ' '}
-                      </Typography>
+                      <SmsMessagePhotos messageId={row.id} media={row.media} />
+                      {row.body ? (
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {row.body}
+                        </Typography>
+                      ) : null}
                     </Box>
                   </Box>
                   <Typography
@@ -277,6 +316,28 @@ export default function JobMessagesPanel({
             </Typography>
           ) : (
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                hidden
+                onChange={(event) => {
+                  choosePhoto(event.target.files?.[0] || null);
+                  event.target.value = '';
+                }}
+              />
+              {photoPreview ? (
+                <Box
+                  component="img"
+                  src={photoPreview}
+                  alt="Photo to send"
+                  onClick={clearPhoto}
+                  sx={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 1, cursor: 'pointer' }}
+                />
+              ) : null}
+              <IconButton onClick={() => photoInputRef.current?.click()} aria-label="Attach photo" disabled={sending}>
+                <ImageIcon />
+              </IconButton>
               <TextField
                 placeholder={`Message ${customerName || displayPhone || 'customer'}`}
                 value={body}
@@ -297,7 +358,7 @@ export default function JobMessagesPanel({
               <IconButton
                 color="primary"
                 onClick={() => void handleSend()}
-                disabled={!body.trim() || sending}
+                disabled={(!body.trim() && !photo) || sending}
                 aria-label="Send message"
               >
                 {sending ? <CircularProgress size={20} /> : <SendIcon />}

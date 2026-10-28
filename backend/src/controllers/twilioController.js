@@ -13,6 +13,7 @@ const { ensureDefaultTenant, ensureTenantBySlug } = require('../utils/tenantServ
 const { runWithTenantContext } = require('../middleware/tenantContext');
 const { publishSmsInboundCreated } = require('../services/eventBus');
 const { tryRecordSmsPunch, findActivePhoneByFrom } = require('./rfidController');
+const { openStoredSmsMedia, storeSmsMediaBuffer } = require('../utils/smsMediaStore');
 
 /**
  * Basic Twilio webhook handlers.
@@ -289,6 +290,79 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
   return String(defaultTenant._id);
 }
 
+function twilioBasicAuth() {
+  const { accountSid, authToken } = getTwilioConfig();
+  if (!accountSid || !authToken) return '';
+  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`;
+}
+
+function mediaFromTwilioForm(body) {
+  const count = Math.min(parseInt(body?.NumMedia, 10) || 0, 5);
+  const items = [];
+  for (let i = 0; i < count; i += 1) {
+    const url = String(body?.[`MediaUrl${i}`] || '').trim();
+    const contentType = String(body?.[`MediaContentType${i}`] || 'image/jpeg').trim();
+    if (url) items.push({ url, contentType });
+  }
+  return items;
+}
+
+async function downloadTwilioPhotos(items) {
+  const auth = twilioBasicAuth();
+  if (!auth) return [];
+  const stored = [];
+  for (const item of items) {
+    if (!String(item.contentType || '').toLowerCase().startsWith('image/')) continue;
+    try {
+      const response = await fetch(item.url, { headers: { Authorization: auth } });
+      if (!response.ok) continue;
+      const contentType = String(response.headers.get('content-type') || item.contentType || 'image/jpeg')
+        .split(';')[0]
+        .trim();
+      if (!contentType.toLowerCase().startsWith('image/')) continue;
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!buffer.length || buffer.length > 5 * 1024 * 1024) continue;
+      stored.push(await storeSmsMediaBuffer({ buffer, contentType }));
+    } catch (error) {
+      console.error('Failed to store inbound photo:', error?.message || error);
+    }
+  }
+  return stored;
+}
+
+async function listTwilioMessagePhotos(messageSid) {
+  const { accountSid } = getTwilioConfig();
+  const auth = twilioBasicAuth();
+  if (!accountSid || !auth || !messageSid) return [];
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${encodeURIComponent(messageSid)}/Media.json`,
+    { headers: { Authorization: auth } },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return [];
+  const list = Array.isArray(data.media_list) ? data.media_list : [];
+  return list
+    .map((row) => {
+      const uri = String(row.uri || '').replace(/\.json$/, '');
+      if (!uri) return null;
+      return {
+        url: uri.startsWith('http') ? uri : `https://api.twilio.com${uri}`,
+        contentType: row.content_type || 'image/jpeg',
+      };
+    })
+    .filter(Boolean);
+}
+
+async function attachInboundPhotos(doc, items) {
+  if (!doc || !items?.length) return doc;
+  if (Array.isArray(doc.media) && doc.media.length) return doc;
+  const stored = await downloadTwilioPhotos(items);
+  if (!stored.length) return doc;
+  doc.media = stored;
+  await doc.save();
+  return doc;
+}
+
 async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, createdAt }) {
   const tenantId = await resolveInboundTenantId({ from, to, preferredTenantId });
   const fromNorm = normalizeToE164(from) || String(from || '').trim();
@@ -354,8 +428,15 @@ async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, 
   });
 }
 
-async function logInboundSms({ from, to, body, twilioSid, io }) {
+async function logInboundSms({ from, to, body, twilioSid, io, mediaItems }) {
   const { doc, created } = await upsertInboundSms({ from, to, body, twilioSid });
+  if (doc && mediaItems?.length) {
+    try {
+      await attachInboundPhotos(doc, mediaItems);
+    } catch (error) {
+      console.error('Failed to attach inbound photos:', error?.message || error);
+    }
+  }
   if (io && created && doc?.tenantId) {
     publishSmsInboundCreated(io, doc.tenantId, {
       id: String(doc._id),
@@ -370,7 +451,7 @@ async function logInboundSms({ from, to, body, twilioSid, io }) {
         jobId: doc.jobId,
         customerId: doc.customerId,
         direction: 'inbound',
-        body: doc.body,
+        body: doc.body || (Array.isArray(doc.media) && doc.media.length ? 'Photo' : ''),
         io,
       });
     } catch (error) {
@@ -392,6 +473,7 @@ async function logOutboundSms({
   jobId,
   customerId,
   io,
+  media,
 }) {
   const toNorm = normalizeToE164(to) || String(to || '').trim();
   const links = await resolveSmsJobLinks({
@@ -413,6 +495,7 @@ async function logOutboundSms({
     jobId: links.jobId,
     customerId: links.customerId,
   };
+  if (Array.isArray(media) && media.length) payload.media = media;
   if (tenantId) {
     payload.tenantId = tenantId;
   }
@@ -423,7 +506,7 @@ async function logOutboundSms({
         jobId: links.jobId,
         customerId: links.customerId,
         direction: 'outbound',
-        body: payload.body,
+        body: payload.body || (Array.isArray(media) && media.length ? 'Photo' : ''),
         createdBy,
         io,
       });
@@ -442,7 +525,14 @@ async function inboundSms(req, res) {
     console.log('[Twilio SMS] from=%s to=%s body=%s', from, to, body);
 
     try {
-      await logInboundSms({ from, to, body, twilioSid: messageSid, io: req.app.get('io') });
+      await logInboundSms({
+        from,
+        to,
+        body,
+        twilioSid: messageSid,
+        io: req.app.get('io'),
+        mediaItems: mediaFromTwilioForm(req.body),
+      });
     } catch (logError) {
       console.error('Failed to log inbound SMS:', logError?.message || logError);
     }
@@ -635,6 +725,14 @@ async function pullInboundFromTwilio({ preferredTenantId, limit = 100, io } = {}
       preferredTenantId,
       createdAt: row.date_created || row.date_sent,
     });
+    if (Number(row.num_media) > 0 && result.doc && !(result.doc.media || []).length) {
+      try {
+        const photos = await listTwilioMessagePhotos(row.sid);
+        await attachInboundPhotos(result.doc, photos);
+      } catch (mediaError) {
+        console.error('Failed to pull inbound photos:', mediaError?.message || mediaError);
+      }
+    }
     if (result.created) {
       imported += 1;
       if (io && result.doc?.tenantId) {
@@ -1100,6 +1198,14 @@ async function sendSmsAdhoc(req, res) {
       return res.status(400).json({ error: 'Enter a valid phone number' });
     }
     const mediaUrls = await resolveMediaUrls(req);
+    const mediaFileId = String(req.body?.mediaFileId || '').trim();
+    let outboundMedia = [];
+    if (mediaFileId) {
+      const staged = await File.findById(mediaFileId).select('mimetype');
+      if (staged) {
+        outboundMedia = [{ fileId: staged._id, contentType: staged.mimetype || 'image/jpeg' }];
+      }
+    }
     const statusCallbackUrl = buildSmsStatusCallbackUrl(req);
     const data = await sendSmsViaTwilio({
       to: normalized,
@@ -1120,6 +1226,7 @@ async function sendSmsAdhoc(req, res) {
         jobId: req.body?.jobId,
         customerId: req.body?.customerId,
         io: req.app.get('io'),
+        media: outboundMedia,
       });
     } catch (logError) {
       console.error('Failed to log outbound SMS:', logError?.message || logError);
@@ -1288,6 +1395,14 @@ async function scheduleSmsAdhoc(req, res) {
   }
 }
 
+function mapMedia(doc) {
+  const items = Array.isArray(doc?.media) ? doc.media : [];
+  return items.map((item, index) => ({
+    index,
+    contentType: item.contentType || 'image/jpeg',
+  }));
+}
+
 function mapDeliveryFields(doc) {
   return {
     deliveryStatus: doc.deliveryStatus || null,
@@ -1339,6 +1454,7 @@ function mapOutboundRow(doc) {
     createdAt: doc.createdAt,
     lastError: doc.errorMessage || null,
     twilioSid: doc.twilioSid || null,
+    media: mapMedia(doc),
     ...mapDeliveryFields(doc),
   };
 }
@@ -1389,6 +1505,7 @@ function mapInboundRow(doc) {
     createdAt: doc.createdAt,
     lastError: null,
     twilioSid: doc.twilioSid || null,
+    media: mapMedia(doc),
     ...mapDeliveryFields(doc),
   };
 }
@@ -1413,6 +1530,36 @@ function buildMessageDetailPayload(doc, recordType) {
       : 'Read status is tracked when you open a received message in this app.',
     canMarkRead: isInbound && !row.readAt,
   };
+}
+
+async function streamSmsMessageMedia(req, res) {
+  try {
+    const index = Number(req.params.index);
+    const doc = await SmsMessage.findById(req.params.id);
+    const item = Number.isInteger(index) ? doc?.media?.[index] : null;
+    if (!doc || !item) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    let stream;
+    let contentType = item.contentType || 'image/jpeg';
+    if (item.fileId) {
+      const file = await File.findById(item.fileId).setOptions({ bypassTenant: true });
+      if (!file) return res.status(404).json({ error: 'Photo not found' });
+      contentType = file.mimetype || contentType;
+      stream = await getFileStream(file);
+    } else {
+      const opened = await openStoredSmsMedia(item);
+      stream = opened.stream;
+      contentType = opened.contentType || contentType;
+    }
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return stream.pipe(res);
+  } catch (error) {
+    console.error('streamSmsMessageMedia error:', error?.message || error);
+    return res.status(500).json({ error: 'Failed to load photo' });
+  }
 }
 
 async function smsStatusCallback(req, res) {
@@ -1815,4 +1962,5 @@ module.exports = {
   scheduleSmsAdhoc,
   getTwilioConfigStatus,
   syncInboundFromTwilio,
+  streamSmsMessageMedia,
 };

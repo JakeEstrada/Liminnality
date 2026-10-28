@@ -1,6 +1,6 @@
 # Codebase guide
 
-How Liminnality is organized and how data flows through the app. The hosted ERP in this repository is React, Node.js, Express, and MongoDB. `local-crm/Liminnality.md` is a separate desktop plan.
+How Liminnality is organized and how data flows through the app. The hosted ERP in this repository is React, Node.js, Express, and MongoDB.
 
 ## High-level flow
 
@@ -78,11 +78,7 @@ Most user-visible changes create an `Activity` document (stage moves, notes, fil
 
 ### Stage names
 
-Pipeline stages are still **string enums** in MongoDB (`APPOINTMENT_SCHEDULED`, `SCHEDULED`, …). Labels come from `backend/src/utils/stageConfig.js`. Liminnality Lite will replace this with DB-driven stages.
-
-## What not to edit for Lite
-
-`local-crm/` is the **reference** for the desktop SQLite app. Do not rewrite Paarth production code when working on Liminnality — copy schema + spec to a new repo instead.
+Pipeline stages are still **string enums** in MongoDB (`APPOINTMENT_SCHEDULED`, `SCHEDULED`, …). Labels come from `backend/src/utils/stageConfig.js`.
 
 ## Environment variables (common)
 

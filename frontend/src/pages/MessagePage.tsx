@@ -35,6 +35,7 @@ import api from '../utils/axios';
 import CannedMessagesPanel from '../components/messages/CannedMessagesPanel';
 import FlagMessagesPanel from '../components/messages/FlagMessagesPanel';
 import SmsConversationView, { type ChatMessage } from '../components/messages/SmsConversationView';
+import SmsMessagePhotos from '../components/messages/SmsMessagePhotos';
 import TeamInboxPanel from '../components/messages/TeamInboxPanel';
 import { formatPhoneForDisplay } from '../utils/phoneFormat';
 import {
@@ -197,9 +198,14 @@ function MessageDetailDialog({
                 Message
               </Typography>
               <Paper variant="outlined" sx={{ p: 2, bgcolor: 'action.hover' }}>
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {detail.fullBody || detail.body || '—'}
-                </Typography>
+                <SmsMessagePhotos messageId={detail.id} media={detail.media} />
+                {detail.fullBody || detail.body ? (
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {detail.fullBody || detail.body}
+                  </Typography>
+                ) : detail.media?.length ? null : (
+                  <Typography variant="body1">—</Typography>
+                )}
               </Paper>
             </Box>
 
@@ -487,18 +493,29 @@ function MessagePage() {
     }
   };
 
-  const handleSend = async (to: string, message: string) => {
+  const handleSend = async (to: string, message: string, photo?: File | null) => {
     if (!to.trim()) {
       toast.error('Enter a phone number');
       return;
     }
-    if (!message.trim()) {
-      toast.error('Enter a message');
+    if (!message.trim() && !photo) {
+      toast.error('Enter a message or choose a photo');
       return;
     }
     setSending(true);
     try {
-      await api.post('/twilio/send-sms-adhoc', { to: to.trim(), message: message.trim() });
+      let mediaFileId = '';
+      if (photo) {
+        const form = new FormData();
+        form.append('file', photo);
+        const uploaded = await api.post('/twilio/mms-upload', form);
+        mediaFileId = String(uploaded.data?.fileId || '');
+      }
+      await api.post('/twilio/send-sms-adhoc', {
+        to: to.trim(),
+        message: message.trim(),
+        ...(mediaFileId ? { mediaFileId } : {}),
+      });
       toast.success('Message sent');
       setTab('messages');
       await fetchMessages(listLimit, { silent: true });

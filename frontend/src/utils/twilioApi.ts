@@ -58,6 +58,7 @@ export type SmsRow = {
   statusUpdatedAt?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  media?: Array<{ index: number; contentType?: string }>;
 };
 
 export type SmsDetail = SmsRow & {

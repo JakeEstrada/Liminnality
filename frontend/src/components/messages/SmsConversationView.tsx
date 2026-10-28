@@ -25,6 +25,7 @@ import {
   DriveFileRenameOutline as RenameIcon,
   Edit as EditIcon,
   Refresh as RefreshIcon,
+  Image as ImageIcon,
   Schedule as ScheduleIcon,
   Send as SendIcon,
   Sync as SyncIcon,
@@ -34,6 +35,7 @@ import { useTheme } from '@mui/material/styles';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { formatPhoneForDisplay } from '../../utils/phoneFormat';
 import type { SmsRow } from '../../utils/twilioApi';
+import SmsMessagePhotos from './SmsMessagePhotos';
 import api from '../../utils/axios';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
 import { getTenantRoom } from '../../services/socket';
@@ -155,7 +157,7 @@ export function buildConversations(
         messages,
         lastAt: last ? messageTime(last) : 0,
         unreadCount: messages.filter((row) => row.direction === 'inbound' && row.status === 'unread').length,
-        lastPreview: last?.body || '',
+        lastPreview: last?.body || (last?.media?.length ? 'Photo' : ''),
       };
     })
     .sort((a, b) => b.lastAt - a.lastAt);
@@ -180,7 +182,7 @@ export default function SmsConversationView({
   loading: boolean;
   sending: boolean;
   scheduling: boolean;
-  onSend: (to: string, message: string) => Promise<void>;
+  onSend: (to: string, message: string, photo?: File | null) => Promise<void>;
   onSchedule: (to: string, message: string, sendAtLocal: string) => Promise<void>;
   onOpenMessage: (row: ChatMessage) => void;
   onOpenConversation?: (unreadIds: string[]) => void;
@@ -205,6 +207,9 @@ export default function SmsConversationView({
   const [composingNew, setComposingNew] = useState(false);
   const [toDisplay, setToDisplay] = useState('');
   const [body, setBody] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [scheduleMode, setScheduleMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     left: number;
@@ -355,15 +360,40 @@ export default function SmsConversationView({
   };
 
   const busy = sending || scheduling;
-  const canSend = Boolean(recipient && body.trim() && !busy);
+  const canSend = Boolean(recipient && (body.trim() || (photo && !scheduleMode)) && !busy);
+
+  const clearPhoto = () => {
+    setPhoto(null);
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  };
+
+  const choosePhoto = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose a photo');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller');
+      return;
+    }
+    clearPhoto();
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
 
   const handleSend = async () => {
     if (!canSend) return;
     const to = recipient;
     const message = body.trim();
+    const attachment = photo;
     try {
-      await onSend(to, message);
+      await onSend(to, message, attachment);
       setBody('');
+      clearPhoto();
       setComposingNew(false);
       setSelectedKey(conversationKey(to));
     } catch {
@@ -626,9 +656,12 @@ export default function SmsConversationView({
                           boxShadow: outbound ? 'none' : isDark ? 'none' : '0 1px 1px rgba(0,0,0,0.06)',
                         }}
                       >
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {row.body || ' '}
-                        </Typography>
+                        <SmsMessagePhotos messageId={row.id} media={row.media} />
+                        {row.body ? (
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {row.body}
+                          </Typography>
+                        ) : null}
                       </Box>
                     </Box>
                     <Typography
@@ -666,10 +699,45 @@ export default function SmsConversationView({
                 sx={{ mb: 1 }}
               />
             ) : null}
+            {photoPreview ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Box
+                  component="img"
+                  src={photoPreview}
+                  alt="Photo to send"
+                  sx={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 1 }}
+                />
+                <Button size="small" onClick={clearPhoto} disabled={busy}>
+                  Remove photo
+                </Button>
+              </Box>
+            ) : null}
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                hidden
+                onChange={(event) => {
+                  choosePhoto(event.target.files?.[0] || null);
+                  event.target.value = '';
+                }}
+              />
+              <IconButton
+                onClick={() => photoInputRef.current?.click()}
+                aria-label="Attach photo"
+                disabled={busy || scheduleMode}
+              >
+                <ImageIcon />
+              </IconButton>
               <IconButton
                 color={scheduleMode ? 'primary' : 'default'}
-                onClick={() => setScheduleMode((prev) => !prev)}
+                onClick={() =>
+                  setScheduleMode((prev) => {
+                    if (!prev) clearPhoto();
+                    return !prev;
+                  })
+                }
                 aria-label="Schedule message"
                 disabled={busy}
               >
