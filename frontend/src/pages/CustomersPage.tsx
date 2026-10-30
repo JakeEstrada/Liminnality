@@ -427,7 +427,14 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
       const contactPhones = editCustomerForm.contactPhones?.filter(cp => cp.value?.trim()) || [];
       const contactEmails = editCustomerForm.contactEmails?.filter(ce => ce.value?.trim()) || [];
       const primaryPhone = getPrimaryContactPhone(contactPhones) || editCustomerForm.primaryPhone || undefined;
-      const primaryEmail = getPrimaryContactEmail(contactEmails) || editCustomerForm.primaryEmail || undefined;
+      const primaryEmail = getPrimaryContactEmail(contactEmails) || undefined;
+      const primaryEmailKey = String(primaryEmail || '').trim().toLowerCase();
+      const emails = contactEmails
+        .map((row) => String(row.value || '').trim())
+        .filter((value, index, list) => {
+          const key = value.toLowerCase();
+          return key && key !== primaryEmailKey && list.findIndex((item) => item.toLowerCase() === key) === index;
+        });
 
       // Prepare update data
       const updateData = {
@@ -435,7 +442,7 @@ function CustomersPage({ viewMode = false, externalViewControls = false }) {
         primaryPhone,
         primaryEmail,
         phones: editCustomerForm.phones || [],
-        emails: editCustomerForm.emails || [],
+        emails,
         contactPhones,
         contactEmails,
         address: (editCustomerForm.address.street || editCustomerForm.address.city) 

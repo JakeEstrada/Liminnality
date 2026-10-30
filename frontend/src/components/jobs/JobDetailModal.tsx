@@ -854,12 +854,13 @@ function JobDetailModal({
         .filter(Boolean)
         .join(', ');
     }
-    const emails = [
-      j.jobContact?.email,
-      cust?.primaryEmail,
-      ...(Array.isArray(cust?.emails) ? cust.emails : []),
-      ...(Array.isArray(cust?.contactEmails) ? cust.contactEmails.map((row) => row?.value) : []),
-    ]
+    const contactEmails = Array.isArray(cust?.contactEmails)
+      ? cust.contactEmails.map((row) => row?.value).filter((value) => String(value || '').trim())
+      : [];
+    const emails = (contactEmails.length
+      ? contactEmails
+      : [cust?.primaryEmail, ...(Array.isArray(cust?.emails) ? cust.emails : []), j.jobContact?.email]
+    )
       .map((value) => String(value || '').trim())
       .filter((value, index, list) => value && list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index);
     const email = emails.join(', ');

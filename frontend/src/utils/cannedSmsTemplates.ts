@@ -69,12 +69,15 @@ function formatAddress(address?: AddressLike | null): string {
 
 export function collectJobCardEmails(job?: JobCardSmsSource | null): string[] {
   const customer = job?.customerId && typeof job.customerId === 'object' ? job.customerId : null;
-  return uniqueTrimmed([
-    job?.jobContact?.email,
-    customer?.primaryEmail,
-    ...(Array.isArray(customer?.emails) ? customer.emails : []),
-    ...(Array.isArray(customer?.contactEmails) ? customer.contactEmails.map((row) => row?.value) : []),
-  ]);
+  const contactEmails = Array.isArray(customer?.contactEmails)
+    ? customer.contactEmails.map((row) => row?.value)
+    : [];
+  const customerEmails = contactEmails.some((value) => String(value || '').trim())
+    ? contactEmails
+    : [customer?.primaryEmail, ...(Array.isArray(customer?.emails) ? customer.emails : [])];
+  const live = uniqueTrimmed(customerEmails);
+  if (live.length) return live;
+  return uniqueTrimmed([job?.jobContact?.email]);
 }
 
 export function buildJobCardSmsContext(

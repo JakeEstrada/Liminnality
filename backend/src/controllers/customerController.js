@@ -7,6 +7,7 @@ const { emitJobCreated, emitJobUpdated, sourceSocketIdFromReq } = require('../se
 const { publishCustomerChanged } = require('../services/eventBus');
 const { applyReferralFields } = require('../utils/referralCompany');
 const { syncJobGeo, syncJobsForCustomer } = require('../services/geocodeService');
+const { replacementForRemovedJobEmail } = require('../utils/customerContactSync');
 
 /** Default pipeline job so every API-created customer has at least one job. Skip when caller will create the job (e.g. Add Job modal). */
 async function createInitialJobForCustomer(customer, createdBy, req) {
@@ -193,6 +194,22 @@ async function updateCustomer(req, res) {
       action: 'updated',
       sourceSocketId: sourceSocketIdFromReq(req),
     });
+    try {
+      const jobs = await Job.find({
+        customerId: customer._id,
+        'jobContact.email': { $exists: true, $nin: [null, ''] },
+      });
+      for (const job of jobs) {
+        const replacement = replacementForRemovedJobEmail(job.jobContact?.email, oldData, customer);
+        if (replacement === null) continue;
+        job.jobContact.email = replacement || undefined;
+        job.markModified('jobContact');
+        await job.save();
+        await emitJobUpdated(req, job);
+      }
+    } catch (contactErr) {
+      console.error('Job contact email sync failed:', contactErr?.message || contactErr);
+    }
     const oldAddress = JSON.stringify(oldData.address || {});
     const nextAddress = JSON.stringify(customer.address || {});
     if (oldAddress !== nextAddress) {
