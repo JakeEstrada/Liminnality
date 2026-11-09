@@ -287,6 +287,7 @@ interface CommissionCheckEntry {
   customerName: string;
   jobLabel: string;
   paymentLabel: string;
+  depositedAmount: number;
   amount: number;
   check: string;
   date: string;
@@ -481,6 +482,7 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
         customerName: row.customerName,
         jobLabel: row.jobLabel,
         paymentLabel: payment.label,
+        depositedAmount: roundMoney(Number(payment.depositedAmount) || 0),
         amount: roundMoney(amount),
         check,
         date,
@@ -505,6 +507,7 @@ function buildCheckEntries(rows: CommissionTableRow[]): CommissionCheckEntry[] {
         customerName: row.customerName,
         jobLabel: row.jobLabel,
         paymentLabel: adjustment.label,
+        depositedAmount: 0,
         amount: roundMoney(amount),
         check,
         date,
@@ -541,6 +544,7 @@ function matchesCheckSearch(entry: CommissionCheckEntry, rawQuery: string): bool
     entry.customerPaidDate,
     formatCheckDisplayDate(entry.customerPaidDate),
     ...moneySearchTokens(entry.amount),
+    ...moneySearchTokens(entry.depositedAmount),
     entry.salesmanPaid ? 'salesman paid' : 'unpaid',
   ];
 
@@ -829,7 +833,10 @@ function CommissionChecksTable({
                             <TableCell sx={{ fontWeight: 600 }}>Job</TableCell>
                             <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">
-                              Amount
+                              Deposited
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">
+                              Commission
                             </TableCell>
                             {!isMobile && <TableCell sx={{ width: 44 }} />}
                           </TableRow>
@@ -855,6 +862,15 @@ function CommissionChecksTable({
                                 {entry.jobLabel || (isMobile && entry.customerName) || 'Untitled'}
                               </TableCell>
                               <TableCell>{entry.paymentLabel}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {entry.depositedAmount > 0 ? (
+                                  formatMoney(entry.depositedAmount)
+                                ) : (
+                                  <Typography component="span" variant="body2" color="text.secondary">
+                                    —
+                                  </Typography>
+                                )}
+                              </TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {formatMoney(entry.amount)}
                               </TableCell>
@@ -1368,6 +1384,7 @@ interface CommissionPaymentDisplay {
   scheduleIndex: number;
   label: string;
   scheduledAmount: number;
+  depositedAmount: number;
   potentialAmount: number;
   amount: number;
   displayAmount: string | number;
@@ -1400,6 +1417,7 @@ interface CommissionTableRow extends CommissionSourceJobRow {
   adjustments: CommissionAdjustmentDisplay[];
   paymentOrder?: number[];
   hasManualPayments: boolean;
+  depositedTotal: number;
   paidToSalesman: number;
   deductionTotal: number;
   balance: number;
@@ -1465,6 +1483,7 @@ function buildCommissionTableRow(
       scheduleIndex: idx,
       label: split.label,
       scheduledAmount: split.scheduledAmount,
+      depositedAmount: roundMoney(Number(split.depositedAmount) || 0),
       potentialAmount,
       amount,
       displayAmount,
@@ -1505,6 +1524,9 @@ function buildCommissionTableRow(
     };
   });
 
+  const depositedTotal = roundMoney(
+    payments.reduce((sum, payment) => sum + (Number(payment.depositedAmount) || 0), 0),
+  );
   const schedulePaidTotal = roundMoney(
     payments.reduce((sum, payment) => sum + (payment.salesmanPaid ? payment.amount : 0), 0),
   );
@@ -1536,6 +1558,7 @@ function buildCommissionTableRow(
     paymentOrder:
       Array.isArray(local.paymentOrder) && local.paymentOrder.length > 0 ? local.paymentOrder : undefined,
     hasManualPayments,
+    depositedTotal,
     paidToSalesman,
     deductionTotal,
     balance,
@@ -1668,6 +1691,7 @@ function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boo
     row.assignedToName,
     row.stageLabel,
     ...moneySearchTokens(row.jobTotal),
+    ...moneySearchTokens(row.depositedTotal),
     ...moneySearchTokens(row.commissionDue),
     ...moneySearchTokens(row.balance),
     String(row.commissionRate),
@@ -1678,6 +1702,7 @@ function matchesCommissionSearch(row: CommissionTableRow, rawQuery: string): boo
       payment.status,
       payment.displayAmount,
       ...moneySearchTokens(payment.scheduledAmount),
+      ...moneySearchTokens(payment.depositedAmount),
       ...moneySearchTokens(payment.potentialAmount),
       ...moneySearchTokens(payment.amount),
     ]),
@@ -1810,7 +1835,9 @@ function CommissionOverviewTiers({ payments }: CommissionOverviewTiersProps) {
         return (
           <Tooltip
             key={payment.scheduleIndex}
-            title={`${payment.label}: ${statusLabel} · ${formatMoney(dueAmount)} commission`}
+            title={`${payment.label}: ${statusLabel}${
+              payment.depositedAmount > 0 ? ` · deposited ${formatMoney(payment.depositedAmount)}` : ''
+            } · ${formatMoney(dueAmount)} commission`}
           >
             <Box
               sx={{
@@ -1949,6 +1976,9 @@ function SortableOverviewRow({ row, onOpenPayments, onOpenJobDetail }: SortableO
       <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
         {formatMoney(row.jobTotal)}
       </TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {row.depositedTotal > 0 ? formatMoney(row.depositedTotal) : '—'}
+      </TableCell>
       {!isMobile && (
       <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
         {formatCommissionRateLabel(row.commissionRate)}
@@ -2020,6 +2050,12 @@ function CommissionOverviewTable({ rows, onReorder, onOpenPayments, onOpenJobDet
               align="right"
             >
               {isMobile ? 'Total' : 'Job Total'}
+            </TableCell>
+            <TableCell
+              sx={{ fontWeight: 700, minWidth: isMobile ? 0 : 100, bgcolor: 'background.paper' }}
+              align="right"
+            >
+              Deposited
             </TableCell>
             {!isMobile && (
             <TableCell
@@ -2256,7 +2292,9 @@ function SortablePaymentCard({
         color="text.secondary"
         sx={{ display: 'block', mb: isVertical ? 1.25 : 0.75 }}
       >
-        Job payment: {formatMoney(payment.scheduledAmount)}
+        {payment.depositedAmount > 0
+          ? `Deposited: ${formatMoney(payment.depositedAmount)}`
+          : `Job payment: ${formatMoney(payment.scheduledAmount)}`}
         {!payment.salesmanPaid && payment.potentialAmount > 0
           ? ` · Commission due: ${formatMoney(payment.potentialAmount)}`
           : ''}
@@ -3019,6 +3057,14 @@ function CommissionPaymentModal({
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: 700 }}>
               {formatMoney(row.jobTotal)}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Deposited
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              {row.depositedTotal > 0 ? formatMoney(row.depositedTotal) : '—'}
             </Typography>
           </Box>
           <Box>

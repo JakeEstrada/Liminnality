@@ -337,6 +337,13 @@ export function buildSchedulePayloadFromItems(items, contractBase, job = null) {
   return payload;
 }
 
+function depositedAmountForSplit(item, scheduledAmount) {
+  if (item?.status !== 'paid') return 0;
+  const scheduled = roundMoney(scheduledAmount);
+  if (scheduled > 0) return resolveItemPaidAmount(item, scheduled);
+  return roundMoney(Number(item?.paidAmount) || 0);
+}
+
 export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
   const base = roundMoney(contractBase);
   const due = roundMoney(commissionDue);
@@ -355,6 +362,7 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
         dueType: 'milestone',
         share: 1,
         scheduledAmount: base,
+        depositedAmount: 0,
         amount: due,
         status: 'pending',
         paidAt: null,
@@ -374,6 +382,7 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
         dueType: item.dueType,
         share: evenShare,
         scheduledAmount: 0,
+        depositedAmount: depositedAmountForSplit(item, 0),
         amount,
         status: item.status || 'pending',
         paidAt: item.paidAt || null,
@@ -393,6 +402,7 @@ export function getCommissionPaymentSplits(job, contractBase, commissionDue) {
       dueType: item.dueType,
       share,
       scheduledAmount,
+      depositedAmount: depositedAmountForSplit(item, scheduledAmount),
       amount,
       status: item.status || 'pending',
       paidAt: item.paidAt || null,
