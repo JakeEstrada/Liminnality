@@ -7,7 +7,9 @@ import {
   DialogActions,
   Button,
   TextField,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
@@ -84,6 +86,7 @@ function AddJobModal({
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [customerInputValue, setCustomerInputValue] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
+  const [customerOnly, setCustomerOnly] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -115,6 +118,7 @@ function AddJobModal({
       referralCompany: '',
     });
     setErrors({});
+    setCustomerOnly(false);
     setCustomerInputValue(name);
     setPendingFiles((prev) => {
       revokePendingPreviews(prev);
@@ -271,7 +275,7 @@ function AddJobModal({
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.title.trim()) {
+    if (!customerOnly && !formData.title.trim()) {
       newErrors.title = 'Job title is required';
     }
     if (!formData.customerName.trim() && !formData.customerId) {
@@ -421,6 +425,16 @@ function AddJobModal({
           return;
         }
       }
+
+      if (customerOnly) {
+        if (pendingFiles.length) {
+          toast('Customer saved. Files stay with a job, so they were not uploaded.');
+        } else {
+          toast.success('Customer saved. No job was added to the pipeline.');
+        }
+        onClose();
+        return;
+      }
       
       // Create the job
       const jobData = {
@@ -522,16 +536,17 @@ function AddJobModal({
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create New Job</DialogTitle>
+      <DialogTitle>{customerOnly ? 'Save customer' : 'Create New Job'}</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           <TextField
             label="Job Title"
             value={formData.title}
             onChange={(e) => handleChange('title', e.target.value)}
-            required
+            required={!customerOnly}
+            disabled={customerOnly}
             error={!!errors.title}
-            helperText={errors.title}
+            helperText={customerOnly ? 'No pipeline job will be created' : errors.title}
             fullWidth
             autoFocus
           />
@@ -831,11 +846,27 @@ function AddJobModal({
             ) : null}
           </Box>
 
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={customerOnly}
+                onChange={(e) => setCustomerOnly(e.target.checked)}
+                disabled={saving}
+              />
+            }
+            label="Save the customer only — don't add a pipeline job"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+            Use this for a contractor or company. Their address stays on the customer. A project address can be added later when you create the job.
+          </Typography>
+
+          {!customerOnly ? (
           <Box sx={{ mt: 1, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
             <Box sx={{ fontSize: '0.875rem', color: 'info.dark' }}>
               <strong>Note:</strong> New jobs will be created in the <strong>Estimate Current, first 5 days</strong> stage.
             </Box>
           </Box>
+          ) : null}
         </Box>
       </DialogContent>
       <DialogActions>
@@ -848,7 +879,13 @@ function AddJobModal({
           disabled={saving}
         >
           {saving ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-          {saving && pendingFiles.length ? 'Uploading…' : saving ? 'Creating…' : 'Create Job'}
+          {saving && pendingFiles.length && !customerOnly
+            ? 'Uploading…'
+            : saving
+              ? 'Saving…'
+              : customerOnly
+                ? 'Save customer'
+                : 'Create Job'}
         </Button>
       </DialogActions>
     </Dialog>
