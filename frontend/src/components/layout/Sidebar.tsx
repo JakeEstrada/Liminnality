@@ -36,6 +36,7 @@ import {
   Sms as SmsIcon,
   Store as StoreIcon,
   Insights as AnalyticsIcon,
+  QueryStats as MetricsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import BrandLogo from '../common/BrandLogo';
@@ -56,6 +57,7 @@ const workspaceItems = [
 ];
 
 const financeItems = [
+  { text: 'Metrics', icon: <MetricsIcon />, path: '/metrics', superAdminOnly: true },
   { text: 'Bills', icon: <ReceiptIcon />, path: '/bills', superAdminOnly: true },
   { text: 'Payroll', icon: <PayrollIcon />, path: '/payroll' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
@@ -79,6 +81,7 @@ const mobileItems = [
   { text: 'Customers', icon: <CustomersIcon />, path: '/customers' },
   { text: 'Commission Logs', icon: <TableChartIcon />, path: '/commission-logs' },
   { text: 'Website Analytics', icon: <AnalyticsIcon />, path: '/developer/analytics', superAdminOnly: true },
+  { text: 'Metrics', icon: <MetricsIcon />, path: '/metrics', superAdminOnly: true },
 ];
 
 function Sidebar({ mobileOpen, onMobileClose }) {

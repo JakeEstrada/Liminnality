@@ -65,6 +65,7 @@ logs/
 **/Contact_list*.csv
 **/Customeres.csv
 **/createSuperAdmin.js
+practice-db/tenant-*.json
 
 # Keep example files
 !**/*.example

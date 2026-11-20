@@ -16,6 +16,7 @@ const ALLOWED_PATHNAMES = new Set([
   '/developer',
   '/payroll',
   '/bills',
+  '/metrics',
   '/finance',
   '/takeoff-sheet',
   '/users',
@@ -33,6 +34,7 @@ const SUPER_ADMIN_ONLY_PATHS = new Set([
   '/finance',
   '/users',
   '/bills',
+  '/metrics',
 ]);
 
 /**
@@ -68,6 +70,7 @@ Main app routes (path → purpose):
 - /developer — developer page with tabs for tasks, voice, print, finance hub, activity log, website, analytics, and RFID
 - /payroll — payroll (Payroll tab first for RFID hours; Manual tab for the handwritten sheet)
 - /bills — bills (super admin only)
+- /metrics — sales versus the prior $800k year, and advertising spend by channel (super admin only)
 - /finance — finance hub (hidden from typical nav; developer tab, super admin only)
 - /takeoff-sheet — takeoff sheet
 - /users — user management and activity log (super admin only)

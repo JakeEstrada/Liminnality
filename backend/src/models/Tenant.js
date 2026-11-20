@@ -108,6 +108,15 @@ const tenantSchema = new mongoose.Schema(
         enabled: { type: Boolean, default: true },
       },
     ],
+    /** Advertising dollars entered on the Metrics page. */
+    adSpend: [
+      {
+        month: { type: String, required: true, trim: true },
+        channel: { type: String, required: true, trim: true },
+        amount: { type: Number, default: 0 },
+        note: { type: String, trim: true, default: '', maxlength: 200 },
+      },
+    ],
     /** Named SMS drafts sent from a job card (not tied to a pipeline stage). */
     cannedSmsTemplates: [
       {

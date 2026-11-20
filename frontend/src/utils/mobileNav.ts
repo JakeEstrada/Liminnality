@@ -10,6 +10,7 @@ export const MOBILE_NAV_PATHS = [
   '/customers',
   '/commission-logs',
   '/developer/analytics',
+  '/metrics',
 ];
 
 /** Reachable on a phone but not listed in the drawer (opened from the avatar menu). */

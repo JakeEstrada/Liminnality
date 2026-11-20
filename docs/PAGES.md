@@ -118,6 +118,11 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
   - `buildFreshEstimateDraftForJob` (~334) — new estimate from pipeline job.
   - Large helper block at top — estimate numbering, job picker labels, PDF generation via html2canvas + jsPDF.
 
+### MetricsPage.tsx
+- **Route:** `/metrics`
+- **Purpose:** Booked and collected sales against an $800,000 yearly baseline, plus advertising spend by channel.
+- **APIs:** `GET /metrics`, `POST /metrics/ad-spend`, `DELETE /metrics/ad-spend/:id`
+
 ### BillsPage.tsx
 - **Route:** `/bills`
 - **Purpose:** Vendor bills tracking.
@@ -210,6 +215,7 @@ Every route-level page in `frontend/src/pages/`. Each source file has a matching
 | `/rfid` | RfidPage |
 | `/finance` | FinanceHubPage |
 | `/bills` | BillsPage |
+| `/metrics` | MetricsPage |
 | `/payroll` | PayrollPage |
 | `/commission-logs` | CommissionLogsPage |
 | `/takeoff-sheet` | TakeoffSheetPage |

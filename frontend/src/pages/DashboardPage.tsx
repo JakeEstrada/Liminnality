@@ -53,6 +53,7 @@ import { renderSummaryBlocks } from '../utils/summaryMarkdown';
 import { useTenantRealtimeRefresh } from '../hooks/useSocketSubscription';
 import { getTenantRoom } from '../services/socket';
 import DashboardInsightGrid from '../components/dashboard/DashboardInsightGrid';
+import SalesMetricsBanner from '../components/dashboard/SalesMetricsBanner';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 const ESTIMATE_STAGES = [
@@ -1262,6 +1263,7 @@ function DashboardPage() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, py: { xs: 2, sm: 3 } }}>
+      {isSuperAdmin() ? <SalesMetricsBanner hideSensitive={hideSensitive} /> : null}
       <DashboardInsightGrid
         hideSensitive={hideSensitive}
         showTraffic={Boolean(isSuperAdmin())}

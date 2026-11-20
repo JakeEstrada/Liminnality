@@ -38,6 +38,7 @@ import PayrollPage from './pages/PayrollPage';
 import CommissionLogsPage from './pages/CommissionLogsPage';
 import UsersPage from './pages/UsersPage';
 import BillsPage from './pages/BillsPage';
+import MetricsPage from './pages/MetricsPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import KioskDashboardPage from './pages/KioskDashboardPage';
@@ -253,6 +254,7 @@ function App(): JSX.Element | null {
                   <Route path="/rfid-timesheets" element={<Navigate to="/payroll" replace />} />
                   <Route path="/commission-logs" element={<CommissionLogsPage />} />
                   <Route path="/bills" element={<ProtectedRoute requireSuperAdmin><BillsPage /></ProtectedRoute>} />
+                  <Route path="/metrics" element={<ProtectedRoute requireSuperAdmin><MetricsPage /></ProtectedRoute>} />
                   <Route path="/finance" element={<ProtectedRoute requireSuperAdmin><FinanceHubPage /></ProtectedRoute>} />
                   <Route path="/takeoff-sheet" element={<TakeoffSheetPage />} />
                   <Route path="/vendors" element={<VendorsPage />} />
