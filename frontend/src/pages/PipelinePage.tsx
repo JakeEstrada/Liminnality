@@ -51,6 +51,7 @@ import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { getConnectedSocketId, getTenantRoom } from '../services/socket';
 import { applyJobRealtimeToList, isActivePipelineJob } from '../utils/realtimeJobs';
 import { readWorksheetDraft } from '../utils/worksheetRead';
+import { filesFromDrop, isExternalFileDrag } from '../utils/fileDrop';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -446,28 +447,25 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     }
   };
 
-  // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
-  const isWorksheetDrag = (event) => {
-    const types = event.dataTransfer?.types;
-    if (!types) return false;
-    return Array.from(types).includes('Files');
-  };
-
   const closeAddJob = () => {
     setAddJobOpen(false);
     setJobDraft(null);
     setJobDraftFiles(null);
   };
 
-  const handleWorksheetDrop = async (event) => {
-    if (!isWorksheetDrag(event)) return;
+  const handleWorksheetDrop = async (event, droppedFiles) => {
     event.preventDefault();
     event.stopPropagation();
     worksheetDragDepth.current = 0;
     setWorksheetDrag(false);
-    const file = event.dataTransfer.files?.[0];
-    if (!file) return;
-    if (event.dataTransfer.files.length > 1) {
+    const files = droppedFiles?.length ? droppedFiles : filesFromDrop(event.dataTransfer);
+    const file = files[0];
+    if (!file) {
+      console.warn('Worksheet drop types', Array.from(event.dataTransfer?.types || []));
+      toast.error('That drop did not include the file. Drop the worksheet on the pipeline again.');
+      return;
+    }
+    if (files.length > 1) {
       toast('Using the first file');
     }
     const name = file.name.toLowerCase();
@@ -514,16 +512,16 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   worksheetReadingRef.current = worksheetReading;
 
   useEffect(() => {
-    const isFile = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
     const onDragEnter = (event) => {
-      if (!isFile(event)) return;
+      if (!isExternalFileDrag(event.dataTransfer)) return;
       event.preventDefault();
       worksheetDragDepth.current += 1;
       setWorksheetDrag(true);
     };
     const onDragOver = (event) => {
-      if (!isFile(event)) return;
+      if (!isExternalFileDrag(event.dataTransfer)) return;
       event.preventDefault();
+      event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
     };
     const onDragLeave = () => {
@@ -531,13 +529,15 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
       if (worksheetDragDepth.current === 0) setWorksheetDrag(false);
     };
     const onDrop = (event) => {
-      if (!isFile(event)) return;
+      if (!isExternalFileDrag(event.dataTransfer)) return;
+      const files = filesFromDrop(event.dataTransfer);
       event.preventDefault();
       event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
       worksheetDragDepth.current = 0;
       setWorksheetDrag(false);
       if (worksheetReadingRef.current) return;
-      worksheetDropRef.current(event);
+      worksheetDropRef.current(event, files);
     };
     window.addEventListener('dragenter', onDragEnter, true);
     window.addEventListener('dragover', onDragOver, true);
@@ -551,6 +551,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     };
   }, []);
 
+  // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
   const completedJobsCount = filteredJobs.filter(
     job => job.stage === 'FINAL_PAYMENT_CLOSED' && !job.isArchived && !job.isDeadEstimate
   ).length;

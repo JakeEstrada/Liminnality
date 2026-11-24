@@ -39,6 +39,7 @@ import toast from 'react-hot-toast';
 import JobCard from './JobCard';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { updatePipelineLayout, deletePipelineLayout } from '../../utils/pipelineLayoutsApi';
+import { isExternalFileDrag } from '../../utils/fileDrop';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -322,10 +323,8 @@ function PipelineBoard({
     );
   };
 
-  const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
-
   const handleDragOver = (e, stageId) => {
-    if (isFileDrag(e)) return;
+    if (isExternalFileDrag(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -342,7 +341,7 @@ function PipelineBoard({
   };
 
   const handleDrop = async (e, stageId) => {
-    if (isFileDrag(e)) return;
+    if (isExternalFileDrag(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
     setDraggedOverStage(null);
@@ -353,8 +352,11 @@ function PipelineBoard({
       return;
     }
 
+    const raw = e.dataTransfer.getData('application/json');
+    if (!raw) return;
+
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      const data = JSON.parse(raw);
       const { jobId, currentStage } = data;
 
       if (currentStage === stageId) {
