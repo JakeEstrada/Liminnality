@@ -1,6 +1,17 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
+const { previewWorksheet } = require('../controllers/worksheetController');
+
+const worksheetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Worksheet image must be a JPEG, PNG, WEBP, or GIF'));
+  },
+});
 const {
   getJobs,
   getJob,
@@ -27,6 +38,12 @@ const { getJobMapPins, getJobGeoIssues } = require('../controllers/jobMapControl
 
 router.use(requireAuth);
 
+router.post('/worksheet-preview', (req, res, next) => {
+  worksheetUpload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Could not read that file' });
+    return next();
+  });
+}, previewWorksheet);
 router.get('/', getJobs);
 router.post('/', createJob);
 router.get('/map-pins', getJobMapPins);

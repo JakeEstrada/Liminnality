@@ -5,7 +5,7 @@
  * Docs: ../../../docs/PAGES.md#pipelinepagetsx
  */
 // @ts-nocheck — large page; tighten types incrementally
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -50,6 +50,7 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { getConnectedSocketId, getTenantRoom } from '../services/socket';
 import { applyJobRealtimeToList, isActivePipelineJob } from '../utils/realtimeJobs';
+import { readWorksheetDraft } from '../utils/worksheetRead';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -91,6 +92,11 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [moveStageOpen, setMoveStageOpen] = useState(false);
   const [selectedJobForMove, setSelectedJobForMove] = useState(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
+  const [jobDraft, setJobDraft] = useState(null);
+  const [jobDraftFiles, setJobDraftFiles] = useState(null);
+  const [worksheetDrag, setWorksheetDrag] = useState(false);
+  const [worksheetReading, setWorksheetReading] = useState(false);
+  const worksheetDragDepth = useRef(0);
   const [tasksCollapsed, setTasksCollapsed] = useState(false);
   const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(false);
   const [tasksCount, setTasksCount] = useState(0);
@@ -441,12 +447,138 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   };
 
   // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
+  const isWorksheetDrag = (event) => {
+    const types = event.dataTransfer?.types;
+    if (!types) return false;
+    return Array.from(types).includes('Files');
+  };
+
+  const closeAddJob = () => {
+    setAddJobOpen(false);
+    setJobDraft(null);
+    setJobDraftFiles(null);
+  };
+
+  const handleWorksheetDrop = async (event) => {
+    if (!isWorksheetDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    worksheetDragDepth.current = 0;
+    setWorksheetDrag(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    if (event.dataTransfer.files.length > 1) {
+      toast('Using the first file');
+    }
+    const name = file.name.toLowerCase();
+    const allowed =
+      file.type === 'application/pdf' ||
+      file.type.startsWith('image/') ||
+      name.endsWith('.pdf') ||
+      /\.(jpe?g|png|webp|gif)$/.test(name);
+    if (!allowed) {
+      toast.error('Drop a worksheet PDF or photo');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File must be less than 10MB');
+      return;
+    }
+    setWorksheetReading(true);
+    try {
+      const draft = await readWorksheetDraft(file);
+      setJobDraft(draft);
+      setJobDraftFiles([file]);
+      setAddJobOpen(true);
+      const filled = [draft?.customerName, draft?.customerPhone, draft?.customerEmail, draft?.street, draft?.valueEstimated].filter(
+        (value) => String(value || '').trim(),
+      ).length;
+      toast.success(
+        filled >= 3
+          ? 'Worksheet read. Check the job, then save.'
+          : 'Part of the worksheet was hard to read. Check the form and fill the rest.',
+      );
+    } catch (error) {
+      setJobDraft(null);
+      setJobDraftFiles([file]);
+      setAddJobOpen(true);
+      toast.error(error.response?.data?.error || 'Could not read the worksheet. The file is attached.');
+    } finally {
+      setWorksheetReading(false);
+    }
+  };
+
+  const worksheetDropRef = useRef(handleWorksheetDrop);
+  worksheetDropRef.current = handleWorksheetDrop;
+  const worksheetReadingRef = useRef(false);
+  worksheetReadingRef.current = worksheetReading;
+
+  useEffect(() => {
+    const isFile = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+    const onDragEnter = (event) => {
+      if (!isFile(event)) return;
+      event.preventDefault();
+      worksheetDragDepth.current += 1;
+      setWorksheetDrag(true);
+    };
+    const onDragOver = (event) => {
+      if (!isFile(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const onDragLeave = () => {
+      worksheetDragDepth.current = Math.max(0, worksheetDragDepth.current - 1);
+      if (worksheetDragDepth.current === 0) setWorksheetDrag(false);
+    };
+    const onDrop = (event) => {
+      if (!isFile(event)) return;
+      event.preventDefault();
+      worksheetDragDepth.current = 0;
+      setWorksheetDrag(false);
+      if (worksheetReadingRef.current) return;
+      worksheetDropRef.current(event);
+    };
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   const completedJobsCount = filteredJobs.filter(
     job => job.stage === 'FINAL_PAYMENT_CLOSED' && !job.isArchived && !job.isDeadEstimate
   ).length;
 
   return (
-    <Box sx={{ minHeight: tvMode ? '100vh' : undefined }}>
+    <Box sx={{ minHeight: tvMode ? '100vh' : undefined, position: 'relative' }}>
+      {(worksheetDrag || worksheetReading) && (
+        <Box
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1400,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'rgba(25, 118, 210, 0.14)',
+            border: '4px dashed',
+            borderColor: 'primary.main',
+            pointerEvents: worksheetReading ? 'auto' : 'none',
+          }}
+        >
+          <Paper sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {worksheetReading ? <CircularProgress size={22} /> : null}
+            <Typography variant="h6">
+              {worksheetReading ? 'Reading the worksheet…' : 'Drop the worksheet to start a job'}
+            </Typography>
+          </Paper>
+        </Box>
+      )}
       {/* Main Content */}
       <Container
         maxWidth="xl"
@@ -660,6 +792,8 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
               setSelectedJobId(job._id);
             }}
             onNewJobClick={() => {
+              setJobDraft(null);
+              setJobDraftFiles(null);
               setAddJobOpen(true);
             }}
             onJobContextMenu={(e, job) => {
@@ -838,9 +972,9 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         {/* Add Job Modal */}
         <AddJobModal
           open={addJobOpen}
-          onClose={() => {
-            setAddJobOpen(false);
-          }}
+          onClose={closeAddJob}
+          initialDraft={jobDraft}
+          initialFiles={jobDraftFiles}
           onJobCreated={(newJob) => {
             // Refresh jobs list to show the new job
             fetchJobs();

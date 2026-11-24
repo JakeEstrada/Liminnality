@@ -62,6 +62,8 @@ function AddJobModal({
   initialCustomerName = '',
   initialTitle = '',
   initialDescription = '',
+  initialDraft = null,
+  initialFiles = null,
 }) {
   const [formData, setFormData] = useState({
     title: '',
@@ -97,55 +99,65 @@ function AddJobModal({
       });
       return;
     }
-    const name = String(initialCustomerName || '').trim();
-    const title = String(initialTitle || '').trim();
-    const description = String(initialDescription || '').trim();
+    const draft = initialDraft && typeof initialDraft === 'object' ? initialDraft : null;
+    const name = String(draft?.customerName || initialCustomerName || '').trim();
+    const title = String(draft?.title || initialTitle || '').trim();
+    const description = String(draft?.extraNote || initialDescription || '').trim();
+    const source = SOURCE_OPTIONS.some((option) => option.value === draft?.source) ? draft.source : 'other';
     setFormData({
       title,
       description,
       customerId: null,
       customerName: name,
-      customerPhone: '',
-      customerEmail: '',
+      customerPhone: draft?.customerPhone ? formatNanpTyping(draft.customerPhone) : '',
+      customerEmail: String(draft?.customerEmail || '').trim(),
       customerAddress: {
-        street: '',
-        city: '',
-        state: '',
-        zip: '',
+        street: String(draft?.street || '').trim(),
+        city: String(draft?.city || '').trim(),
+        state: String(draft?.state || '').trim(),
+        zip: String(draft?.zip || '').trim(),
       },
-      valueEstimated: '',
-      source: 'other',
-      referralCompany: '',
+      valueEstimated: draft?.valueEstimated != null && draft.valueEstimated !== '' ? String(draft.valueEstimated) : '',
+      source,
+      referralCompany: source === 'referral' ? String(draft?.referralCompany || '').trim() : '',
     });
     setErrors({});
     setCustomerOnly(false);
     setCustomerInputValue(name);
     setPendingFiles((prev) => {
       revokePendingPreviews(prev);
-      return [];
+      const files = Array.isArray(initialFiles) ? initialFiles.filter(Boolean) : [];
+      return files.map((file) => ({
+        file,
+        previewUrl: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null,
+      }));
     });
+    const email = String(draft?.customerEmail || '').trim().toLowerCase();
     fetchCustomers().then((list) => {
-      if (!name || !Array.isArray(list)) return;
-      const match = list.find(
-        (customer) => String(customer.name || '').trim().toLowerCase() === name.toLowerCase(),
-      );
+      if (!Array.isArray(list)) return;
+      const match =
+        (name &&
+          list.find((customer) => String(customer.name || '').trim().toLowerCase() === name.toLowerCase())) ||
+        (email &&
+          list.find((customer) => String(customer.primaryEmail || '').trim().toLowerCase() === email)) ||
+        null;
       if (!match) return;
       setFormData((prev) => ({
         ...prev,
         customerId: match._id,
-        customerName: match.name,
-        customerPhone: match.primaryPhone ? formatNanpTyping(match.primaryPhone) : '',
-        customerEmail: match.primaryEmail || '',
-        customerAddress: match.address || {
-          street: '',
-          city: '',
-          state: '',
-          zip: '',
+        customerName: match.name || prev.customerName,
+        customerPhone: prev.customerPhone || (match.primaryPhone ? formatNanpTyping(match.primaryPhone) : ''),
+        customerEmail: prev.customerEmail || match.primaryEmail || '',
+        customerAddress: {
+          street: prev.customerAddress.street || match.address?.street || '',
+          city: prev.customerAddress.city || match.address?.city || '',
+          state: prev.customerAddress.state || match.address?.state || '',
+          zip: prev.customerAddress.zip || match.address?.zip || '',
         },
       }));
-      setCustomerInputValue(match.name);
+      setCustomerInputValue(match.name || name);
     });
-  }, [open, initialCustomerName, initialDescription, initialTitle]);
+  }, [open, initialCustomerName, initialDescription, initialTitle, initialDraft, initialFiles]);
 
   const fetchCustomers = async () => {
     try {
@@ -536,9 +548,14 @@ function AddJobModal({
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{customerOnly ? 'Save customer' : 'Create New Job'}</DialogTitle>
+      <DialogTitle>{customerOnly ? 'Save customer' : initialDraft ? 'Check this job' : 'Create New Job'}</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          {initialDraft ? (
+            <Typography variant="body2" color="text.secondary">
+              Filled from the worksheet. Change anything that looks wrong, then save. The file is attached.
+            </Typography>
+          ) : null}
           <TextField
             label="Job Title"
             value={formData.title}
