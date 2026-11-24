@@ -55,7 +55,8 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
   const contacts = review?.otherContacts || [];
   const hasDetails = Boolean(
     review &&
-      (contacts.length ||
+      (review.scopeLines.length ||
+        contacts.length ||
         review.referral ||
         review.worksheetDate ||
         review.options.length ||
@@ -142,6 +143,15 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
             Also on the worksheet
           </Typography>
+          {review.scopeLines.length ? (
+            <ReviewRow label="Scope">
+              {review.scopeLines.map((line) => (
+                <Typography key={line} variant="body2">
+                  {line}
+                </Typography>
+              ))}
+            </ReviewRow>
+          ) : null}
           {contacts.map((contact, index) => (
             <ReviewRow key={`${contact.name}-${contact.phone}-${index}`} label="Other contact">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -179,6 +189,11 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
                   {line}
                 </Typography>
               ))}
+              {review.materialsVerify ? (
+                <Box sx={{ mt: 0.5 }}>
+                  <VerifyChip reason={review.materialsVerify} />
+                </Box>
+              ) : null}
             </ReviewRow>
           ) : null}
           {review.notes.length ? (

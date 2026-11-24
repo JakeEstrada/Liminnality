@@ -151,13 +151,6 @@ function materialLine(row) {
   return parts.length ? `${item}: ${parts.join(', ')}` : '';
 }
 
-function contactLine(contact) {
-  const parts = [contact?.name, contact?.phone, contact?.email, contact?.note]
-    .map((part) => clip(part, 80))
-    .filter(Boolean);
-  return parts.join(' · ');
-}
-
 function normalizedForCompare(field, value) {
   const text = String(value || '').toLowerCase();
   if (field === 'customerPhone') return phoneDigits(text);
@@ -267,7 +260,7 @@ function contactRows(body, { customerPhone, customerName }) {
     .slice(0, 6);
 }
 
-function describeWorksheet(reading, { valueEstimated, ref, materials, otherContacts }) {
+function reviewDetails(reading, { ref, materials, otherContacts, materialsVerify }) {
   const body = reading && typeof reading === 'object' ? reading : {};
   const scopeLines = (Array.isArray(body.scopeLines) ? body.scopeLines : [])
     .map((line) => sentenceCase(line))
@@ -283,30 +276,17 @@ function describeWorksheet(reading, { valueEstimated, ref, materials, otherConta
     .slice(0, 8);
   const worksheetDate = fieldText(body.worksheetDate);
   const customerType = ['customer', 'contractor'].includes(body.customerType) ? body.customerType : '';
-  const materialLines = materials.map(materialLine).filter(Boolean);
-
-  const lines = [];
-  if (scopeLines.length) lines.push(`Scope: ${scopeLines.join(' ')}`);
-  if (checked.length) lines.push(`Options: ${checked.join(', ')}`);
-  materialLines.forEach((line) => lines.push(line));
-  if (valueEstimated) lines.push(`Worksheet total: $${Number(valueEstimated).toLocaleString('en-US')}`);
-  if (ref) lines.push(`Ref: ${ref}`);
-  otherContacts.forEach((contact) => lines.push(`Other contact: ${contactLine(contact)}`));
-  if (worksheetDate) lines.push(`Worksheet date: ${worksheetDate}`);
-  if (customerType === 'contractor') lines.push('Marked Contractor on the worksheet');
 
   return {
-    description: lines.join('\n').slice(0, 2000),
-    review: {
-      scopeLines,
-      options: checked,
-      materials: materialLines,
-      otherContacts,
-      referral: ref,
-      worksheetDate,
-      customerType,
-      notes,
-    },
+    scopeLines,
+    options: checked,
+    materials: materials.map(materialLine).filter(Boolean),
+    materialsVerify,
+    otherContacts,
+    referral: ref,
+    worksheetDate,
+    customerType,
+    notes,
   };
 }
 
@@ -374,13 +354,12 @@ function buildWorksheetResult(primary, check = null, filename = '') {
   const otherContacts = contactRows(primary, first.fields);
   compareContacts(otherContacts, check ? contactRows(check, second.fields) : null);
   const quantityNotes = compareMaterials(materials, check ? materialRows(check) : null);
-  if (quantityNotes.length) first.verify.description = quantityNotes.join('. ');
 
-  const { description, review } = describeWorksheet(primary, {
-    valueEstimated: first.fields.valueEstimated,
+  const review = reviewDetails(primary, {
     ref: first.fields.referralCompany,
     materials,
     otherContacts,
+    materialsVerify: quantityNotes.join('. '),
   });
   const title = suggestTitle({
     street: first.fields.street,
@@ -393,7 +372,6 @@ function buildWorksheetResult(primary, check = null, filename = '') {
   return {
     draft: {
       title,
-      description,
       ...first.fields,
       source: SOURCES.has(first.fields.source) ? first.fields.source : 'other',
     },

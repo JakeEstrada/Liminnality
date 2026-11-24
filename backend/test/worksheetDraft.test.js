@@ -87,14 +87,17 @@ test('Bradford worksheet becomes an editable draft with Verify flags', () => {
   assert.equal(verify.city, undefined);
   assert.equal(verify.valueEstimated, undefined);
 
-  assert.match(draft.description, /Scope: Install 30 ft white oak rail system w\/ iron balusters/);
-  assert.match(draft.description, /Options: Post To Post$/m);
-  assert.match(draft.description, /Balusters: Blk, qty 75, Iron Alto/);
-  assert.match(draft.description, /Worksheet total: \$11,900/);
-  assert.match(draft.description, /Other contact: Joseph · 909-816-8804 · H\./);
-  assert.doesNotMatch(draft.description, /Accepted|Sketch|checked/);
+  assert.equal(draft.description, undefined);
 
+  assert.deepEqual(review.scopeLines, ['Install 30 ft white oak rail system w/ iron balusters as described']);
+  assert.deepEqual(review.options, ['Post To Post']);
+  assert.ok(review.materials.includes('Balusters: Blk, qty 75, Iron Alto'));
+  assert.deepEqual(review.notes, []);
+  assert.equal(review.materialsVerify, '');
   assert.equal(review.otherContacts.length, 1);
+  assert.equal(review.otherContacts[0].name, 'Joseph');
+  assert.equal(review.otherContacts[0].phone, '909-816-8804');
+  assert.equal(review.otherContacts[0].note, 'H.');
   assert.equal(review.referral, 'Daniel');
   assert.equal(review.customerType, 'customer');
 });
@@ -111,7 +114,8 @@ test('a second read flags fields and quantities where the two disagree', () => {
 
   assert.equal(result.verify.street, 'Could also read as "4632 E Broadland"');
   assert.equal(result.verify.valueEstimated, undefined);
-  assert.equal(result.verify.description, 'Balusters quantity could be 75 or 25');
+  assert.equal(result.verify.description, undefined);
+  assert.equal(result.review.materialsVerify, 'Balusters quantity could be 75 or 25');
   assert.equal(result.review.otherContacts[0].verify, 'Phone could also read as 909-846-8804');
 });
 

@@ -13,7 +13,6 @@ const PREVIEW_EDGE = 1600;
 
 export type WorksheetDraft = {
   title: string;
-  description: string;
   customerName: string;
   customerPhone: string;
   customerEmail: string;
@@ -42,6 +41,7 @@ export type WorksheetReading = {
     scopeLines: string[];
     options: string[];
     materials: string[];
+    materialsVerify: string;
     otherContacts: WorksheetContact[];
     referral: string;
     worksheetDate: string;

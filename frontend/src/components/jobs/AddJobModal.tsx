@@ -181,7 +181,6 @@ function AddJobModal({
     setFormData((prev) => ({
       ...prev,
       title: String(draft.title || '').trim() || prev.title,
-      description: String(draft.description || '').trim() || prev.description,
       customerId: null,
       customerName: name,
       customerPhone: draft.customerPhone ? formatNanpTyping(draft.customerPhone) : '',
@@ -744,10 +743,8 @@ function AddJobModal({
             onChange={(e) => handleChange('description', e.target.value)}
             fullWidth
             multiline
-            {...(worksheetMode ? { minRows: 4, maxRows: 12 } : { rows: 2 })}
+            rows={2}
             placeholder="Add a short description to help identify this job..."
-            helperText={fieldHelp('description')}
-            InputProps={{ endAdornment: verifyAdornment('description') }}
           />
 
           <Autocomplete

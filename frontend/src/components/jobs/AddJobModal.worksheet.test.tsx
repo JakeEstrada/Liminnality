@@ -14,8 +14,6 @@ const worksheetFile = new File(['%PDF-1.3'], 'SCWW_New_era_const_worksheet__Brad
 const bradfordReading = {
   draft: {
     title: '4632 E Bradford · White oak rail system',
-    description:
-      'Scope: Install 30 Ft white oak rail system w/ Iron balusters As described\nOptions: Post To Post\nWorksheet total: $11,900\nRef: Daniel\nOther contact: Joseph · 909-846-8804 · H.',
     customerName: 'Celso Montillo',
     customerPhone: '7143911828',
     customerEmail: 'celso.montillo@aol',
@@ -36,7 +34,8 @@ const bradfordReading = {
   review: {
     scopeLines: ['Install 30 Ft white oak rail system w/ Iron balusters As described'],
     options: ['Post To Post'],
-    materials: ['Handrail: White Oak, qty 30, 6084'],
+    materials: ['Handrail: White Oak, qty 30, 6084', 'Balusters: White Oak, Blk, qty 75, Jvon Alto'],
+    materialsVerify: 'Balusters quantity could be 75 or 25',
     otherContacts: [{ name: 'Joseph', phone: '909-846-8804', email: '', note: 'H.', verify: 'Phone could also read as 909-846-8864' }],
     referral: 'Daniel',
     worksheetDate: '11-2-26',
@@ -108,13 +107,15 @@ describe('AddJobModal worksheet draft', () => {
     expect(await screen.findByDisplayValue('Orange')).toBeInTheDocument();
     expect(screen.getByLabelText(/Estimated Value/)).toHaveValue('11900');
     expect(screen.getByLabelText(/Job Title/)).toHaveValue('4632 E Bradford · White oak rail system');
-    expect(screen.getByLabelText(/Description/).value).toMatch(/white oak rail system w\/ Iron balusters/);
+    expect(screen.getByLabelText(/Description/)).toHaveValue('');
     expect(screen.getByLabelText(/Street Address/)).toHaveValue('4632 E Bradford');
     expect(screen.getByRole('textbox', { name: 'Email' })).toHaveValue('celso.montillo@aol');
 
     expect(screen.getByAltText(/Worksheet SCWW_New_era/)).toHaveAttribute('src', 'blob:preview');
     expect(screen.getByText('Also on the worksheet')).toBeInTheDocument();
+    expect(screen.getByText('Install 30 Ft white oak rail system w/ Iron balusters As described')).toBeInTheDocument();
     expect(screen.getByText('Joseph · 909-846-8804 · H.', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Balusters quantity could be 75 or 25')).toHaveTextContent('Verify');
 
     const emailField = screen.getByRole('textbox', { name: 'Email' }).closest('.MuiFormControl-root');
     expect(within(emailField).getByText('Verify')).toBeInTheDocument();
