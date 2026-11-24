@@ -322,7 +322,10 @@ function PipelineBoard({
     );
   };
 
+  const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
   const handleDragOver = (e, stageId) => {
+    if (isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -339,6 +342,7 @@ function PipelineBoard({
   };
 
   const handleDrop = async (e, stageId) => {
+    if (isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
     setDraggedOverStage(null);

@@ -533,20 +533,21 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
     const onDrop = (event) => {
       if (!isFile(event)) return;
       event.preventDefault();
+      event.stopPropagation();
       worksheetDragDepth.current = 0;
       setWorksheetDrag(false);
       if (worksheetReadingRef.current) return;
       worksheetDropRef.current(event);
     };
-    window.addEventListener('dragenter', onDragEnter);
-    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragenter', onDragEnter, true);
+    window.addEventListener('dragover', onDragOver, true);
     window.addEventListener('dragleave', onDragLeave);
-    window.addEventListener('drop', onDrop);
+    window.addEventListener('drop', onDrop, true);
     return () => {
-      window.removeEventListener('dragenter', onDragEnter);
-      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragenter', onDragEnter, true);
+      window.removeEventListener('dragover', onDragOver, true);
       window.removeEventListener('dragleave', onDragLeave);
-      window.removeEventListener('drop', onDrop);
+      window.removeEventListener('drop', onDrop, true);
     };
   }, []);
 
