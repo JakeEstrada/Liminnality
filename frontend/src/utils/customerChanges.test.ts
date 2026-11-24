@@ -30,6 +30,15 @@ describe('customerDetailChanges', () => {
     expect(changes[0]).toMatchObject({ from: '(714)391-1828', to: '(714)341-1828' });
     expect(changes[1].value).toEqual({ street: '4632 E Bradford', city: 'Orange', state: 'CA', zip: '92867' });
   });
+
+  it('lists a different gate code and leaves a blank one out', () => {
+    const changes = customerDetailChanges(
+      { ...saved, gateCode: '9999' },
+      { gateCode: '4455', customerPhone: '714-391-1828', customerEmail: 'celso.montillo@aol.com' },
+    );
+    expect(changes).toEqual([{ key: 'gateCode', label: 'Gate code', from: '9999', to: '4455', value: '4455' }]);
+    expect(customerDetailChanges(saved, { gateCode: '4455' })).toEqual([]);
+  });
 });
 
 describe('findCustomerMatches', () => {

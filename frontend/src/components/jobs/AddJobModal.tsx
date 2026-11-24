@@ -1,5 +1,5 @@
 // @ts-nocheck — large modal; tighten types incrementally
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -33,6 +33,7 @@ import ReferralCompanyField, { rememberReferralCompany } from '../common/Referra
 import { useWorksheetReading } from '../../hooks/useWorksheetReading';
 import WorksheetReviewPanel, { VerifyChip } from './WorksheetReviewPanel';
 import { customerDetailChanges, findCustomerMatches, isCompleteEmail } from '../../utils/customerChanges';
+import { worksheetJobNote } from '../../utils/worksheetNote';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -46,6 +47,16 @@ function parseCreateNewOptionName(option) {
 const SOURCE_OPTIONS = JOB_SOURCE_OPTIONS;
 const CREATE_JOB_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
 const MAX_CREATE_JOB_FILES = 20;
+
+function duplicatePlace(match) {
+  return [match?.street, match?.city].filter(Boolean).join(', ');
+}
+
+function duplicateWarning(matches) {
+  const first = matches?.[0] || {};
+  const who = first.customerName || 'This customer';
+  return `${who} at ${duplicatePlace(first)} already exists.`;
+}
 
 function validateCreateJobFile(file) {
   if (!CREATE_JOB_FILE_TYPES.includes(file.type)) return 'Only images and PDFs are allowed';
@@ -84,6 +95,7 @@ function AddJobModal({
       zip: '',
     },
     valueEstimated: '',
+    gateCode: '',
     source: 'other',
     referralCompany: '',
   });
@@ -97,6 +109,9 @@ function AddJobModal({
   const [verify, setVerify] = useState({});
   const [suggestions, setSuggestions] = useState({});
   const [updateSavedCustomer, setUpdateSavedCustomer] = useState(false);
+  const [duplicateJobs, setDuplicateJobs] = useState([]);
+  const [duplicatePrompt, setDuplicatePrompt] = useState(false);
+  const duplicateRef = useRef({ key: '', matches: [], pending: null });
   const fileInputRef = useRef(null);
   const appliedReadingRef = useRef(null);
   const worksheet = useWorksheetReading(worksheetFile, open);
@@ -109,6 +124,9 @@ function AddJobModal({
         revokePendingPreviews(prev);
         return [];
       });
+      setDuplicateJobs([]);
+      setDuplicatePrompt(false);
+      duplicateRef.current = { key: '', matches: [], pending: null };
       return;
     }
     const name = String(initialCustomerName || '').trim();
@@ -128,6 +146,7 @@ function AddJobModal({
         zip: '',
       },
       valueEstimated: '',
+      gateCode: '',
       source: 'other',
       referralCompany: '',
     });
@@ -192,6 +211,7 @@ function AddJobModal({
         zip: String(draft.zip || '').trim(),
       },
       valueEstimated: draft.valueEstimated ? String(draft.valueEstimated) : '',
+      gateCode: String(draft.gateCode || '').trim(),
       source,
       referralCompany: source === 'referral' ? clipReferralCompany(draft.referralCompany) : '',
     }));
@@ -221,6 +241,62 @@ function AddJobModal({
   useEffect(() => {
     setUpdateSavedCustomer(false);
   }, [savedCustomer?._id]);
+
+  const duplicateKey = [
+    formData.customerName.trim(),
+    formData.customerAddress.street.trim(),
+    formData.customerAddress.city.trim(),
+  ]
+    .join('\n')
+    .toLowerCase();
+
+  const loadDuplicates = useCallback(async () => {
+    const [name, street, city] = duplicateKey.split('\n');
+    if (!name || !street) {
+      duplicateRef.current = { key: duplicateKey, matches: [], pending: null };
+      setDuplicateJobs((current) => (current.length ? [] : current));
+      return [];
+    }
+    const cached = duplicateRef.current;
+    if (cached.key === duplicateKey && cached.pending) return cached.pending;
+    if (cached.key === duplicateKey) return cached.matches;
+    const pending = axios
+      .get(`${API_URL}/jobs/possible-duplicates`, { params: { name, street, city } })
+      .then((response) => (Array.isArray(response.data?.matches) ? response.data.matches : []))
+      .catch(() => []);
+    duplicateRef.current = { key: duplicateKey, matches: [], pending };
+    const matches = await pending;
+    if (duplicateRef.current.pending === pending) {
+      duplicateRef.current = { key: duplicateKey, matches, pending: null };
+      setDuplicateJobs(matches);
+    }
+    return matches;
+  }, [duplicateKey]);
+
+  useEffect(() => {
+    if (!open || customerOnly) {
+      setDuplicateJobs((current) => (current.length ? [] : current));
+      setDuplicatePrompt(false);
+      return undefined;
+    }
+    const [name, street] = duplicateKey.split('\n');
+    if (!name || !street) {
+      setDuplicateJobs((current) => (current.length ? [] : current));
+      setDuplicatePrompt(false);
+      return undefined;
+    }
+    setDuplicatePrompt(false);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      loadDuplicates().then((matches) => {
+        if (!cancelled) setDuplicateJobs(matches);
+      });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, customerOnly, duplicateKey, loadDuplicates]);
 
   const clearVerify = (field) => {
     setVerify((prev) => {
@@ -481,9 +557,18 @@ function AddJobModal({
     return { succeeded, failed };
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (_event, options = {}) => {
     if (!validate()) {
       return;
+    }
+
+    if (!customerOnly && !options.confirmedDuplicate) {
+      const matches = await loadDuplicates();
+      if (matches.length) {
+        setDuplicateJobs(matches);
+        setDuplicatePrompt(true);
+        return;
+      }
     }
 
     try {
@@ -493,12 +578,18 @@ function AddJobModal({
       let customerId = formData.customerId;
       const customerName = formData.customerName.trim();
       
+      const gateCode = String(formData.gateCode || '').trim();
       try {
+        const updateData = {};
         if (savedCustomer && updateSavedCustomer && customerChanges.length) {
-          const updateData = {};
           customerChanges.forEach((change) => {
             updateData[change.key] = change.value;
           });
+        }
+        if (savedCustomer && gateCode && !String(savedCustomer.gateCode || '').trim()) {
+          updateData.gateCode = gateCode;
+        }
+        if (Object.keys(updateData).length) {
           await axios.patch(`${API_URL}/customers/${savedCustomer._id}`, updateData);
         }
       } catch (customerError) {
@@ -524,6 +615,7 @@ function AddJobModal({
                 ? formData.customerAddress 
                 : undefined,
               source: formData.source,
+              gateCode: gateCode || undefined,
               referralCompany: formData.source === 'referral' ? clipReferralCompany(formData.referralCompany) : '',
               // Pipeline flow creates the real job next; avoid duplicate "Name — Job" from API
               skipInitialJob: true,
@@ -552,6 +644,7 @@ function AddJobModal({
       }
       
       // Create the job
+      const worksheetNote = worksheetJobNote(worksheet.reading?.review, gateCode);
       const jobData = {
         title: formData.title.trim(),
         description: formData.description.trim() || '',
@@ -560,6 +653,7 @@ function AddJobModal({
         source: formData.source,
         referralCompany: formData.source === 'referral' ? clipReferralCompany(formData.referralCompany) : '',
       };
+      if (worksheetNote) jobData.notes = [{ content: worksheetNote }];
       if (pipelineLayoutId) {
         jobData.pipelineLayoutId = pipelineLayoutId;
       }
@@ -657,6 +751,7 @@ function AddJobModal({
   const emailMessage = errors.customerEmail || verify.customerEmail;
 
   return (
+    <>
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth={worksheetMode ? 'lg' : 'sm'} fullWidth>
       <DialogTitle>{customerOnly ? 'Save customer' : 'Create New Job'}</DialogTitle>
       {readingWorksheet ? <LinearProgress aria-label="Reading the worksheet" /> : null}
@@ -932,6 +1027,18 @@ function AddJobModal({
             />
           </Box>
 
+          {worksheetMode ? (
+            <TextField
+              label="Gate code"
+              value={formData.gateCode}
+              onChange={(e) => handleChange('gateCode', e.target.value)}
+              fullWidth
+              placeholder="Optional"
+              helperText={fieldHelp('gateCode', 'Saved on the customer, and in the job note with the other worksheet details')}
+              InputProps={{ endAdornment: verifyAdornment('gateCode') }}
+            />
+          ) : null}
+
           {savedCustomer && customerChanges.length ? (
             <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'warning.main', borderRadius: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -1135,6 +1242,19 @@ function AddJobModal({
             Use this for a contractor or company. Their address stays on the customer. A project address can be added later when you create the job.
           </Typography>
 
+          {!customerOnly && duplicateJobs.length ? (
+            <Alert severity="warning">
+              <Box sx={{ fontWeight: 700 }}>{duplicateWarning(duplicateJobs)}</Box>
+              <Box component="ul" sx={{ my: 0.5, mb: 0, pl: 2.5 }}>
+                {duplicateJobs.map((job) => (
+                  <li key={job.id || job.title}>
+                    {job.title} — {job.stateLabel}
+                  </li>
+                ))}
+              </Box>
+            </Alert>
+          ) : null}
+
           {!customerOnly ? (
           <Box sx={{ mt: 1, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
             <Box sx={{ fontSize: '0.875rem', color: 'info.dark' }}>
@@ -1164,6 +1284,37 @@ function AddJobModal({
         </Button>
       </DialogActions>
     </Dialog>
+    <Dialog open={duplicatePrompt} onClose={() => setDuplicatePrompt(false)} maxWidth="xs" fullWidth>
+      <DialogTitle>This customer and address already exist</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          {duplicateJobs.length ? duplicateWarning(duplicateJobs) : 'This customer and address already exist.'} Are you
+          sure you want to add another job?
+        </Typography>
+        {duplicateJobs.length ? (
+          <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2.5 }}>
+            {duplicateJobs.map((job) => (
+              <Typography key={job.id || job.title} component="li" variant="body2">
+                {job.title} — {job.stateLabel}
+              </Typography>
+            ))}
+          </Box>
+        ) : null}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setDuplicatePrompt(false)}>Go back</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            setDuplicatePrompt(false);
+            handleSubmit(null, { confirmedDuplicate: true });
+          }}
+        >
+          Add anyway
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 

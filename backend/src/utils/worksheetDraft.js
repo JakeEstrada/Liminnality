@@ -46,6 +46,7 @@ const FORM_FIELDS = [
   'state',
   'zip',
   'valueEstimated',
+  'gateCode',
 ];
 
 function clip(value, max) {
@@ -127,6 +128,39 @@ function sentenceCase(value) {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 }
 
+function cleanGateCode(value) {
+  let text = clip(value, 40);
+  text = text.replace(/^(?:code|is)\b\s*[:#.\-]?\s*/i, '').trim();
+  text = text.replace(/^[#:.\-\s]+/, '').trim();
+  if (!text || /^(none|n\/a|na|unknown|blank)$/i.test(text)) return '';
+  return text;
+}
+
+function looseNotes(body) {
+  return (Array.isArray(body?.notes) ? body.notes : [])
+    .map((note) => clip(note, 200))
+    .filter((note) => note && !/^sketch\b/i.test(note) && !/\bchecked$/i.test(note));
+}
+
+/** A note that is really a gate code, such as "Gate code: #4455" or "GC 2214". */
+function gateCodeInNotes(notes) {
+  for (const note of notes || []) {
+    const labeled = /^(?:gate\s*code|gate|g\.?\s*c\.?|access\s*code|lock\s*box|lockbox|entry\s*code)\b\s*[:#.\-]?\s*(.*)$/i.exec(
+      String(note).trim(),
+    );
+    if (labeled) {
+      const value = cleanGateCode(labeled[1]);
+      if (value) return { value, note };
+    }
+    const embedded = /\b(?:gate\s*code|gate|g\.?\s*c\.?)\b\s*[:#.\-]?\s*([#a-z0-9-]{2,16})/i.exec(note);
+    if (embedded) {
+      const value = cleanGateCode(embedded[1]);
+      if (value) return { value, note };
+    }
+  }
+  return null;
+}
+
 function streetOnly(street, city) {
   const value = clip(street, 160);
   const town = clip(city, 80);
@@ -196,6 +230,8 @@ function draftFields(reading, filename) {
 
   const ref = fieldText(body.ref);
   const source = ref ? 'referral' : 'other';
+  const gateCode = cleanGateCode(fieldText(body.gateCode));
+  flag('gateCode', gateCode ? fieldReason(body.gateCode) : '');
 
   return {
     fields: {
@@ -209,6 +245,7 @@ function draftFields(reading, filename) {
       valueEstimated,
       source,
       referralCompany: clip(ref, 120),
+      gateCode,
     },
     verify,
     suggestions,
@@ -361,6 +398,26 @@ function buildWorksheetResult(primary, check = null, filename = '') {
     otherContacts,
     materialsVerify: quantityNotes.join('. '),
   });
+  const writtenGate = gateCodeInNotes(review.notes);
+  if (!first.fields.gateCode && writtenGate) {
+    first.fields.gateCode = writtenGate.value;
+  } else if (!first.fields.gateCode && second?.fields.gateCode) {
+    first.fields.gateCode = second.fields.gateCode;
+    if (!first.verify.gateCode) first.verify.gateCode = 'Only one of two reads found this';
+  }
+  if (writtenGate && normalizedForCompare('gateCode', writtenGate.value) === normalizedForCompare('gateCode', first.fields.gateCode)) {
+    review.notes = review.notes.filter((note) => note !== writtenGate.note);
+  }
+  const otherGate = second?.fields.gateCode || (check ? gateCodeInNotes(looseNotes(check))?.value : '');
+  if (
+    first.fields.gateCode &&
+    otherGate &&
+    !first.verify.gateCode &&
+    normalizedForCompare('gateCode', first.fields.gateCode) !== normalizedForCompare('gateCode', otherGate)
+  ) {
+    first.verify.gateCode = `Could also read as "${otherGate}"`;
+  }
+  review.gateCode = first.fields.gateCode;
   const title = suggestTitle({
     street: first.fields.street,
     scopeTitle: primary?.scopeTitle,

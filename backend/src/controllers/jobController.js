@@ -19,6 +19,7 @@ const { notifyPaymentMarkedPaid } = require('../services/paymentNotificationServ
 const { upsertPaymentReceivedActivity, voidPaymentReceivedActivity, reconcilePaymentReceivedActivities } = require('../services/paymentActivitySync');
 const { applyReferralFields } = require('../utils/referralCompany');
 const { resolveJobId } = require('../utils/resolveJobId');
+const { namePattern, pickDuplicateJobs } = require('../utils/duplicateJobs');
 const { syncJobGeo, parseManualGeo, manualGeoPayload } = require('../services/geocodeService');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
@@ -183,6 +184,20 @@ async function createJob(req, res) {
       stage: req.body.stage || 'ESTIMATE_IN_PROGRESS',
       createdBy: createdBy
     });
+    if (Array.isArray(jobData.notes)) {
+      jobData.notes = jobData.notes
+        .map((note) => {
+          const content = String(note?.content || '').trim();
+          if (!content) return null;
+          return {
+            content: content.slice(0, 4000),
+            createdBy,
+            createdAt: note?.createdAt || new Date(),
+            important: Boolean(note?.important),
+          };
+        })
+        .filter(Boolean);
+    }
     
     const job = new Job(jobData);
     await job.save();
@@ -1753,8 +1768,38 @@ async function getReferralCompanies(req, res) {
   }
 }
 
+/** Jobs that already have this customer name and street, including archived and completed ones. */
+async function getPossibleDuplicates(req, res) {
+  try {
+    const name = String(req.query.name || '').trim();
+    const street = String(req.query.street || '').trim();
+    const city = String(req.query.city || '').trim();
+    const pattern = namePattern(name);
+    if (!pattern || !street) return res.json({ matches: [] });
+
+    const Customer = require('../models/Customer');
+    const customers = await Customer.find({ name: pattern }).select('name address').limit(25);
+    if (!customers.length) return res.json({ matches: [] });
+
+    const jobs = await Job.find({ customerId: { $in: customers.map((customer) => customer._id) } })
+      .select('title stage jobAddress customerId isArchived isDeadEstimate isCompletedClosedOut createdAt')
+      .sort({ createdAt: -1 })
+      .limit(100);
+    const byId = new Map(customers.map((customer) => [String(customer._id), customer]));
+    const rows = jobs.map((job) => {
+      const plain = job.toObject();
+      plain.customer = byId.get(String(job.customerId)) || null;
+      return plain;
+    });
+    res.json({ matches: pickDuplicateJobs(rows, { name, street, city }) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not check for an existing job' });
+  }
+}
+
 module.exports = {
   getJobs,
+  getPossibleDuplicates,
   getJob,
   createJob,
   updateJob,

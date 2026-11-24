@@ -66,9 +66,10 @@ function mockReading(overrides = {}) {
   });
 }
 
-function mockApi(customers = []) {
+function mockApi(customers = [], duplicates = []) {
   vi.mocked(axios.get).mockImplementation((url) => {
     if (String(url).includes('/customers')) return Promise.resolve({ data: { customers } });
+    if (String(url).includes('/possible-duplicates')) return Promise.resolve({ data: { matches: duplicates } });
     return Promise.resolve({ data: [] });
   });
   vi.mocked(axios.post).mockImplementation((url) => {
@@ -151,14 +152,109 @@ describe('AddJobModal worksheet draft', () => {
     });
     expect(postedTo('/jobs')[0][1]).toMatchObject({
       title: '4632 E Bradford · White oak rail system',
+      description: '',
       customerId: 'cust-new',
       valueEstimated: 11900,
       source: 'referral',
       referralCompany: 'Daniel',
       jobAddress: { street: '4632 E Bradford', city: 'Orange' },
+      notes: [
+        {
+          content: [
+            'Scope: Install 30 Ft white oak rail system w/ Iron balusters As described',
+            'Options: Post To Post',
+            'Handrail: White Oak, qty 30, 6084',
+            'Balusters: White Oak, Blk, qty 75, Jvon Alto',
+            'Balusters quantity could be 75 or 25',
+            'Other contact: Joseph · 909-846-8804 · H.',
+            'Ref: Daniel',
+            'Worksheet date: 11-2-26',
+          ].join('\n'),
+        },
+      ],
     });
     await waitFor(() => expect(postedTo('/files/upload')).toHaveLength(1));
     expect(postedTo('/files/upload')[0][1].get('file').name).toBe(worksheetFile.name);
+  });
+
+  it('saves the gate code on a new customer and in the job note', async () => {
+    mockReading({
+      reading: {
+        ...bradfordReading,
+        draft: { ...bradfordReading.draft, customerEmail: 'celso.montillo@aol.com', gateCode: '4455' },
+        verify: { gateCode: '4 or 9' },
+        suggestions: {},
+        review: { ...bradfordReading.review, gateCode: '4455', notes: ['Dogs in the back'] },
+      },
+    });
+    mockApi();
+    renderModal();
+
+    const gateField = (await screen.findByLabelText(/Gate code/)).closest('.MuiFormControl-root');
+    expect(screen.getByLabelText(/Gate code/)).toHaveValue('4455');
+    expect(within(gateField).getByText('Verify')).toBeInTheDocument();
+    expect(screen.getByText('Saved as a note on the job.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    await waitFor(() => expect(postedTo('/customers')).toHaveLength(1));
+    expect(postedTo('/customers')[0][1]).toMatchObject({ gateCode: '4455' });
+    expect(postedTo('/jobs')[0][1].notes[0].content).toMatch(/^Gate code: 4455/);
+    expect(postedTo('/jobs')[0][1].notes[0].content).toMatch(/Dogs in the back/);
+    expect(postedTo('/jobs')[0][1].description).toBe('');
+  });
+
+  it('fills a blank saved gate code without asking', async () => {
+    mockReading({
+      reading: {
+        ...bradfordReading,
+        draft: { ...bradfordReading.draft, customerEmail: 'celso.montillo@aol.com', gateCode: '4455' },
+        verify: {},
+        suggestions: {},
+        review: { ...bradfordReading.review, gateCode: '4455' },
+      },
+    });
+    mockApi([savedCelso]);
+    renderModal();
+    await screen.findByDisplayValue('4455');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(axios.patch).mock.calls[0][1]).toEqual({ gateCode: '4455' });
+    expect(postedTo('/jobs')[0][1].notes[0].content).toMatch(/^Gate code: 4455/);
+  });
+
+  it('asks before replacing a saved gate code', async () => {
+    mockReading({
+      reading: {
+        ...bradfordReading,
+        draft: {
+          ...bradfordReading.draft,
+          customerEmail: 'celso.montillo@aol.com',
+          customerPhone: '7145550100',
+          street: '100 Old St',
+          city: 'Orange',
+          state: 'CA',
+          zip: '92867',
+          gateCode: '4455',
+        },
+        verify: {},
+        suggestions: {},
+        review: { ...bradfordReading.review, gateCode: '4455' },
+      },
+    });
+    mockApi([{ ...savedCelso, gateCode: '9999' }]);
+    renderModal();
+
+    expect(await screen.findByText(/Gate code: saved 9999, new 4455/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    await waitFor(() => expect(postedTo('/jobs')).toHaveLength(1));
+    expect(axios.patch).not.toHaveBeenCalled();
+    expect(postedTo('/jobs')[0][1].notes[0].content).toMatch(/^Gate code: 4455/);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Update Celso Montillo's saved customer details/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(axios.patch).mock.calls[0][1]).toEqual({ gateCode: '4455' });
   });
 
   it('asks before changing a saved customer it matched', async () => {
@@ -202,6 +298,46 @@ describe('AddJobModal worksheet draft', () => {
       primaryPhone: '(714)391-1828',
       address: { street: '4632 E Bradford', city: 'Orange', state: 'CA', zip: '92867' },
     });
+    await waitFor(() => expect(postedTo('/jobs')).toHaveLength(1));
+  });
+
+  it('warns before adding a job when that customer and address already exist', async () => {
+    mockReading({
+      reading: {
+        ...bradfordReading,
+        draft: { ...bradfordReading.draft, customerEmail: 'celso.montillo@aol.com' },
+        verify: {},
+        suggestions: {},
+      },
+    });
+    mockApi([], [
+      {
+        id: 'job-old',
+        title: '4632 E Bradford · White oak rail system',
+        customerName: 'Celso Montillo',
+        street: '4632 E Bradford',
+        city: 'Orange',
+        stateLabel: 'Estimate In Progress',
+      },
+    ]);
+    renderModal();
+
+    expect(await screen.findByText('Celso Montillo at 4632 E Bradford, Orange already exists.')).toBeInTheDocument();
+    expect(screen.getByText(/Estimate In Progress/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    expect(await screen.findByRole('heading', { name: 'This customer and address already exist' })).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to add another job/)).toBeInTheDocument();
+    expect(postedTo('/jobs')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'This customer and address already exist' })).not.toBeInTheDocument();
+    });
+    expect(postedTo('/jobs')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add anyway' }));
     await waitFor(() => expect(postedTo('/jobs')).toHaveLength(1));
   });
 

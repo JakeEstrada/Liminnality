@@ -21,6 +21,7 @@ export type WorksheetDraft = {
   state: string;
   zip: string;
   valueEstimated: string;
+  gateCode: string;
   source: string;
   referralCompany: string;
 };
@@ -47,6 +48,7 @@ export type WorksheetReading = {
     worksheetDate: string;
     customerType: string;
     notes: string[];
+    gateCode: string;
   };
   pageTurn: number;
   isScwwWorksheet: boolean;

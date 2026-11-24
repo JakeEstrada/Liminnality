@@ -18,6 +18,7 @@ Fields:
 - customerPhone: the first phone on the Ph line.
 - customerEmail: the handwritten email.
 - street, city, state, zip: from the HM line. The city is often written at the end of the street line. Fill state and zip only when written.
+- gateCode: a handwritten gate, access, or lockbox code. It may be labeled Gate, Gate code, GC, or Code, or written as "#1234" near the address or in the margin. Return only the code. Leave text "" when the page has no code.
 - ref: the handwriting after "Ref".
 - worksheetDate: the handwritten date.
 - total: the handwritten total beside "Ttl", as written, such as "11,900".
@@ -27,7 +28,7 @@ Fields:
 - scopeLines: the handwritten scope lines in order, joined across line breaks, such as "Install 30 ft white oak rail system w/ iron balusters as described".
 - scopeTitle: two to six words for the work, such as "White oak rail and iron balusters".
 - otherContacts: any other name, phone, or email beyond the main customer, such as a second phone line. Do not repeat the main customer. Put labels like "H." in note.
-- notes: other handwriting worth keeping. Leave out numbers and arrows on the stair sketch.
+- notes: other handwriting worth keeping, such as dogs, parking, or access notes. Leave out numbers and arrows on the stair sketch, and do not repeat the gate code here.
 - pageTurn: how the image must be turned so the text reads normally.
 - isScwwWorksheet: true when the page is the SCWW worksheet form.
 
@@ -60,6 +61,7 @@ const WORKSHEET_SCHEMA = {
       'city',
       'state',
       'zip',
+      'gateCode',
       'ref',
       'worksheetDate',
       'total',
@@ -81,6 +83,7 @@ const WORKSHEET_SCHEMA = {
       city: FIELD,
       state: FIELD,
       zip: FIELD,
+      gateCode: FIELD,
       ref: FIELD,
       worksheetDate: FIELD,
       total: FIELD,

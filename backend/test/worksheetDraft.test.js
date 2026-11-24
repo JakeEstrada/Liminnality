@@ -137,6 +137,46 @@ test('shop header details never become the customer', () => {
   assert.deepEqual(result.verify, {});
 });
 
+test('a gate code written in the notes is kept, and the other notes stay', () => {
+  const result = buildWorksheetResult(
+    bradfordReading({
+      gateCode: field(''),
+      notes: ['Sketch: 43', 'Gate code: #4455', 'Dogs in the back'],
+    }),
+  );
+  assert.equal(result.draft.gateCode, '4455');
+  assert.equal(result.review.gateCode, '4455');
+  assert.deepEqual(result.review.notes, ['Dogs in the back']);
+  assert.equal(result.verify.gateCode, undefined);
+});
+
+test('an unclear gate code stays flagged', () => {
+  const result = buildWorksheetResult(bradfordReading({ gateCode: field('#4455', true, '4 or 9') }));
+  assert.equal(result.draft.gateCode, '4455');
+  assert.equal(result.verify.gateCode, '4 or 9');
+});
+
+test('a second read flags a gate code the two reads do not share', () => {
+  const agreed = buildWorksheetResult(
+    bradfordReading({ gateCode: field('4455') }),
+    bradfordReading({ gateCode: field('#4455') }),
+  );
+  assert.equal(agreed.verify.gateCode, undefined);
+
+  const disputed = buildWorksheetResult(
+    bradfordReading({ gateCode: field('4455') }),
+    bradfordReading({ gateCode: field('4459') }),
+  );
+  assert.equal(disputed.verify.gateCode, 'Could also read as "4459"');
+
+  const oneRead = buildWorksheetResult(
+    bradfordReading({ gateCode: field('') }),
+    bradfordReading({ gateCode: field('2214') }),
+  );
+  assert.equal(oneRead.draft.gateCode, '2214');
+  assert.equal(oneRead.verify.gateCode, 'Only one of two reads found this');
+});
+
 test('sideways pages report how to turn them', () => {
   assert.equal(buildWorksheetResult(bradfordReading({ pageTurn: 'turn_counterclockwise' })).pageTurn, -90);
   assert.equal(buildWorksheetResult(bradfordReading({ pageTurn: 'upside_down' })).pageTurn, 180);

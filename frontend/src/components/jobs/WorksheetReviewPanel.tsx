@@ -62,6 +62,7 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
         review.options.length ||
         review.materials.length ||
         review.notes.length ||
+        review.gateCode ||
         review.customerType === 'contractor'),
   );
 
@@ -140,9 +141,17 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
 
       {hasDetails ? (
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
             Also on the worksheet
           </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Saved as a note on the job.
+          </Typography>
+          {review.gateCode ? (
+            <ReviewRow label="Gate code">
+              <Typography variant="body2">{review.gateCode}</Typography>
+            </ReviewRow>
+          ) : null}
           {review.scopeLines.length ? (
             <ReviewRow label="Scope">
               {review.scopeLines.map((line) => (

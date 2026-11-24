@@ -8,6 +8,7 @@ type SavedCustomer = {
   primaryPhone?: string;
   primaryEmail?: string;
   address?: Address | null;
+  gateCode?: string;
 };
 
 type EnteredDetails = {
@@ -15,10 +16,11 @@ type EnteredDetails = {
   customerPhone?: string;
   customerEmail?: string;
   customerAddress?: Address;
+  gateCode?: string;
 };
 
 export type CustomerChange = {
-  key: 'primaryPhone' | 'primaryEmail' | 'address';
+  key: 'primaryPhone' | 'primaryEmail' | 'address' | 'gateCode';
   label: string;
   from: string;
   to: string;
@@ -58,6 +60,12 @@ export function customerDetailChanges(saved: SavedCustomer | null | undefined, e
   const email = String(entered.customerEmail || '').trim().toLowerCase();
   if (email && !same(email, saved.primaryEmail)) {
     changes.push({ key: 'primaryEmail', label: 'Email', from: saved.primaryEmail || '', to: email, value: email });
+  }
+
+  const gateCode = String(entered.gateCode || '').trim();
+  const savedGate = String(saved.gateCode || '').trim();
+  if (gateCode && savedGate && !same(gateCode, savedGate)) {
+    changes.push({ key: 'gateCode', label: 'Gate code', from: savedGate, to: gateCode, value: gateCode });
   }
 
   const next = entered.customerAddress || {};

@@ -14,6 +14,7 @@ const worksheetUpload = multer({
 });
 const {
   getJobs,
+  getPossibleDuplicates,
   getJob,
   createJob,
   updateJob,
@@ -47,6 +48,7 @@ router.post('/worksheet-preview', (req, res, next) => {
     return next();
   });
 }, previewWorksheet);
+router.get('/possible-duplicates', getPossibleDuplicates);
 router.get('/', getJobs);
 router.post('/', createJob);
 router.get('/map-pins', getJobMapPins);
