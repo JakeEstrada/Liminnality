@@ -31,6 +31,7 @@ import {
   Edit as EditIcon,
   Lock as LockIcon,
   InfoOutlined as InfoOutlinedIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -126,6 +127,7 @@ function PipelineBoard({
   onJobClick,
   onMapErrorClick,
   onNewJobClick,
+  onImportWorksheetClick,
   onJobContextMenu,
   onArchiveCompleted,
   completedJobsCount,
@@ -761,6 +763,21 @@ function PipelineBoard({
             >
               New Job
             </Button>
+          )}
+          {onNewJobClick && onImportWorksheetClick && (
+            <Tooltip title="Pick a worksheet PDF or photo, or drag one onto the pipeline">
+              <Button
+                variant="outlined"
+                startIcon={<UploadFileIcon />}
+                onClick={onImportWorksheetClick}
+                sx={{
+                  borderRadius: '8px',
+                  textTransform: 'none',
+                }}
+              >
+                Import worksheet
+              </Button>
+            </Tooltip>
           )}
         </Box>
 

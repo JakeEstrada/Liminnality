@@ -1,5 +1,5 @@
 // @ts-nocheck — large modal; tighten types incrementally
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -16,9 +16,12 @@ import {
   Box,
   CircularProgress,
   Autocomplete,
-  Chip,
+  Alert,
+  InputAdornment,
+  LinearProgress,
   Typography,
   IconButton,
+  alpha,
 } from '@mui/material';
 import { Add as AddIcon, Close as CloseIcon, InsertDriveFile as FileIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -27,6 +30,9 @@ import PhoneTextField from '../common/PhoneTextField';
 import { formatNanpTyping, formatPhoneForDisplay } from '../../utils/phoneFormat';
 import { JOB_SOURCE_OPTIONS, sanitizeMoneyTypingInput, clipReferralCompany } from '../../utils/jobSources';
 import ReferralCompanyField, { rememberReferralCompany } from '../common/ReferralCompanyField';
+import { useWorksheetReading } from '../../hooks/useWorksheetReading';
+import WorksheetReviewPanel, { VerifyChip } from './WorksheetReviewPanel';
+import { customerDetailChanges, findCustomerMatches, isCompleteEmail } from '../../utils/customerChanges';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -62,8 +68,7 @@ function AddJobModal({
   initialCustomerName = '',
   initialTitle = '',
   initialDescription = '',
-  initialDraft = null,
-  initialFiles = null,
+  worksheetFile = null,
 }) {
   const [formData, setFormData] = useState({
     title: '',
@@ -89,7 +94,14 @@ function AddJobModal({
   const [customerInputValue, setCustomerInputValue] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
   const [customerOnly, setCustomerOnly] = useState(false);
+  const [verify, setVerify] = useState({});
+  const [suggestions, setSuggestions] = useState({});
+  const [updateSavedCustomer, setUpdateSavedCustomer] = useState(false);
   const fileInputRef = useRef(null);
+  const appliedReadingRef = useRef(null);
+  const worksheet = useWorksheetReading(worksheetFile, open);
+  const worksheetMode = Boolean(worksheetFile);
+  const readingWorksheet = worksheetMode && worksheet.status === 'reading';
 
   useEffect(() => {
     if (!open) {
@@ -99,65 +111,153 @@ function AddJobModal({
       });
       return;
     }
-    const draft = initialDraft && typeof initialDraft === 'object' ? initialDraft : null;
-    const name = String(draft?.customerName || initialCustomerName || '').trim();
-    const title = String(draft?.title || initialTitle || '').trim();
-    const description = String(draft?.extraNote || initialDescription || '').trim();
-    const source = SOURCE_OPTIONS.some((option) => option.value === draft?.source) ? draft.source : 'other';
+    const name = String(initialCustomerName || '').trim();
+    const title = String(initialTitle || '').trim();
+    const description = String(initialDescription || '').trim();
     setFormData({
       title,
       description,
       customerId: null,
       customerName: name,
-      customerPhone: draft?.customerPhone ? formatNanpTyping(draft.customerPhone) : '',
-      customerEmail: String(draft?.customerEmail || '').trim(),
+      customerPhone: '',
+      customerEmail: '',
       customerAddress: {
-        street: String(draft?.street || '').trim(),
-        city: String(draft?.city || '').trim(),
-        state: String(draft?.state || '').trim(),
-        zip: String(draft?.zip || '').trim(),
+        street: '',
+        city: '',
+        state: '',
+        zip: '',
       },
-      valueEstimated: draft?.valueEstimated != null && draft.valueEstimated !== '' ? String(draft.valueEstimated) : '',
-      source,
-      referralCompany: source === 'referral' ? String(draft?.referralCompany || '').trim() : '',
+      valueEstimated: '',
+      source: 'other',
+      referralCompany: '',
     });
     setErrors({});
     setCustomerOnly(false);
     setCustomerInputValue(name);
+    setVerify({});
+    setSuggestions({});
+    setUpdateSavedCustomer(false);
+    appliedReadingRef.current = null;
     setPendingFiles((prev) => {
       revokePendingPreviews(prev);
-      const files = Array.isArray(initialFiles) ? initialFiles.filter(Boolean) : [];
-      return files.map((file) => ({
-        file,
-        previewUrl: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null,
-      }));
+      if (!worksheetFile) return [];
+      return [
+        {
+          file: worksheetFile,
+          previewUrl: worksheetFile.type?.startsWith('image/') ? URL.createObjectURL(worksheetFile) : null,
+        },
+      ];
     });
-    const email = String(draft?.customerEmail || '').trim().toLowerCase();
     fetchCustomers().then((list) => {
-      if (!Array.isArray(list)) return;
-      const match =
-        (name &&
-          list.find((customer) => String(customer.name || '').trim().toLowerCase() === name.toLowerCase())) ||
-        (email &&
-          list.find((customer) => String(customer.primaryEmail || '').trim().toLowerCase() === email)) ||
-        null;
+      if (!name || !Array.isArray(list)) return;
+      const match = list.find(
+        (customer) => String(customer.name || '').trim().toLowerCase() === name.toLowerCase(),
+      );
       if (!match) return;
       setFormData((prev) => ({
         ...prev,
         customerId: match._id,
-        customerName: match.name || prev.customerName,
-        customerPhone: prev.customerPhone || (match.primaryPhone ? formatNanpTyping(match.primaryPhone) : ''),
-        customerEmail: prev.customerEmail || match.primaryEmail || '',
-        customerAddress: {
-          street: prev.customerAddress.street || match.address?.street || '',
-          city: prev.customerAddress.city || match.address?.city || '',
-          state: prev.customerAddress.state || match.address?.state || '',
-          zip: prev.customerAddress.zip || match.address?.zip || '',
+        customerName: match.name,
+        customerPhone: match.primaryPhone ? formatNanpTyping(match.primaryPhone) : '',
+        customerEmail: match.primaryEmail || '',
+        customerAddress: match.address || {
+          street: '',
+          city: '',
+          state: '',
+          zip: '',
         },
       }));
-      setCustomerInputValue(match.name || name);
+      setCustomerInputValue(match.name);
     });
-  }, [open, initialCustomerName, initialDescription, initialTitle, initialDraft, initialFiles]);
+  }, [open, initialCustomerName, initialDescription, initialTitle, worksheetFile]);
+
+  useEffect(() => {
+    if (!open || worksheet.status !== 'done' || !worksheet.reading) return;
+    if (appliedReadingRef.current === worksheet.reading) return;
+    appliedReadingRef.current = worksheet.reading;
+    const draft = worksheet.reading.draft || {};
+    const source = SOURCE_OPTIONS.some((option) => option.value === draft.source) ? draft.source : 'other';
+    const name = String(draft.customerName || '').trim();
+    setFormData((prev) => ({
+      ...prev,
+      title: String(draft.title || '').trim() || prev.title,
+      description: String(draft.description || '').trim() || prev.description,
+      customerId: null,
+      customerName: name,
+      customerPhone: draft.customerPhone ? formatNanpTyping(draft.customerPhone) : '',
+      customerEmail: String(draft.customerEmail || '').trim(),
+      customerAddress: {
+        street: String(draft.street || '').trim(),
+        city: String(draft.city || '').trim(),
+        state: String(draft.state || '').trim(),
+        zip: String(draft.zip || '').trim(),
+      },
+      valueEstimated: draft.valueEstimated ? String(draft.valueEstimated) : '',
+      source,
+      referralCompany: source === 'referral' ? clipReferralCompany(draft.referralCompany) : '',
+    }));
+    setCustomerInputValue(name);
+    setVerify(worksheet.reading.verify || {});
+    setSuggestions(worksheet.reading.suggestions || {});
+    setErrors({});
+  }, [open, worksheet.status, worksheet.reading]);
+
+  const savedCustomer = useMemo(() => {
+    if (formData.customerId) return customers.find((customer) => customer._id === formData.customerId) || null;
+    const name = formData.customerName.trim().toLowerCase();
+    if (!name) return null;
+    return customers.find((customer) => String(customer.name || '').trim().toLowerCase() === name) || null;
+  }, [customers, formData.customerId, formData.customerName]);
+
+  const customerChanges = useMemo(
+    () => customerDetailChanges(savedCustomer, formData),
+    [savedCustomer, formData],
+  );
+
+  const customerMatches = useMemo(() => {
+    if (!worksheetMode || worksheet.status !== 'done' || savedCustomer) return [];
+    return findCustomerMatches(customers, formData, suggestions.customerEmail);
+  }, [worksheetMode, worksheet.status, savedCustomer, customers, formData, suggestions.customerEmail]);
+
+  useEffect(() => {
+    setUpdateSavedCustomer(false);
+  }, [savedCustomer?._id]);
+
+  const clearVerify = (field) => {
+    setVerify((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const verifyAdornment = (field) =>
+    verify[field] ? (
+      <InputAdornment position="end">
+        <VerifyChip reason={verify[field]} onClick={() => clearVerify(field)} />
+      </InputAdornment>
+    ) : null;
+
+  const fieldHelp = (field, fallback = undefined) => errors[field] || verify[field] || fallback;
+
+  const chooseExistingCustomer = (customer) => {
+    setFormData((prev) => ({
+      ...prev,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: prev.customerPhone || (customer.primaryPhone ? formatNanpTyping(customer.primaryPhone) : ''),
+      customerEmail: prev.customerEmail || customer.primaryEmail || '',
+      customerAddress: {
+        street: prev.customerAddress.street || customer.address?.street || '',
+        city: prev.customerAddress.city || customer.address?.city || '',
+        state: prev.customerAddress.state || customer.address?.state || '',
+        zip: prev.customerAddress.zip || customer.address?.zip || '',
+      },
+    }));
+    setCustomerInputValue(customer.name);
+    clearVerify('customerName');
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -194,6 +294,8 @@ function AddJobModal({
         if (typedName) {
           setCustomerInputValue(typedName);
         }
+      } else if (worksheetMode) {
+        chooseExistingCustomer(newValue);
       } else {
         setFormData((prev) => ({
           ...prev,
@@ -231,6 +333,7 @@ function AddJobModal({
   const handleCustomerInputChange = (event, newInputValue, reason) => {
     // Do not skip `reset`: MUI may emit reset when clearing; ignoring it blocks empty input.
     setCustomerInputValue(newInputValue);
+    if (reason === 'input') clearVerify('customerName');
 
     if (newInputValue === '') {
       setFormData((prev) => ({
@@ -265,6 +368,7 @@ function AddJobModal({
       ...prev,
       [field]: value,
     }));
+    clearVerify(field);
     // Clear error for this field
     if (errors[field]) {
       setErrors((prev) => {
@@ -283,6 +387,7 @@ function AddJobModal({
         [field]: value,
       },
     }));
+    clearVerify(field);
   };
 
   const validate = () => {
@@ -292,6 +397,9 @@ function AddJobModal({
     }
     if (!formData.customerName.trim() && !formData.customerId) {
       newErrors.customerName = 'Customer name is required';
+    }
+    if (formData.customerEmail.trim() && !isCompleteEmail(formData.customerEmail)) {
+      newErrors.customerEmail = 'This email looks incomplete. Fix it or clear it.';
     }
     if (formData.valueEstimated && isNaN(formData.valueEstimated)) {
       newErrors.valueEstimated = 'Estimated value must be a number';
@@ -386,31 +494,27 @@ function AddJobModal({
       let customerId = formData.customerId;
       const customerName = formData.customerName.trim();
       
+      try {
+        if (savedCustomer && updateSavedCustomer && customerChanges.length) {
+          const updateData = {};
+          customerChanges.forEach((change) => {
+            updateData[change.key] = change.value;
+          });
+          await axios.patch(`${API_URL}/customers/${savedCustomer._id}`, updateData);
+        }
+      } catch (customerError) {
+        console.error('Error updating customer:', customerError);
+        toast.error(customerError.response?.data?.error || 'Could not update the saved customer');
+        return;
+      }
+
       if (!customerId) {
         // Need to find or create customer
         try {
-          const existingCustomer = customers.find(
-            (c) => c.name.toLowerCase() === customerName.toLowerCase()
-          );
-          
+          const existingCustomer = savedCustomer;
+
           if (existingCustomer) {
             customerId = existingCustomer._id;
-            // For existing customers, only update if fields are completely missing
-            // Don't overwrite existing data - job-specific info will be stored on the job
-            const updateData = {};
-            if (formData.customerPhone && !existingCustomer.primaryPhone) {
-              updateData.primaryPhone = formData.customerPhone;
-            }
-            if (formData.customerEmail && !existingCustomer.primaryEmail) {
-              updateData.primaryEmail = formData.customerEmail;
-            }
-            if ((formData.customerAddress.street || formData.customerAddress.city) && 
-                (!existingCustomer.address?.street && !existingCustomer.address?.city)) {
-              updateData.address = formData.customerAddress;
-            }
-            if (Object.keys(updateData).length > 0) {
-              await axios.patch(`${API_URL}/customers/${customerId}`, updateData);
-            }
           } else {
             // Create new customer with all provided information
             const customerResponse = await axios.post(`${API_URL}/customers`, {
@@ -546,15 +650,80 @@ function AddJobModal({
     }
   };
 
+  const verifyCount = Object.keys(verify).length;
+  const emailSuggestion =
+    suggestions.customerEmail && suggestions.customerEmail !== formData.customerEmail.trim().toLowerCase()
+      ? suggestions.customerEmail
+      : '';
+  const emailMessage = errors.customerEmail || verify.customerEmail;
+
   return (
-    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{customerOnly ? 'Save customer' : initialDraft ? 'Check this job' : 'Create New Job'}</DialogTitle>
-      <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-          {initialDraft ? (
-            <Typography variant="body2" color="text.secondary">
-              Filled from the worksheet. Change anything that looks wrong, then save. The file is attached.
-            </Typography>
+    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth={worksheetMode ? 'lg' : 'sm'} fullWidth>
+      <DialogTitle>{customerOnly ? 'Save customer' : 'Create New Job'}</DialogTitle>
+      {readingWorksheet ? <LinearProgress aria-label="Reading the worksheet" /> : null}
+      <DialogContent
+        sx={
+          worksheetMode
+            ? {
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' },
+                gap: 3,
+                alignItems: 'start',
+              }
+            : undefined
+        }
+      >
+        {worksheetMode ? (
+          <WorksheetReviewPanel
+            key={`${worksheetFile.name}:${worksheetFile.size}:${worksheetFile.lastModified}`}
+            file={worksheetFile}
+            status={worksheet.status}
+            previewUrl={worksheet.previewUrl}
+            reading={worksheet.reading}
+          />
+        ) : null}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2, position: 'relative', minWidth: 0 }}>
+          {readingWorksheet ? (
+            <Box
+              role="status"
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 2,
+                bgcolor: (theme) => alpha(theme.palette.background.paper, 0.82),
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                pt: 10,
+                gap: 1.25,
+                textAlign: 'center',
+              }}
+            >
+              <CircularProgress size={30} />
+              <Typography sx={{ fontWeight: 600 }}>Reading the worksheet…</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Handwriting takes about 15 seconds.
+              </Typography>
+              <Button size="small" onClick={worksheet.skip} sx={{ textTransform: 'none' }}>
+                Enter it by hand
+              </Button>
+            </Box>
+          ) : null}
+          {worksheetMode && worksheet.status === 'done' ? (
+            <Alert severity={verifyCount ? 'warning' : 'success'}>
+              Filled from the worksheet.{' '}
+              {verifyCount
+                ? `Check the ${verifyCount === 1 ? 'field' : `${verifyCount} fields`} marked Verify, then click Create Job.`
+                : 'Check the details, then click Create Job.'}
+            </Alert>
+          ) : null}
+          {worksheetMode && worksheet.status === 'failed' ? (
+            <Alert severity="error">
+              {worksheet.error}. Enter the job by hand. The worksheet is still attached.
+            </Alert>
+          ) : null}
+          {worksheetMode && worksheet.status === 'skipped' ? (
+            <Alert severity="info">Reading stopped. Enter the job by hand. The worksheet is still attached.</Alert>
           ) : null}
           <TextField
             label="Job Title"
@@ -563,9 +732,10 @@ function AddJobModal({
             required={!customerOnly}
             disabled={customerOnly}
             error={!!errors.title}
-            helperText={customerOnly ? 'No pipeline job will be created' : errors.title}
+            helperText={customerOnly ? 'No pipeline job will be created' : fieldHelp('title')}
             fullWidth
-            autoFocus
+            autoFocus={!worksheetMode}
+            InputProps={{ endAdornment: verifyAdornment('title') }}
           />
 
           <TextField
@@ -574,8 +744,10 @@ function AddJobModal({
             onChange={(e) => handleChange('description', e.target.value)}
             fullWidth
             multiline
-            rows={2}
+            {...(worksheetMode ? { minRows: 4, maxRows: 12 } : { rows: 2 })}
             placeholder="Add a short description to help identify this job..."
+            helperText={fieldHelp('description')}
+            InputProps={{ endAdornment: verifyAdornment('description') }}
           />
 
           <Autocomplete
@@ -604,11 +776,14 @@ function AddJobModal({
                 label="Customer Name"
                 required
                 error={!!errors.customerName}
-                helperText={errors.customerName || 'Select existing customer or type to create new'}
+                helperText={fieldHelp('customerName', 'Select existing customer or type to create new')}
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
                     <>
+                      {verify.customerName ? (
+                        <VerifyChip reason={verify.customerName} onClick={() => clearVerify('customerName')} />
+                      ) : null}
                       {loadingCustomers ? <CircularProgress size={20} /> : null}
                       {params.InputProps.endAdornment}
                     </>
@@ -656,6 +831,32 @@ function AddJobModal({
             }}
           />
 
+          {customerMatches.length ? (
+            <Alert severity="info" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                This may be a saved customer
+              </Typography>
+              {customerMatches.map(({ customer, reasons }) => (
+                <Box
+                  key={customer._id}
+                  sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}
+                >
+                  <Typography variant="body2">
+                    {[customer.name, customer.primaryPhone ? formatPhoneForDisplay(customer.primaryPhone) : '', customer.primaryEmail]
+                      .filter(Boolean)
+                      .join(' · ')}{' '}
+                    <Box component="span" sx={{ color: 'text.secondary' }}>
+                      (same {reasons.join(' and ')})
+                    </Box>
+                  </Typography>
+                  <Button size="small" onClick={() => chooseExistingCustomer(customer)} sx={{ textTransform: 'none' }}>
+                    Use this customer
+                  </Button>
+                </Box>
+              ))}
+            </Alert>
+          ) : null}
+
           <Box sx={{ display: 'flex', gap: 2 }}>
             <PhoneTextField
               label="Phone"
@@ -663,6 +864,8 @@ function AddJobModal({
               onChange={(e) => handleChange('customerPhone', e.target.value)}
               fullWidth
               placeholder="(949) 555-1234"
+              helperText={fieldHelp('customerPhone')}
+              InputProps={{ endAdornment: verifyAdornment('customerPhone') }}
             />
             <TextField
               label="Email"
@@ -671,6 +874,24 @@ function AddJobModal({
               type="email"
               fullWidth
               placeholder="customer@example.com"
+              error={!!errors.customerEmail}
+              helperText={
+                emailMessage || emailSuggestion ? (
+                  <>
+                    {emailMessage}
+                    {emailSuggestion ? (
+                      <Button
+                        size="small"
+                        onClick={() => handleChange('customerEmail', emailSuggestion)}
+                        sx={{ p: 0, ml: emailMessage ? 0.75 : 0, minWidth: 0, textTransform: 'none', verticalAlign: 'baseline' }}
+                      >
+                        Use {emailSuggestion}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : undefined
+              }
+              InputProps={{ endAdornment: verifyAdornment('customerEmail') }}
             />
           </Box>
 
@@ -680,6 +901,8 @@ function AddJobModal({
             onChange={(e) => handleAddressChange('street', e.target.value)}
             fullWidth
             placeholder="123 Main St"
+            helperText={fieldHelp('street')}
+            InputProps={{ endAdornment: verifyAdornment('street') }}
           />
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
@@ -689,6 +912,8 @@ function AddJobModal({
               sx={{ flex: 1 }}
               placeholder="San Clemente"
               fullWidth
+              helperText={fieldHelp('city')}
+              InputProps={{ endAdornment: verifyAdornment('city') }}
             />
             <TextField
               label="State"
@@ -696,6 +921,8 @@ function AddJobModal({
               onChange={(e) => handleAddressChange('state', e.target.value)}
               sx={{ width: 100 }}
               placeholder="CA"
+              helperText={fieldHelp('state')}
+              InputProps={{ endAdornment: verifyAdornment('state') }}
             />
             <TextField
               label="ZIP"
@@ -703,8 +930,41 @@ function AddJobModal({
               onChange={(e) => handleAddressChange('zip', e.target.value)}
               sx={{ width: 120 }}
               placeholder="92672"
+              helperText={fieldHelp('zip')}
+              InputProps={{ endAdornment: verifyAdornment('zip') }}
             />
           </Box>
+
+          {savedCustomer && customerChanges.length ? (
+            <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'warning.main', borderRadius: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                This differs from {savedCustomer.name}&apos;s saved details
+              </Typography>
+              {customerChanges.map((change) => (
+                <Typography key={change.key} variant="body2" color="text.secondary">
+                  {change.label}: saved {change.from || 'blank'}, new {change.to}
+                </Typography>
+              ))}
+              <FormControlLabel
+                sx={{ mt: 0.5 }}
+                control={
+                  <Checkbox
+                    checked={updateSavedCustomer}
+                    onChange={(e) => setUpdateSavedCustomer(e.target.checked)}
+                    disabled={saving}
+                  />
+                }
+                label={`Update ${savedCustomer.name}'s saved customer details`}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                {updateSavedCustomer
+                  ? `${savedCustomer.name}'s record changes when you click ${customerOnly ? 'Save customer' : 'Create Job'}.`
+                  : customerOnly
+                    ? 'Left unchecked, the saved customer stays as it is.'
+                    : 'Left unchecked, these details are saved on this job only.'}
+              </Typography>
+            </Box>
+          ) : null}
 
           <TextField
             label="Estimated Value"
@@ -713,11 +973,12 @@ function AddJobModal({
             value={formData.valueEstimated}
             onChange={(e) => handleChange('valueEstimated', sanitizeMoneyTypingInput(e.target.value))}
             error={!!errors.valueEstimated}
-            helperText={errors.valueEstimated || 'Optional'}
+            helperText={fieldHelp('valueEstimated', 'Optional')}
             fullWidth
             placeholder="0.00"
             slotProps={{
               input: {
+                endAdornment: verifyAdornment('valueEstimated'),
                 sx: {
                   MozAppearance: 'textfield',
                   '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': {
@@ -893,7 +1154,7 @@ function AddJobModal({
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={saving}
+          disabled={saving || readingWorksheet}
         >
           {saving ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
           {saving && pendingFiles.length && !customerOnly

@@ -6,7 +6,7 @@ const { previewWorksheet } = require('../controllers/worksheetController');
 
 const worksheetUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 8 * 1024 * 1024, files: 4 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
     else cb(new Error('Worksheet image must be a JPEG, PNG, WEBP, or GIF'));
@@ -39,7 +39,10 @@ const { getJobMapPins, getJobGeoIssues } = require('../controllers/jobMapControl
 router.use(requireAuth);
 
 router.post('/worksheet-preview', (req, res, next) => {
-  worksheetUpload.single('file')(req, res, (err) => {
+  worksheetUpload.fields([
+    { name: 'page', maxCount: 1 },
+    { name: 'zoom', maxCount: 3 },
+  ])(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message || 'Could not read that file' });
     return next();
   });

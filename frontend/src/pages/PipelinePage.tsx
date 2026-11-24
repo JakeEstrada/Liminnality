@@ -23,11 +23,13 @@ import {
   DialogContentText,
   TextField,
   Tooltip,
+  alpha,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Archive as ArchiveIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -50,8 +52,14 @@ import { useShopViewSensitive } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
 import { getConnectedSocketId, getTenantRoom } from '../services/socket';
 import { applyJobRealtimeToList, isActivePipelineJob } from '../utils/realtimeJobs';
-import { readWorksheetDraft } from '../utils/worksheetRead';
-import { filesFromDrop, isExternalFileDrag } from '../utils/fileDrop';
+import {
+  filesFromDrop,
+  isExternalFileDrag,
+  trackInternalDrags,
+  withWorksheetType,
+  worksheetFileProblem,
+  WORKSHEET_ACCEPT,
+} from '../utils/fileDrop';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -93,11 +101,10 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   const [moveStageOpen, setMoveStageOpen] = useState(false);
   const [selectedJobForMove, setSelectedJobForMove] = useState(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
-  const [jobDraft, setJobDraft] = useState(null);
-  const [jobDraftFiles, setJobDraftFiles] = useState(null);
+  const [worksheetFile, setWorksheetFile] = useState(null);
   const [worksheetDrag, setWorksheetDrag] = useState(false);
-  const [worksheetReading, setWorksheetReading] = useState(false);
-  const worksheetDragDepth = useRef(0);
+  const pageRef = useRef(null);
+  const worksheetInputRef = useRef(null);
   const [tasksCollapsed, setTasksCollapsed] = useState(false);
   const [appointmentsCollapsed, setAppointmentsCollapsed] = useState(false);
   const [tasksCount, setTasksCount] = useState(0);
@@ -449,107 +456,79 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
 
   const closeAddJob = () => {
     setAddJobOpen(false);
-    setJobDraft(null);
-    setJobDraftFiles(null);
+    setWorksheetFile(null);
   };
 
-  const handleWorksheetDrop = async (event, droppedFiles) => {
-    event.preventDefault();
-    event.stopPropagation();
-    worksheetDragDepth.current = 0;
-    setWorksheetDrag(false);
-    const files = droppedFiles?.length ? droppedFiles : filesFromDrop(event.dataTransfer);
-    const file = files[0];
-    if (!file) {
-      console.warn('Worksheet drop types', Array.from(event.dataTransfer?.types || []));
-      toast.error('That drop did not include the file. Drop the worksheet on the pipeline again.');
+  const openWorksheet = (files) => {
+    const file = files?.[0];
+    if (files?.length > 1) toast('Using the first file');
+    const problem = worksheetFileProblem(file);
+    if (problem) {
+      toast.error(problem);
       return;
     }
-    if (files.length > 1) {
-      toast('Using the first file');
-    }
-    const name = file.name.toLowerCase();
-    const allowed =
-      file.type === 'application/pdf' ||
-      file.type.startsWith('image/') ||
-      name.endsWith('.pdf') ||
-      /\.(jpe?g|png|webp|gif)$/.test(name);
-    if (!allowed) {
-      toast.error('Drop a worksheet PDF or photo');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File must be less than 10MB');
-      return;
-    }
-    setWorksheetReading(true);
-    try {
-      const draft = await readWorksheetDraft(file);
-      setJobDraft(draft);
-      setJobDraftFiles([file]);
-      setAddJobOpen(true);
-      const filled = [draft?.customerName, draft?.customerPhone, draft?.customerEmail, draft?.street, draft?.valueEstimated].filter(
-        (value) => String(value || '').trim(),
-      ).length;
-      toast.success(
-        filled >= 3
-          ? 'Worksheet read. Check the job, then save.'
-          : 'Part of the worksheet was hard to read. Check the form and fill the rest.',
-      );
-    } catch (error) {
-      setJobDraft(null);
-      setJobDraftFiles([file]);
-      setAddJobOpen(true);
-      toast.error(error.response?.data?.error || 'Could not read the worksheet. The file is attached.');
-    } finally {
-      setWorksheetReading(false);
-    }
+    setWorksheetFile(withWorksheetType(file));
+    setAddJobOpen(true);
   };
 
-  const worksheetDropRef = useRef(handleWorksheetDrop);
-  worksheetDropRef.current = handleWorksheetDrop;
-  const worksheetReadingRef = useRef(false);
-  worksheetReadingRef.current = worksheetReading;
+  const openWorksheetRef = useRef(openWorksheet);
+  openWorksheetRef.current = openWorksheet;
+  const addJobOpenRef = useRef(addJobOpen);
+  addJobOpenRef.current = addJobOpen;
 
   useEffect(() => {
-    const onDragEnter = (event) => {
-      if (!isExternalFileDrag(event.dataTransfer)) return;
-      event.preventDefault();
-      worksheetDragDepth.current += 1;
+    const node = pageRef.current;
+    if (tvMode || !node) return undefined;
+    trackInternalDrags();
+    let hideTimer = 0;
+    const keepOverlay = () => {
+      window.clearTimeout(hideTimer);
       setWorksheetDrag(true);
+      hideTimer = window.setTimeout(() => setWorksheetDrag(false), 350);
     };
     const onDragOver = (event) => {
-      if (!isExternalFileDrag(event.dataTransfer)) return;
+      if (addJobOpenRef.current || !isExternalFileDrag(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-    };
-    const onDragLeave = () => {
-      worksheetDragDepth.current = Math.max(0, worksheetDragDepth.current - 1);
-      if (worksheetDragDepth.current === 0) setWorksheetDrag(false);
+      event.dataTransfer.dropEffect = 'copy';
+      keepOverlay();
     };
     const onDrop = (event) => {
-      if (!isExternalFileDrag(event.dataTransfer)) return;
-      const files = filesFromDrop(event.dataTransfer);
+      if (addJobOpenRef.current || !isExternalFileDrag(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      worksheetDragDepth.current = 0;
+      window.clearTimeout(hideTimer);
       setWorksheetDrag(false);
-      if (worksheetReadingRef.current) return;
-      worksheetDropRef.current(event, files);
+      const files = filesFromDrop(event.dataTransfer);
+      if (!files.length) {
+        toast.error("The browser didn't pass the file along. Click Import worksheet and pick it instead.");
+        return;
+      }
+      openWorksheetRef.current(files);
     };
-    window.addEventListener('dragenter', onDragEnter, true);
-    window.addEventListener('dragover', onDragOver, true);
-    window.addEventListener('dragleave', onDragLeave);
-    window.addEventListener('drop', onDrop, true);
+    // Dropping a file anywhere else on this page would make the browser open it and leave the app.
+    const onStrayDragOver = (event) => {
+      if (event.defaultPrevented || !isExternalFileDrag(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'none';
+    };
+    const onStrayDrop = (event) => {
+      if (!event.defaultPrevented && isExternalFileDrag(event.dataTransfer)) event.preventDefault();
+    };
+    node.addEventListener('dragenter', onDragOver, true);
+    node.addEventListener('dragover', onDragOver, true);
+    node.addEventListener('drop', onDrop, true);
+    window.addEventListener('dragover', onStrayDragOver);
+    window.addEventListener('drop', onStrayDrop);
     return () => {
-      window.removeEventListener('dragenter', onDragEnter, true);
-      window.removeEventListener('dragover', onDragOver, true);
-      window.removeEventListener('dragleave', onDragLeave);
-      window.removeEventListener('drop', onDrop, true);
+      window.clearTimeout(hideTimer);
+      node.removeEventListener('dragenter', onDragOver, true);
+      node.removeEventListener('dragover', onDragOver, true);
+      node.removeEventListener('drop', onDrop, true);
+      window.removeEventListener('dragover', onStrayDragOver);
+      window.removeEventListener('drop', onStrayDrop);
     };
-  }, []);
+  }, [tvMode]);
 
   // Count jobs in FINAL_PAYMENT_CLOSED stage (respecting search filter)
   const completedJobsCount = filteredJobs.filter(
@@ -557,30 +536,57 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
   ).length;
 
   return (
-    <Box sx={{ minHeight: tvMode ? '100vh' : undefined, position: 'relative' }}>
-      {(worksheetDrag || worksheetReading) && (
+    <Box ref={pageRef} sx={{ minHeight: tvMode ? '100vh' : undefined, position: 'relative' }}>
+      {worksheetDrag && (
         <Box
+          aria-hidden
           sx={{
-            position: 'fixed',
+            position: 'absolute',
             inset: 0,
-            zIndex: 1400,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: 'rgba(25, 118, 210, 0.14)',
-            border: '4px dashed',
+            zIndex: 1200,
+            bgcolor: (t) => alpha(t.palette.primary.main, 0.1),
+            border: '3px dashed',
             borderColor: 'primary.main',
-            pointerEvents: worksheetReading ? 'auto' : 'none',
+            borderRadius: 2,
+            pointerEvents: 'none',
           }}
         >
-          <Paper sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {worksheetReading ? <CircularProgress size={22} /> : null}
-            <Typography variant="h6">
-              {worksheetReading ? 'Reading the worksheet…' : 'Drop the worksheet to start a job'}
-            </Typography>
+          <Paper
+            elevation={6}
+            sx={{
+              position: 'sticky',
+              top: '35vh',
+              mx: 'auto',
+              mt: '20vh',
+              width: 'fit-content',
+              px: 3,
+              py: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+            }}
+          >
+            <UploadFileIcon color="primary" />
+            <Box>
+              <Typography variant="h6">Drop worksheet to create job</Typography>
+              <Typography variant="body2" color="text.secondary">
+                PDF, JPG, or PNG
+              </Typography>
+            </Box>
           </Paper>
         </Box>
       )}
+      <input
+        ref={worksheetInputRef}
+        type="file"
+        accept={WORKSHEET_ACCEPT}
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = '';
+          if (files.length) openWorksheet(files);
+        }}
+      />
       {/* Main Content */}
       <Container
         maxWidth="xl"
@@ -794,10 +800,10 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
               setSelectedJobId(job._id);
             }}
             onNewJobClick={() => {
-              setJobDraft(null);
-              setJobDraftFiles(null);
+              setWorksheetFile(null);
               setAddJobOpen(true);
             }}
+            onImportWorksheetClick={tvMode ? undefined : () => worksheetInputRef.current?.click()}
             onJobContextMenu={(e, job) => {
               setContextMenuAnchor(e.currentTarget);
               setContextMenuJob(job);
@@ -975,8 +981,7 @@ function PipelinePage({ tvMode = false, externalViewControls = false }) {
         <AddJobModal
           open={addJobOpen}
           onClose={closeAddJob}
-          initialDraft={jobDraft}
-          initialFiles={jobDraftFiles}
+          worksheetFile={worksheetFile}
           onJobCreated={(newJob) => {
             // Refresh jobs list to show the new job
             fetchJobs();
