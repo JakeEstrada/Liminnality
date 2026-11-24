@@ -38,6 +38,13 @@ import ProfilePhotoFieldPreview from '../components/common/ProfilePhotoFieldPrev
 import { useTheme } from '@mui/material/styles';
 import { useShopViewSensitive, SHOP_VIEW_SENSITIVE_PIN } from '../hooks/useShopViewSensitive';
 import { useFinancialPinLockContext } from '../context/FinancialPinLockContext';
+import {
+  NAV_VISIBILITY_ITEMS,
+  hiddenNavPathsForUser,
+  isLockedNavPath,
+  sanitizeHiddenNavPaths,
+  writeHiddenNavPaths,
+} from '../utils/navVisibility';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -72,6 +79,8 @@ function AccountSettingsPage() {
   const [uploadingProfilePhoto, setUploadingProfilePhoto] = useState(false);
   const [shopViewPinDialogOpen, setShopViewPinDialogOpen] = useState(false);
   const [shopViewPinInput, setShopViewPinInput] = useState('');
+  const [hiddenNavPaths, setHiddenNavPaths] = useState([]);
+  const [savingNavPath, setSavingNavPath] = useState('');
   const tenantIdValue =
     typeof userData?.tenantId === 'object' && userData?.tenantId !== null
       ? userData?.tenantId?._id || ''
@@ -80,6 +89,10 @@ function AccountSettingsPage() {
   useEffect(() => {
     fetchUserData();
   }, []);
+
+  useEffect(() => {
+    setHiddenNavPaths(hiddenNavPathsForUser(currentUser || userData));
+  }, [currentUser, userData]);
 
   const fetchUserData = async () => {
     try {
@@ -217,6 +230,30 @@ function AccountSettingsPage() {
       employee: 'secondary',
     };
     return colors[role] || 'default';
+  };
+
+  const navItems = NAV_VISIBILITY_ITEMS.filter((item) => !item.superAdminOnly || isSuperAdmin());
+  const navGroups = [...new Set(navItems.map((item) => item.group))];
+
+  const handleNavToggle = async (path, shown) => {
+    if (isLockedNavPath(path)) return;
+    const next = sanitizeHiddenNavPaths(
+      shown ? hiddenNavPaths.filter((item) => item !== path) : [...hiddenNavPaths, path],
+    );
+    setHiddenNavPaths(next);
+    const userId = currentUser?._id || userData?._id;
+    if (userId) writeHiddenNavPaths(userId, next);
+    try {
+      setSavingNavPath(path);
+      await api.patch('/auth/nav-visibility', { hiddenNavPaths: next });
+      const token = localStorage.getItem('accessToken');
+      if (token && fetchCurrentUser) await fetchCurrentUser(token);
+    } catch (error) {
+      console.error('Nav visibility save:', error);
+      toast.error('Sidebar updated on this browser');
+    } finally {
+      setSavingNavPath('');
+    }
   };
 
   const handleShopViewToggle = (nextChecked) => {
@@ -659,6 +696,57 @@ function AccountSettingsPage() {
             Change Password
           </Button>
         </Box>
+      </Paper>
+
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: '16px',
+          p: 4,
+          mb: 3,
+          background: theme.palette.background.paper,
+          boxShadow:
+            theme.palette.mode === 'dark'
+              ? '0 2px 12px rgba(0, 0, 0, 0.35)'
+              : '0 2px 12px rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+          Advanced
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Choose which sidebar tabs stay visible. Dashboard, Pipeline, Customers, and Calendar always stay on.
+        </Typography>
+        {navGroups.map((group) => (
+          <Box key={group} sx={{ mb: 2 }}>
+            <Typography variant="overline" color="text.secondary">
+              {group}
+            </Typography>
+            {navItems
+              .filter((item) => item.group === group)
+              .map((item) => (
+                <FormControlLabel
+                  key={item.path}
+                  sx={{
+                    display: 'flex',
+                    width: '100%',
+                    mx: 0,
+                    justifyContent: 'space-between',
+                    '& .MuiFormControlLabel-label': { flex: 1 },
+                  }}
+                  labelPlacement="start"
+                  control={(
+                    <Switch
+                      checked={!hiddenNavPaths.includes(item.path)}
+                      disabled={Boolean(item.locked) || savingNavPath === item.path}
+                      onChange={(event) => handleNavToggle(item.path, event.target.checked)}
+                    />
+                  )}
+                  label={item.locked ? `${item.label} (always shown)` : item.label}
+                />
+              ))}
+          </Box>
+        ))}
       </Paper>
       <Dialog open={shopViewPinDialogOpen} onClose={() => setShopViewPinDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Enable Sensitive Amounts</DialogTitle>

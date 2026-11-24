@@ -445,6 +445,39 @@ async function updateProfile(req, res) {
   }
 }
 
+const HIDEABLE_NAV_PATHS = new Set([
+  '/tasks',
+  '/messages',
+  '/metrics',
+  '/bills',
+  '/payroll',
+  '/commission-logs',
+  '/takeoff-sheet',
+  '/vendors',
+  '/users',
+  '/archive',
+  '/completed-jobs',
+  '/developer',
+  '/developer/analytics',
+]);
+
+async function updateNavVisibility(req, res) {
+  try {
+    const raw = Array.isArray(req.body?.hiddenNavPaths) ? req.body.hiddenNavPaths : [];
+    const hiddenNavPaths = [...new Set(raw.map((path) => String(path || '').trim()))]
+      .filter((path) => HIDEABLE_NAV_PATHS.has(path))
+      .slice(0, 40);
+    const user = req.user;
+    user.hiddenNavPaths = hiddenNavPaths;
+    await user.save();
+    const userResponse = user.toJSON();
+    delete userResponse.password;
+    res.json({ hiddenNavPaths, user: userResponse });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to save navigation' });
+  }
+}
+
 // Change own password
 async function changePassword(req, res) {
   try {
@@ -487,6 +520,7 @@ module.exports = {
   forgotUsername,
   resetPassword,
   updateProfile,
+  updateNavVisibility,
   changePassword,
   getMyProfilePhoto,
   uploadUserProfilePhoto,

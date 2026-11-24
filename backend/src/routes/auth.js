@@ -10,6 +10,7 @@ const {
   forgotUsername, 
   resetPassword,
   updateProfile,
+  updateNavVisibility,
   changePassword,
   getMyProfilePhoto,
   uploadUserProfilePhoto,
@@ -29,6 +30,7 @@ router.post('/reset-password', resetPassword);
 router.get('/me', requireAuth, me);
 router.post('/logout', requireAuth, logout);
 router.patch('/profile', requireAuth, updateProfile);
+router.patch('/nav-visibility', requireAuth, updateNavVisibility);
 router.patch('/change-password', requireAuth, changePassword);
 router.get('/profile-photo', requireAuth, getMyProfilePhoto);
 router.post('/profile-photo', requireAuth, uploadUserProfilePhotoMw.single('photo'), uploadUserProfilePhoto);

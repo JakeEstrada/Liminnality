@@ -44,6 +44,7 @@ import api from '../../utils/axios';
 import { fetchUnreadSmsCount } from '../../utils/twilioApi';
 import { useSocketSubscription } from '../../hooks/useSocketSubscription';
 import { getTenantRoom } from '../../services/socket';
+import { hiddenNavPathsForUser, isLockedNavPath, NAV_VISIBILITY_EVENT, readHiddenNavPaths } from '../../utils/navVisibility';
 
 const DRAWER_WIDTH = 260;
 
@@ -92,7 +93,14 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [inboxCount, setInboxCount] = useState(0);
   const [unreadSmsCount, setUnreadSmsCount] = useState(0);
+  const [navRevision, setNavRevision] = useState(0);
   const reloadUnreadRef = useRef(() => {});
+
+  useEffect(() => {
+    const onChange = () => setNavRevision((value) => value + 1);
+    window.addEventListener(NAV_VISIBILITY_EVENT, onChange);
+    return () => window.removeEventListener(NAV_VISIBILITY_EVENT, onChange);
+  }, []);
 
   useEffect(() => {
     if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) return undefined;
@@ -185,7 +193,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     },
   };
 
+  const hiddenNavPaths = navRevision > 0 ? readHiddenNavPaths(user?._id) : hiddenNavPathsForUser(user);
   const canSeeItem = (item) => {
+    if (!isLockedNavPath(item.path) && hiddenNavPaths.includes(item.path)) return false;
     if (item.superAdminOnly) return isSuperAdmin();
     if (item.adminOnly) return isAdmin();
     return true;
@@ -318,63 +328,67 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         )}
       </List>
 
-      <Divider sx={{ my: 2 }} />
+      {financeItems.some(canSeeItem) ? (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Box sx={{ px: 2, pb: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                fontWeight: 600,
+                color: theme.palette.text.secondary,
+                fontSize: '0.75rem',
+              }}
+            >
+              Finance
+            </Typography>
+          </Box>
+          {renderNavList(financeItems)}
+        </>
+      ) : null}
 
-      <Box sx={{ px: 2, pb: 1 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-            color: theme.palette.text.secondary,
-            fontSize: '0.75rem',
-          }}
-        >
-          Finance
-        </Typography>
-      </Box>
+      {operationsItems.some(canSeeItem) ? (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Box sx={{ px: 2, pb: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                fontWeight: 600,
+                color: theme.palette.text.secondary,
+                fontSize: '0.75rem',
+              }}
+            >
+              Operations
+            </Typography>
+          </Box>
+          {renderNavList(operationsItems)}
+        </>
+      ) : null}
 
-      {renderNavList(financeItems)}
-
-      <Divider sx={{ my: 2 }} />
-
-      <Box sx={{ px: 2, pb: 1 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-            color: theme.palette.text.secondary,
-            fontSize: '0.75rem',
-          }}
-        >
-          Operations
-        </Typography>
-      </Box>
-
-      {renderNavList(operationsItems)}
-
-      <Divider sx={{ my: 2 }} />
-
-      <Box sx={{ px: 2, pb: 1 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-            color: theme.palette.text.secondary,
-            fontSize: '0.75rem',
-          }}
-        >
-          Archive & History
-        </Typography>
-      </Box>
-
-      <List>
-        {archiveItems.map((item) => (
+      {archiveItems.some(canSeeItem) ? (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Box sx={{ px: 2, pb: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                fontWeight: 600,
+                color: theme.palette.text.secondary,
+                fontSize: '0.75rem',
+              }}
+            >
+              Archive & History
+            </Typography>
+          </Box>
+          <List>
+        {archiveItems.filter(canSeeItem).map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
               onClick={() => handleNavigation(item.path)}
@@ -400,8 +414,10 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           </ListItem>
         ))}
       </List>
+        </>
+      ) : null}
 
-      {isSuperAdmin() ? (
+      {isSuperAdmin() && canSeeItem({ path: '/developer' }) ? (
         <>
           <Divider sx={{ my: 2 }} />
 

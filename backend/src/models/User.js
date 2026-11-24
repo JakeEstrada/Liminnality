@@ -51,6 +51,11 @@ const userSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
+  /** Sidebar paths this user has chosen to hide. Locked pages are never stored here. */
+  hiddenNavPaths: {
+    type: [String],
+    default: [],
+  },
   /** Single profile image for the user (header, etc.) */
   profilePhoto: {
     filename: { type: String },
