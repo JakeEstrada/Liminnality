@@ -52,7 +52,7 @@ import BrandLogo from '../components/common/BrandLogo';
 import { useAuth } from '../context/AuthContext';
 import { FINANCIAL_AMOUNTS_PIN } from '../hooks/useFinancialPinLock';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
-import { getTenantRoom } from '../services/socket';
+import { getConnectedSocketId, getTenantRoom } from '../services/socket';
 import {
   buildTimesheetRowsFromScans,
   defaultShiftProfile,
@@ -61,6 +61,7 @@ import {
   minutesToTimeInput,
   mergeRfidRegistries,
   payPeriodScanRangeIso,
+  preferHourlyRate,
   profileMapFromApi,
   scanMatchesEmployee,
   sortEmployeesForTimesheet,
@@ -237,6 +238,20 @@ function saveLastEmployeeId(employeeId: string) {
   }
 }
 
+function ownSocketEvent(payload: unknown): boolean {
+  const sourceSocketId = (payload as { sourceSocketId?: string | null } | null)?.sourceSocketId;
+  if (!sourceSocketId) return false;
+  const own = getConnectedSocketId();
+  return Boolean(own) && sourceSocketId === own;
+}
+
+function cleanRateDraft(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const dot = cleaned.indexOf('.');
+  if (dot === -1) return cleaned;
+  return `${cleaned.slice(0, dot + 1)}${cleaned.slice(dot + 1).replace(/\./g, '')}`;
+}
+
 function sheetFromRemotePayload(
   remote: RfidTimesheetWeekPayload,
   period: PayPeriod,
@@ -261,7 +276,7 @@ function sheetFromRemotePayload(
       description: String(row.description ?? ''),
       hours: String(row.hours ?? ''),
     })),
-    ratePerHour: String(remote.ratePerHour ?? profile.ratePerHour ?? ''),
+    ratePerHour: preferHourlyRate(remote.ratePerHour, profile.ratePerHour),
     manualByDay: remote.manualByDay || {},
   };
 }
@@ -431,6 +446,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   const [additionalHours, setAdditionalHours] = useState<AdditionalHoursRow[]>([]);
   const [hoursDraftByDay, setHoursDraftByDay] = useState<Record<string, string>>({});
   const [ratePerHour, setRatePerHour] = useState('');
+  const [rateSaveState, setRateSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [shiftIn, setShiftIn] = useState(defaultShiftProfile().shiftIn);
   const [shiftOut, setShiftOut] = useState(defaultShiftProfile().shiftOut);
   const [shiftBreak, setShiftBreak] = useState(String(defaultShiftProfile().breakMinutes));
@@ -442,10 +458,36 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   const isEditModeRef = useRef(isEditMode);
   const lastPersistedRef = useRef('');
   const sheetReadyRef = useRef(false);
+  const employeeProfilesRef = useRef(employeeProfiles);
+  const ratePerHourRef = useRef(ratePerHour);
+  const selectedEmployeeRef = useRef(selectedEmployee);
+  const payPeriodRef = useRef(payPeriod);
+  const receiptsRef = useRef(receipts);
+  const travelMilesRef = useRef(travelMiles);
+  const additionalHoursRef = useRef(additionalHours);
+  const shiftInRef = useRef(shiftIn);
+  const shiftOutRef = useRef(shiftOut);
+  const shiftBreakRef = useRef(shiftBreak);
+  const rateDirtyRef = useRef(false);
+  const rateFieldFocusedRef = useRef(false);
+  const rateSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const pendingRateSaveRef = useRef<{ employee: RfidEmployeeOption; rate: string } | null>(null);
+  const lastSavedRateRef = useRef<{ id: string; rate: string }>({ id: '', rate: '' });
+  const persistChainRef = useRef(Promise.resolve());
   manualByDayRef.current = manualByDay;
   workHoursRef.current = workHours;
   scansRef.current = scans;
   isEditModeRef.current = isEditMode;
+  employeeProfilesRef.current = employeeProfiles;
+  ratePerHourRef.current = ratePerHour;
+  selectedEmployeeRef.current = selectedEmployee;
+  payPeriodRef.current = payPeriod;
+  receiptsRef.current = receipts;
+  travelMilesRef.current = travelMiles;
+  additionalHoursRef.current = additionalHours;
+  shiftInRef.current = shiftIn;
+  shiftOutRef.current = shiftOut;
+  shiftBreakRef.current = shiftBreak;
 
   const tenantRoom = getTenantRoom(tenantIdForBranding);
   const socketConnected = useSocketConnectionStatus();
@@ -550,31 +592,124 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
       payload: RfidTimesheetWeekPayload,
       options?: { quiet?: boolean },
     ) => {
-      await api.put(
-        `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
-        payload,
-      );
-      lastPersistedRef.current = JSON.stringify(payload);
-      persistedSheetRef.current = {
-        workHours: payload.workHours.map((row) => ({
-          day: row.day,
-          in: String(row.in),
-          out: String(row.out),
-          breaks: String(row.breaks),
-          note: String(row.note ?? ''),
-        })),
-        manualByDay: payload.manualByDay || {},
-      };
-      if (!options?.quiet) {
-        try {
-          localStorage.removeItem(storageKey(employeeKey, periodId));
-        } catch {
-          /* ignore */
+      const task = persistChainRef.current.then(async () => {
+        await api.put(
+          `/rfid/timesheets/${encodeURIComponent(employeeKey)}/${encodeURIComponent(periodId)}`,
+          payload,
+        );
+        lastPersistedRef.current = JSON.stringify(payload);
+        persistedSheetRef.current = {
+          workHours: payload.workHours.map((row) => ({
+            day: row.day,
+            in: String(row.in),
+            out: String(row.out),
+            breaks: String(row.breaks),
+            note: String(row.note ?? ''),
+          })),
+          manualByDay: payload.manualByDay || {},
+        };
+        if (!options?.quiet) {
+          try {
+            localStorage.removeItem(storageKey(employeeKey, periodId));
+          } catch {
+            /* ignore */
+          }
         }
-      }
+      });
+      persistChainRef.current = task.then(
+        () => undefined,
+        () => undefined,
+      );
+      return task;
     },
     [],
   );
+
+  const saveEmployeeRate = useCallback(
+    async (employee: RfidEmployeeOption, rate: string, options?: { includeWeek?: boolean; quiet?: boolean }) => {
+      const next = preferHourlyRate(rate, '');
+      if (!next) return;
+      if (lastSavedRateRef.current.id === employee.id && lastSavedRateRef.current.rate === next) return;
+      const previous = lastSavedRateRef.current;
+      lastSavedRateRef.current = { id: employee.id, rate: next };
+      const stored = employeeProfilesRef.current[employee.id] || defaultShiftProfile();
+      const sameEmployee = selectedEmployeeRef.current?.id === employee.id;
+      const shiftInValue = sameEmployee ? shiftInRef.current : stored.shiftIn;
+      const shiftOutValue = sameEmployee ? shiftOutRef.current : stored.shiftOut;
+      const breakMinutes = sameEmployee
+        ? parseInt(shiftBreakRef.current || '0', 10) || 0
+        : stored.breakMinutes;
+      if (selectedEmployeeRef.current?.id === employee.id) setRateSaveState('saving');
+      try {
+        await api.put(`/rfid/employee-profiles/${encodeURIComponent(employee.id)}`, {
+          displayName: employee.name,
+          shiftIn: shiftInValue || stored.shiftIn,
+          shiftOut: shiftOutValue || stored.shiftOut,
+          breakMinutes,
+          ratePerHour: next,
+        });
+        setEmployeeProfiles((prev) => ({
+          ...prev,
+          [employee.id]: {
+            shiftIn: shiftInValue || stored.shiftIn,
+            shiftOut: shiftOutValue || stored.shiftOut,
+            breakMinutes,
+            ratePerHour: next,
+          },
+        }));
+        const includeWeek = options?.includeWeek !== false && sheetReadyRef.current && sameEmployee;
+        if (includeWeek && payPeriodRef.current) {
+          const cleanedManual = sanitizeManualByDay(manualByDayRef.current, workHoursRef.current);
+          await persistTimesheet(
+            employee.id,
+            payPeriodRef.current.id,
+            sheetPayload(
+              workHoursRef.current,
+              receiptsRef.current,
+              travelMilesRef.current,
+              additionalHoursRef.current,
+              next,
+              cleanedManual,
+            ),
+            { quiet: true },
+          );
+        }
+        if (
+          selectedEmployeeRef.current?.id === employee.id &&
+          lastSavedRateRef.current.id === employee.id &&
+          lastSavedRateRef.current.rate === next
+        ) {
+          setRateSaveState('saved');
+          rateDirtyRef.current = false;
+          if (!rateFieldFocusedRef.current && ratePerHourRef.current !== next) setRatePerHour(next);
+          if (!options?.quiet) toast.success(`Saved $${next}/hr for ${employee.name}`);
+        }
+      } catch (error) {
+        console.error('Failed to save hourly rate:', error);
+        if (lastSavedRateRef.current.id === employee.id && lastSavedRateRef.current.rate === next) {
+          lastSavedRateRef.current = previous;
+          if (selectedEmployeeRef.current?.id === employee.id) setRateSaveState('error');
+        }
+        toast.error('Could not save the hourly rate');
+      }
+    },
+    [persistTimesheet],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (rateSaveTimerRef.current) {
+        window.clearTimeout(rateSaveTimerRef.current);
+        rateSaveTimerRef.current = null;
+      }
+      const pending = pendingRateSaveRef.current;
+      pendingRateSaveRef.current = null;
+      if (!pending) return;
+      const next = preferHourlyRate(pending.rate, '');
+      if (!next) return;
+      void saveEmployeeRate(pending.employee, next);
+    };
+  }, [selectedEmployee?.id, saveEmployeeRate]);
 
   const fetchScans = useCallback(async (period: PayPeriod) => {
     const { from, to } = payPeriodScanRangeIso(period);
@@ -616,14 +751,21 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
     setHoursDraftByDay({});
     lastPersistedRef.current = '';
     sheetReadyRef.current = false;
+    rateDirtyRef.current = false;
 
     let cancelled = false;
 
     (async () => {
       setLoadingScans(true);
       const profile =
-        employeeProfiles[selectedEmployee.id] ||
+        employeeProfilesRef.current[selectedEmployee.id] ||
         defaultShiftProfile();
+      const profileRate = preferHourlyRate(profile.ratePerHour, '');
+      if (!rateDirtyRef.current) {
+        setRatePerHour(profileRate);
+        setRateSaveState(profileRate ? 'saved' : 'idle');
+        lastSavedRateRef.current = { id: selectedEmployee.id, rate: profileRate };
+      }
 
       let sheet: WeekSheetData = {
         workHours: defaultWorkHours(payPeriod),
@@ -685,10 +827,15 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
           sheet = sheetFromRemotePayload(remoteSheet, payPeriod, profile);
         }
 
+        const resolvedRate = preferHourlyRate(sheet.ratePerHour, profile.ratePerHour);
         setShiftIn(profile.shiftIn);
         setShiftOut(profile.shiftOut);
         setShiftBreak(String(profile.breakMinutes));
-        setRatePerHour(sheet.ratePerHour || profile.ratePerHour || '');
+        if (!rateDirtyRef.current) {
+          setRatePerHour(resolvedRate);
+          setRateSaveState(resolvedRate ? 'saved' : 'idle');
+          lastSavedRateRef.current = { id: selectedEmployee.id, rate: resolvedRate };
+        }
 
         const scanList = await fetchScans(payPeriod);
         if (cancelled) return;
@@ -702,25 +849,53 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
           profile,
           false,
         );
+        const typedRate = preferHourlyRate(ratePerHourRef.current, '');
+        const keepTyped = rateDirtyRef.current && Boolean(typedRate);
+        const rateForSheet = keepTyped ? typedRate : resolvedRate;
         persistedSheetRef.current = snapshotPersistedSheet(sheet.workHours, sheet.manualByDay || {});
         setManualByDay(merged.manual);
         setWorkHours(merged.rows);
         setReceipts(sheet.receipts);
         setTravelMiles(sheet.travelMiles);
         setAdditionalHours(sheet.additionalHours);
+        if (!keepTyped) {
+          setRatePerHour(resolvedRate);
+          const profileHasRate = Boolean(preferHourlyRate(profile.ratePerHour, ''));
+          if (resolvedRate && !profileHasRate) {
+            void saveEmployeeRate(selectedEmployee, resolvedRate, { includeWeek: false, quiet: true });
+          } else {
+            setRateSaveState(resolvedRate ? 'saved' : 'idle');
+            lastSavedRateRef.current = { id: selectedEmployee.id, rate: resolvedRate };
+          }
+        }
         lastPersistedRef.current = JSON.stringify(
           sheetPayload(
             merged.rows,
             sheet.receipts,
             sheet.travelMiles,
             sheet.additionalHours,
-            sheet.ratePerHour || profile.ratePerHour || '',
+            rateForSheet,
             merged.manual,
           ),
         );
         sheetReadyRef.current = true;
 
-        if (
+        if (keepTyped) {
+          void saveEmployeeRate(selectedEmployee, typedRate, { includeWeek: false, quiet: true });
+          void persistTimesheet(
+            selectedEmployee.id,
+            payPeriod.id,
+            sheetPayload(
+              merged.rows,
+              sheet.receipts,
+              sheet.travelMiles,
+              sheet.additionalHours,
+              typedRate,
+              merged.manual,
+            ),
+            { quiet: true },
+          ).catch((error) => console.error('Failed to save hourly rate onto this week:', error));
+        } else if (
           !cancelled &&
           !isEditModeRef.current &&
           remoteSheet &&
@@ -738,7 +913,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
               sheet.receipts,
               sheet.travelMiles,
               sheet.additionalHours,
-              sheet.ratePerHour || profile.ratePerHour || '',
+              rateForSheet,
               merged.manual,
             ),
             { quiet: true },
@@ -771,8 +946,15 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
     fetchScans,
     fetchTimesheet,
     mergeSheetWithScans,
-    employeeProfiles,
+    saveEmployeeRate,
   ]);
+
+  useEffect(() => {
+    if (!selectedEmployee || rateDirtyRef.current || rateFieldFocusedRef.current) return;
+    const profileRate = preferHourlyRate(employeeProfiles[selectedEmployee.id]?.ratePerHour, '');
+    if (!profileRate) return;
+    setRatePerHour((current) => preferHourlyRate(current, profileRate) || current);
+  }, [selectedEmployee, employeeProfiles]);
 
   const recomputeFromScans = useCallback(
     (
@@ -822,7 +1004,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
 
   const handleRemoteTimesheet = useCallback(
     (payload: unknown) => {
-      if (isEditModeRef.current || !selectedEmployee) return;
+      if (ownSocketEvent(payload) || isEditModeRef.current || !selectedEmployee) return;
       const data = payload as {
         employeeKey?: string;
         periodId?: string;
@@ -851,7 +1033,10 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
           description: String(row.description ?? ''),
           hours: String(row.hours ?? ''),
         })),
-        ratePerHour: String(remote.ratePerHour ?? ''),
+        ratePerHour: preferHourlyRate(
+          remote.ratePerHour,
+          employeeProfilesRef.current[selectedEmployee.id]?.ratePerHour,
+        ),
         manualByDay: remote.manualByDay || {},
       };
 
@@ -878,7 +1063,14 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
       setReceipts(sheet.receipts);
       setTravelMiles(sheet.travelMiles);
       setAdditionalHours(sheet.additionalHours);
-      setRatePerHour(sheet.ratePerHour);
+      if (!rateDirtyRef.current && !rateFieldFocusedRef.current) {
+        const nextRate = preferHourlyRate(sheet.ratePerHour, ratePerHourRef.current);
+        setRatePerHour(nextRate);
+        if (nextRate) {
+          lastSavedRateRef.current = { id: selectedEmployee.id, rate: nextRate };
+          setRateSaveState('saved');
+        }
+      }
       setWorkHours(merged.rows);
     },
     [selectedEmployee, payPeriod, mergeSheetWithScans, activeShiftProfile],
@@ -886,6 +1078,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
 
   const handleRemoteProfile = useCallback(
     (payload: unknown) => {
+      if (ownSocketEvent(payload)) return;
       const data = payload as {
         employeeKey?: string;
         profile?: {
@@ -908,7 +1101,14 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
         setShiftIn(profile.shiftIn);
         setShiftOut(profile.shiftOut);
         setShiftBreak(String(profile.breakMinutes));
-        if (profile.ratePerHour && !isEditModeRef.current) setRatePerHour(profile.ratePerHour);
+        if (!rateFieldFocusedRef.current && !rateDirtyRef.current) {
+          const nextRate = preferHourlyRate(profile.ratePerHour, ratePerHourRef.current);
+          if (nextRate) {
+            setRatePerHour(nextRate);
+            lastSavedRateRef.current = { id: key, rate: nextRate };
+            setRateSaveState('saved');
+          }
+        }
         recomputeFromScans(scansRef.current, selectedEmployee, payPeriod, profile);
       }
     },
@@ -1085,38 +1285,80 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
 
   const handleSaveShiftProfile = async () => {
     if (!canEdit || !selectedEmployee) return;
+    const rateToStore = preferHourlyRate(
+      ratePerHour,
+      employeeProfilesRef.current[selectedEmployee.id]?.ratePerHour,
+    );
     try {
-      const res = await api.put<{ profile: { employeeKey: string } }>(
+      const res = await api.put<{ profile: { employeeKey: string; ratePerHour?: string } }>(
         `/rfid/employee-profiles/${encodeURIComponent(selectedEmployee.id)}`,
         {
           displayName: selectedEmployee.name,
           shiftIn,
           shiftOut,
           breakMinutes: parseInt(shiftBreak || '0', 10) || 0,
-          ratePerHour,
+          ratePerHour: rateToStore,
         },
       );
+      const savedRate = preferHourlyRate(res.data?.profile?.ratePerHour, rateToStore);
       const profile: RfidEmployeeShiftProfile = {
         shiftIn,
         shiftOut,
         breakMinutes: parseInt(shiftBreak || '0', 10) || 0,
-        ratePerHour,
+        ratePerHour: savedRate,
       };
       setEmployeeProfiles((prev) => ({
         ...prev,
         [selectedEmployee.id]: profile,
       }));
+      if (savedRate) {
+        setRatePerHour(savedRate);
+        lastSavedRateRef.current = { id: selectedEmployee.id, rate: savedRate };
+        setRateSaveState('saved');
+        rateDirtyRef.current = false;
+      }
       recomputeFromScans(scans, selectedEmployee, payPeriod, profile);
       toast.success(`Saved shift for ${selectedEmployee.name}`);
-      void res;
     } catch (error) {
       console.error(error);
       toast.error('Could not save employee shift');
     }
   };
 
+  const scheduleEmployeeRateSave = (employee: RfidEmployeeOption, rate: string) => {
+    pendingRateSaveRef.current = { employee, rate };
+    if (rateSaveTimerRef.current) window.clearTimeout(rateSaveTimerRef.current);
+    rateSaveTimerRef.current = window.setTimeout(() => {
+      rateSaveTimerRef.current = null;
+      pendingRateSaveRef.current = null;
+      const next = preferHourlyRate(rate, '');
+      if (!next) return;
+      void saveEmployeeRate(employee, next);
+    }, 600);
+  };
+
+  const flushEmployeeRateSave = (employee: RfidEmployeeOption, rate: string) => {
+    if (rateSaveTimerRef.current) {
+      window.clearTimeout(rateSaveTimerRef.current);
+      rateSaveTimerRef.current = null;
+    }
+    pendingRateSaveRef.current = null;
+    const next = preferHourlyRate(rate, '');
+    if (!next) {
+      const saved =
+        lastSavedRateRef.current.id === employee.id ? lastSavedRateRef.current.rate : '';
+      rateDirtyRef.current = false;
+      if (saved) setRatePerHour(saved);
+      if (String(rate || '').trim()) toast.error('Enter an hourly rate above 0');
+      return;
+    }
+    void saveEmployeeRate(employee, next);
+  };
+
   const handleExitEditMode = () => {
     if (!selectedEmployee) return;
+    const rate = preferHourlyRate(ratePerHour, '');
+    if (rate) void saveEmployeeRate(selectedEmployee, rate, { includeWeek: false, quiet: true });
     const cleanedManual = sanitizeManualByDay(manualByDay, workHours);
     const payload = sheetPayload(
       workHours,
@@ -1563,10 +1805,36 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
             <TextField
               label="Rate per hour ($)"
               value={ratePerHour}
-              onChange={(e) => canEdit && setRatePerHour(e.target.value.replace(/[^\d.]/g, ''))}
-              disabled={!canEdit}
+              onFocus={() => {
+                rateFieldFocusedRef.current = true;
+              }}
+              onChange={(e) => {
+                if (!canOpenEditor || !selectedEmployee) return;
+                const next = cleanRateDraft(e.target.value);
+                rateDirtyRef.current = true;
+                setRateSaveState('idle');
+                setRatePerHour(next);
+                scheduleEmployeeRateSave(selectedEmployee, next);
+              }}
+              onBlur={() => {
+                rateFieldFocusedRef.current = false;
+                if (!canOpenEditor || !selectedEmployee) return;
+                flushEmployeeRateSave(selectedEmployee, ratePerHourRef.current);
+              }}
+              disabled={!canOpenEditor}
+              helperText={
+                !canOpenEditor
+                  ? 'Shown for this employee'
+                  : rateSaveState === 'saving'
+                    ? 'Saving…'
+                    : rateSaveState === 'error'
+                      ? 'Not saved — try again'
+                      : rateSaveState === 'saved'
+                        ? 'Saved on this employee'
+                        : 'Saves on this employee'
+              }
               inputProps={{ inputMode: 'decimal' }}
-              sx={{ flex: '0 1 160px', minWidth: 140 }}
+              sx={{ flex: '0 1 200px', minWidth: 160 }}
             />
 
             <FormControl sx={{ flex: '1 1 240px', minWidth: 200 }}>

@@ -1,5 +1,5 @@
 import { getPayPeriodForDate } from './payPeriod';
-import { buildTimesheetRowsFromScans, defaultShiftProfile } from './rfidTimesheetScans';
+import { buildTimesheetRowsFromScans, defaultShiftProfile, preferHourlyRate } from './rfidTimesheetScans';
 
 const ryan = { id: 'ryan', name: 'Ryan', uids: ['u1'], pins: [] };
 
@@ -40,5 +40,16 @@ describe('manual payroll edits', () => {
     const monday = rows.find((row) => row.day === 'Monday');
     expect(monday?.in).toBe('0');
     expect(monday?.out).toBe('0');
+  });
+});
+
+describe('hourly rate', () => {
+  it('keeps a week rate and falls back to the employee rate when the week is blank or zero', () => {
+    expect(preferHourlyRate('22', '30')).toBe('22');
+    expect(preferHourlyRate('', '22.50')).toBe('22.50');
+    expect(preferHourlyRate('0', '22')).toBe('22');
+    expect(preferHourlyRate('0.00', '')).toBe('');
+    expect(preferHourlyRate('  ', '18')).toBe('18');
+    expect(preferHourlyRate('22.', '')).toBe('22');
   });
 });

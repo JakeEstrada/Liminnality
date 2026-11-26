@@ -71,6 +71,22 @@ export function defaultShiftProfile(): RfidEmployeeShiftProfile {
   };
 }
 
+/** A blank or zero rate is unset. A week rate wins; otherwise use the employee rate. */
+export function preferHourlyRate(weekRate?: string | null, profileRate?: string | null): string {
+  const week = positiveHourlyRate(weekRate);
+  if (week) return week;
+  return positiveHourlyRate(profileRate);
+}
+
+function positiveHourlyRate(value?: string | null): string {
+  let raw = String(value ?? '').trim();
+  if (raw.endsWith('.')) raw = raw.slice(0, -1);
+  if (!raw) return '';
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  return raw;
+}
+
 export function normalizeEmployeeKey(name: string): string {
   return String(name || '')
     .trim()

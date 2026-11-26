@@ -17,6 +17,7 @@ const {
 } = require('../services/eventBus');
 const { getTenantContext, runWithTenantContext } = require('../middleware/tenantContext');
 const { computeWeekTotalHours, sanitizeManualByDay } = require('../services/rfidWeekHours');
+const { shouldStoreHourlyRate } = require('../utils/hourlyRate');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -593,18 +594,20 @@ async function upsertEmployeeProfile(req, res) {
       Math.max(0, Number(req.body?.breakMinutes ?? 30) || 0),
     );
     const ratePerHour = String(req.body?.ratePerHour ?? '').trim();
+    const profileUpdate = {
+      employeeKey,
+      displayName,
+      shiftIn,
+      shiftOut,
+      breakMinutes,
+    };
+    // A blank rate is the form's empty state. Leave a rate already saved on the employee.
+    if (shouldStoreHourlyRate(ratePerHour)) profileUpdate.ratePerHour = ratePerHour;
 
     const profile = await RfidEmployeeProfile.findOneAndUpdate(
       { employeeKey },
-      {
-        employeeKey,
-        displayName,
-        shiftIn,
-        shiftOut,
-        breakMinutes,
-        ratePerHour,
-      },
-      { upsert: true, new: true, runValidators: true },
+      profileUpdate,
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
     );
 
     const io = req.app.get('io');
@@ -674,20 +677,22 @@ async function upsertTimesheetWeek(req, res) {
       req.body?.manualByDay && typeof req.body.manualByDay === 'object' ? req.body.manualByDay : {},
       workHours,
     );
+    const timesheetUpdate = {
+      employeeKey,
+      periodId,
+      workHours,
+      receipts,
+      additionalHours,
+      travelMiles,
+      manualByDay,
+    };
+    // Hours saves and the scan heal often send a blank rate. Keep the rate already on this week.
+    if (shouldStoreHourlyRate(ratePerHour)) timesheetUpdate.ratePerHour = ratePerHour;
 
     const timesheet = await RfidTimesheetWeek.findOneAndUpdate(
       { employeeKey, periodId },
-      {
-        employeeKey,
-        periodId,
-        workHours,
-        receipts,
-        additionalHours,
-        travelMiles,
-        ratePerHour,
-        manualByDay,
-      },
-      { upsert: true, new: true, runValidators: true },
+      timesheetUpdate,
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
     );
 
     const io = req.app.get('io');
