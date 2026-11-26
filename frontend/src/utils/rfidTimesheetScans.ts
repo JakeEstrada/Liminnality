@@ -38,6 +38,18 @@ export type RfidEmployeeIdentity = {
   pins: string[];
 };
 
+export type RfidRosterProfile = {
+  employeeKey?: string;
+  displayName?: string;
+  /** false hides the person from payroll and keeps their tag, PIN, and phone. */
+  onRoster?: boolean;
+};
+
+export type RosterDirectoryRow = RfidEmployeeIdentity & {
+  onPayroll: boolean;
+  phones: string[];
+};
+
 export type RfidEmployeeShiftProfile = {
   shiftIn: string;
   shiftOut: string;
@@ -94,11 +106,13 @@ export function normalizeEmployeeKey(name: string): string {
     .replace(/\s+/g, ' ');
 }
 
-export function mergeRfidRegistries(
+const ROSTER_HEADER_NAMES = new Set(['name', 'employee', 'employee name', 'display name', 'roster']);
+
+function collectRegistry(
   tags: Array<{ _id: string; uid: string; displayName: string }>,
   pins: Array<{ _id: string; pin: string; displayName: string }>,
-  phones: Array<{ _id: string; phone?: string; phoneDigits?: string; displayName: string }> = [],
-): RfidEmployeeIdentity[] {
+  phones: Array<{ _id: string; phone?: string; phoneDigits?: string; displayName: string }>,
+): Map<string, RfidEmployeeIdentity> {
   const byKey = new Map<string, RfidEmployeeIdentity>();
 
   const take = (nameRaw: string) => {
@@ -130,7 +144,145 @@ export function mergeRfidRegistries(
     if (row && uid && !row.uids.includes(uid)) row.uids.push(uid);
   }
 
+  return byKey;
+}
+
+function rosterKey(profile: RfidRosterProfile): string {
+  return normalizeEmployeeKey(profile.employeeKey || profile.displayName || '');
+}
+
+function applyRoster(byKey: Map<string, RfidEmployeeIdentity>, roster: RfidRosterProfile[]) {
+  const hidden = new Set<string>();
+  for (const profile of roster) {
+    const key = rosterKey(profile);
+    if (!key) continue;
+    if (profile.onRoster === false) {
+      hidden.add(key);
+      continue;
+    }
+    if (profile.onRoster === true && !byKey.has(key)) {
+      const name = String(profile.displayName || profile.employeeKey || '').trim();
+      if (name) byKey.set(key, { id: key, name, uids: [], pins: [] });
+    }
+  }
+  for (const key of hidden) byKey.delete(key);
+  return hidden;
+}
+
+export function mergeRfidRegistries(
+  tags: Array<{ _id: string; uid: string; displayName: string }>,
+  pins: Array<{ _id: string; pin: string; displayName: string }>,
+  phones: Array<{ _id: string; phone?: string; phoneDigits?: string; displayName: string }> = [],
+  roster: RfidRosterProfile[] = [],
+): RfidEmployeeIdentity[] {
+  const byKey = collectRegistry(tags, pins, phones);
+  applyRoster(byKey, roster);
   return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Everyone with a saved name or number, including people taken off payroll. */
+export function listRosterDirectory(
+  tags: Array<{ _id: string; uid: string; displayName: string }>,
+  pins: Array<{ _id: string; pin: string; displayName: string }>,
+  phones: Array<{ _id: string; phone?: string; phoneDigits?: string; displayName: string }> = [],
+  roster: RfidRosterProfile[] = [],
+): RosterDirectoryRow[] {
+  const byKey = collectRegistry(tags, pins, phones);
+  const hidden = new Set<string>();
+  const explicitOn = new Set<string>();
+  for (const profile of roster) {
+    const key = rosterKey(profile);
+    if (!key) continue;
+    if (profile.onRoster === false) hidden.add(key);
+    if (profile.onRoster === true) explicitOn.add(key);
+    if (!byKey.has(key)) {
+      const name = String(profile.displayName || profile.employeeKey || '').trim();
+      if (name) byKey.set(key, { id: key, name, uids: [], pins: [] });
+    }
+  }
+
+  const phonesByKey = new Map<string, string[]>();
+  for (const phoneEntry of phones) {
+    const key = normalizeEmployeeKey(phoneEntry.displayName);
+    const label = String(phoneEntry.phone || phoneEntry.phoneDigits || '').trim();
+    if (!key || !label) continue;
+    const list = phonesByKey.get(key) || [];
+    if (!list.includes(label)) list.push(label);
+    phonesByKey.set(key, list);
+  }
+
+  return Array.from(byKey.values())
+    .map((person) => {
+      const phonesForPerson = phonesByKey.get(person.id) || [];
+      const tagUids = person.uids.filter((uid) => !uid.startsWith('SMS-'));
+      const hasSavedNumber = tagUids.length > 0 || person.pins.length > 0 || phonesForPerson.length > 0;
+      return {
+        ...person,
+        uids: tagUids,
+        onPayroll: !hidden.has(person.id) && (hasSavedNumber || explicitOn.has(person.id)),
+        phones: phonesForPerson,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function splitRosterLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (!quoted && (ch === ',' || ch === '\t')) {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+/** Names from a pasted list or a CSV/text file. Extra columns are ignored. */
+export function parseRosterNames(text: string): string[] {
+  const lines = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const firstCells = splitRosterLine(lines[0]);
+  const headerIndex = firstCells.findIndex((cell) => ROSTER_HEADER_NAMES.has(cell.toLowerCase()));
+  const body = headerIndex >= 0 ? lines.slice(1) : lines;
+  const column = headerIndex >= 0 ? headerIndex : 0;
+  const rawNames =
+    body.length === 1 && headerIndex < 0 && splitRosterLine(body[0]).length > 1
+      ? splitRosterLine(body[0])
+      : body.map((line) => {
+          const cells = splitRosterLine(line);
+          return cells[column] || cells[0] || '';
+        });
+
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of rawNames) {
+    const name = String(raw || '').trim().replace(/\s+/g, ' ');
+    const key = normalizeEmployeeKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
 }
 
 /** Felix (or other preferred keys) first, then alphabetical. */

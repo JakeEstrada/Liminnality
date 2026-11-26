@@ -38,6 +38,11 @@ const rfidEmployeeProfileSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    /** false keeps the person off payroll without deleting tag, PIN, or phone numbers. */
+    onRoster: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true },
 );

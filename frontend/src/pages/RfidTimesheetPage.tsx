@@ -47,6 +47,7 @@ import {
 } from '@mui/icons-material';
 import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { Link as RouterLink } from 'react-router-dom';
 import api from '../utils/axios';
 import BrandLogo from '../components/common/BrandLogo';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +61,7 @@ import {
   sanitizeManualByDay,
   minutesToTimeInput,
   mergeRfidRegistries,
+  normalizeEmployeeKey,
   payPeriodScanRangeIso,
   preferHourlyRate,
   profileMapFromApi,
@@ -461,6 +463,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   const employeeProfilesRef = useRef(employeeProfiles);
   const ratePerHourRef = useRef(ratePerHour);
   const selectedEmployeeRef = useRef(selectedEmployee);
+  const employeesRef = useRef(employees);
   const payPeriodRef = useRef(payPeriod);
   const receiptsRef = useRef(receipts);
   const travelMilesRef = useRef(travelMiles);
@@ -481,6 +484,7 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
   employeeProfilesRef.current = employeeProfiles;
   ratePerHourRef.current = ratePerHour;
   selectedEmployeeRef.current = selectedEmployee;
+  employeesRef.current = employees;
   payPeriodRef.current = payPeriod;
   receiptsRef.current = receipts;
   travelMilesRef.current = travelMiles;
@@ -543,6 +547,8 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
         api.get<{
           profiles: Array<{
             employeeKey: string;
+            displayName?: string;
+            onRoster?: boolean;
             shiftIn?: string;
             shiftOut?: string;
             breakMinutes?: number;
@@ -551,7 +557,12 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
         }>('/rfid/employee-profiles'),
       ]);
       const options = sortEmployeesForTimesheet(
-        mergeRfidRegistries(tagsRes.data?.tags || [], pinsRes.data?.pins || [], phonesRes.data?.phones || []),
+        mergeRfidRegistries(
+          tagsRes.data?.tags || [],
+          pinsRes.data?.pins || [],
+          phonesRes.data?.phones || [],
+          profilesRes.data?.profiles || [],
+        ),
       );
       setEmployees(options);
       setEmployeeProfiles(profileMapFromApi(profilesRes.data?.profiles || []));
@@ -1082,6 +1093,8 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
       const data = payload as {
         employeeKey?: string;
         profile?: {
+          displayName?: string;
+          onRoster?: boolean;
           shiftIn?: string;
           shiftOut?: string;
           breakMinutes?: number;
@@ -1089,7 +1102,24 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
         };
       };
       if (!data.employeeKey || !data.profile) return;
-      const key = data.employeeKey;
+      const key = normalizeEmployeeKey(data.employeeKey);
+      if (!key) return;
+      if (data.profile.onRoster === false) {
+        const next = employeesRef.current.filter((employee) => employee.id !== key);
+        setEmployees(sortEmployeesForTimesheet(next));
+        if (selectedEmployeeRef.current?.id === key) {
+          const fallback = next[0] || null;
+          setSelectedEmployee(fallback);
+          if (fallback?.id) saveLastEmployeeId(fallback.id);
+        }
+        return;
+      }
+      if (data.profile.onRoster === true && !employeesRef.current.some((employee) => employee.id === key)) {
+        const name = String(data.profile.displayName || data.employeeKey).trim();
+        setEmployees((prev) =>
+          sortEmployeesForTimesheet([...prev, { id: key, name, uids: [], pins: [] }]),
+        );
+      }
       const profile: RfidEmployeeShiftProfile = {
         shiftIn: data.profile.shiftIn || defaultShiftProfile().shiftIn,
         shiftOut: data.profile.shiftOut || defaultShiftProfile().shiftOut,
@@ -1773,8 +1803,9 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
               alignItems: { xs: 'stretch', md: 'flex-end' },
             }}
           >
+            <Box sx={{ flex: '1 1 260px', minWidth: 220 }}>
             <Autocomplete
-              sx={{ flex: '1 1 260px', minWidth: 220 }}
+              sx={{ width: '100%' }}
               options={employees}
               value={selectedEmployee}
               loading={loadingEmployees}
@@ -1801,6 +1832,10 @@ function RfidTimesheetPage({ hidePageTitle = false }: { hidePageTitle?: boolean 
                 />
               )}
             />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                <RouterLink to="/rfid">Add or remove employees</RouterLink>
+              </Typography>
+            </Box>
 
             <TextField
               label="Rate per hour ($)"

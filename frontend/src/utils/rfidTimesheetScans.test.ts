@@ -1,5 +1,12 @@
 import { getPayPeriodForDate } from './payPeriod';
-import { buildTimesheetRowsFromScans, defaultShiftProfile, preferHourlyRate } from './rfidTimesheetScans';
+import {
+  buildTimesheetRowsFromScans,
+  defaultShiftProfile,
+  listRosterDirectory,
+  mergeRfidRegistries,
+  parseRosterNames,
+  preferHourlyRate,
+} from './rfidTimesheetScans';
 
 const ryan = { id: 'ryan', name: 'Ryan', uids: ['u1'], pins: [] };
 
@@ -40,6 +47,39 @@ describe('manual payroll edits', () => {
     const monday = rows.find((row) => row.day === 'Monday');
     expect(monday?.in).toBe('0');
     expect(monday?.out).toBe('0');
+  });
+});
+
+describe('payroll roster', () => {
+  const blaineTag = [{ _id: '1', uid: '51-71-34-152-206', displayName: 'Blaine' }];
+
+  it('keeps a saved tag number when someone is taken off payroll', () => {
+    const roster = [{ employeeKey: 'blaine', displayName: 'Blaine', onRoster: false }];
+    expect(mergeRfidRegistries(blaineTag, [], [], roster)).toEqual([]);
+    expect(listRosterDirectory(blaineTag, [], [], roster)).toEqual([
+      expect.objectContaining({
+        id: 'blaine',
+        name: 'Blaine',
+        onPayroll: false,
+        uids: ['51-71-34-152-206'],
+      }),
+    ]);
+  });
+
+  it('adds a name to payroll before a tag is registered', () => {
+    const people = mergeRfidRegistries(
+      [],
+      [],
+      [],
+      [{ employeeKey: 'carlos', displayName: 'Carlos', onRoster: true }],
+    );
+    expect(people).toEqual([{ id: 'carlos', name: 'Carlos', uids: [], pins: [] }]);
+  });
+
+  it('reads names from a list or a name column and skips duplicates', () => {
+    expect(parseRosterNames('Ryan\nBlaine\nryan\n')).toEqual(['Ryan', 'Blaine']);
+    expect(parseRosterNames('Name,Phone\nShawn,(714) 555-0100\n')).toEqual(['Shawn']);
+    expect(parseRosterNames('Felix, Daniel, Jake')).toEqual(['Felix', 'Daniel', 'Jake']);
   });
 });
 

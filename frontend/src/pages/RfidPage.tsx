@@ -26,6 +26,7 @@ import { DeleteOutline as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
 import api from '../utils/axios';
+import { listRosterDirectory, parseRosterNames, type RosterDirectoryRow } from '../utils/rfidTimesheetScans';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { useSocketConnectionStatus, useSocketSubscription } from '../hooks/useSocketSubscription';
@@ -53,6 +54,12 @@ interface RfidPhoneRow {
   notes?: string;
 }
 
+interface RosterProfile {
+  employeeKey: string;
+  displayName?: string;
+  onRoster?: boolean;
+}
+
 interface RfidScanRow {
   _id: string;
   uid: string;
@@ -76,6 +83,10 @@ function RfidPage() {
   const { tenantIdForBranding } = useAuth();
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<RfidTagRow[]>([]);
+  const [profiles, setProfiles] = useState<RosterProfile[]>([]);
+  const [rosterName, setRosterName] = useState('');
+  const [savingRoster, setSavingRoster] = useState(false);
+  const rosterFileRef = useRef<HTMLInputElement>(null);
   const [pins, setPins] = useState<RfidPinRow[]>([]);
   const [phones, setPhones] = useState<RfidPhoneRow[]>([]);
   const [scans, setScans] = useState<RfidScanRow[]>([]);
@@ -97,13 +108,15 @@ function RfidPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tagsRes, pinsRes, phonesRes, scansRes] = await Promise.all([
+      const [tagsRes, pinsRes, phonesRes, scansRes, profilesRes] = await Promise.all([
         api.get<{ tags: RfidTagRow[] }>('/rfid/tags'),
         api.get<{ pins: RfidPinRow[] }>('/rfid/pins'),
         api.get<{ phones: RfidPhoneRow[] }>('/rfid/phones'),
         api.get<{ scans: RfidScanRow[] }>('/rfid/scans', { params: { limit: SCAN_LIST_LIMIT } }),
+        api.get<{ profiles: RosterProfile[] }>('/rfid/employee-profiles'),
       ]);
       setTags(tagsRes.data.tags || []);
+      setProfiles(profilesRes.data.profiles || []);
       setPins(pinsRes.data.pins || []);
       setPhones(phonesRes.data.phones || []);
       setScans(scansRes.data.scans || []);
@@ -238,6 +251,71 @@ function RfidPage() {
 
   const liveColor = tenantRoom && socketConnected ? 'success.main' : 'warning.main';
 
+  const roster = useMemo(
+    () =>
+      listRosterDirectory(tags, pins, phones, profiles).sort((a, b) => {
+        if (a.onPayroll !== b.onPayroll) return a.onPayroll ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      }),
+    [tags, pins, phones, profiles],
+  );
+
+  const addRosterNames = async (names: string[]) => {
+    const cleaned = parseRosterNames(names.join('\n'));
+    if (cleaned.length === 0) {
+      toast.error('Add at least one employee name');
+      return;
+    }
+    setSavingRoster(true);
+    try {
+      const res = await api.post<{ count: number }>('/rfid/roster', { names: cleaned });
+      const count = res.data?.count || cleaned.length;
+      toast.success(count === 1 ? `${cleaned[0]} is on payroll` : `Added ${count} names to payroll`);
+      setRosterName('');
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Could not add employees' : 'Could not add employees');
+    } finally {
+      setSavingRoster(false);
+    }
+  };
+
+  const handleRosterFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const names = parseRosterNames(await file.text());
+      if (names.length === 0) {
+        toast.error('That file has no employee names');
+        return;
+      }
+      await addRosterNames(names);
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not read that file');
+    }
+  };
+
+  const setRosterMembership = async (row: RosterDirectoryRow, onRoster: boolean) => {
+    if (!onRoster && !window.confirm(`Remove ${row.name} from payroll? Their tag, PIN, and phone stay saved.`)) {
+      return;
+    }
+    setSavingRoster(true);
+    try {
+      await api.put(`/rfid/employee-profiles/${encodeURIComponent(row.id)}`, {
+        displayName: row.name,
+        onRoster,
+      });
+      toast.success(onRoster ? `${row.name} is on payroll` : `${row.name} is off payroll`);
+      await load();
+    } catch (error) {
+      toast.error(isAxiosError(error) ? error.response?.data?.error || 'Could not update payroll' : 'Could not update payroll');
+    } finally {
+      setSavingRoster(false);
+    }
+  };
+
   const handleSaveTag = async () => {
     const uid = tagUid.trim();
     const displayName = tagName.trim();
@@ -368,6 +446,124 @@ function RfidPage() {
         the shop line <strong>in</strong>, <strong>out</strong>, a period, or a blank/space. Anything else
         stays a normal text and is not a punch.
       </Alert>
+
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+            Payroll roster
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            These names are the employee list on payroll. Add a name, or upload a text or CSV file with one
+            name per line. A column named Name works too. Tag, PIN, and phone numbers already saved for that
+            name stay attached. Uploading adds people and does not remove anyone.
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start', mb: 2 }}>
+            <TextField
+              label="Employee name"
+              size="small"
+              value={rosterName}
+              onChange={(e) => setRosterName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void addRosterNames([rosterName]);
+                }
+              }}
+              placeholder="Carlos"
+              sx={{ minWidth: 180 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() => void addRosterNames([rosterName])}
+              disabled={savingRoster}
+            >
+              {savingRoster ? <CircularProgress size={22} /> : 'Add to payroll'}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => rosterFileRef.current?.click()}
+              disabled={savingRoster}
+            >
+              Upload names
+            </Button>
+            <input
+              ref={rosterFileRef}
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              hidden
+              onChange={(e) => void handleRosterFile(e)}
+            />
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Saved numbers</TableCell>
+                <TableCell>Payroll</TableCell>
+                <TableCell width={160} />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading && roster.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Loading employees…
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : roster.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      No employees yet. Add a name or upload a list.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                roster.map((row) => {
+                  const numbers = [
+                    ...row.uids.map((uid) => `Tag ${uid}`),
+                    ...row.pins.map((pin) => `PIN ${pin}`),
+                    ...row.phones.map((phone) => formatClockPhone(phone)),
+                  ];
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {numbers.length > 0 ? numbers.join(' · ') : 'No tag, PIN, or phone yet'}
+                      </TableCell>
+                      <TableCell>{row.onPayroll ? 'On payroll' : 'Off payroll'}</TableCell>
+                      <TableCell>
+                        {row.onPayroll ? (
+                          <Button
+                            size="small"
+                            color="inherit"
+                            onClick={() => void setRosterMembership(row, false)}
+                            disabled={savingRoster}
+                            aria-label={`Remove ${row.name} from payroll`}
+                          >
+                            Remove
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            onClick={() => void setRosterMembership(row, true)}
+                            disabled={savingRoster}
+                            aria-label={`Add ${row.name} to payroll`}
+                          >
+                            Add back
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>

@@ -15,6 +15,7 @@ const {
   deletePhone,
   listEmployeeProfiles,
   upsertEmployeeProfile,
+  addRosterEmployees,
   getKioskWeekSummary,
   getTimesheetWeek,
   upsertTimesheetWeek,
@@ -41,6 +42,7 @@ router.delete('/tags/:id', deleteTag);
 router.delete('/pins/:id', deletePin);
 router.delete('/phones/:id', deletePhone);
 router.get('/employee-profiles', listEmployeeProfiles);
+router.post('/roster', addRosterEmployees);
 router.put('/employee-profiles/:employeeKey', upsertEmployeeProfile);
 router.get('/timesheets/:employeeKey/:periodId', getTimesheetWeek);
 router.put('/timesheets/:employeeKey/:periodId', upsertTimesheetWeek);

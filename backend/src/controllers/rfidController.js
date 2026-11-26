@@ -75,6 +75,14 @@ function normalizeTimeToken(raw, fallback = '0') {
   return digits.slice(0, 4);
 }
 
+function bodyHas(body, key) {
+  return body != null && Object.prototype.hasOwnProperty.call(body, key) && body[key] != null && String(body[key]).trim() !== '';
+}
+
+function cleanRosterName(raw) {
+  return String(raw || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
 async function recordScan(req, res) {
   try {
     const pin = normalizePin(req.body?.pin);
@@ -597,10 +605,12 @@ async function upsertEmployeeProfile(req, res) {
     const profileUpdate = {
       employeeKey,
       displayName,
-      shiftIn,
-      shiftOut,
-      breakMinutes,
     };
+    // Roster add/remove sends the name only. Leave a shift and rate that are already saved.
+    if (bodyHas(req.body, 'shiftIn')) profileUpdate.shiftIn = shiftIn;
+    if (bodyHas(req.body, 'shiftOut')) profileUpdate.shiftOut = shiftOut;
+    if (bodyHas(req.body, 'breakMinutes')) profileUpdate.breakMinutes = breakMinutes;
+    if (typeof req.body?.onRoster === 'boolean') profileUpdate.onRoster = req.body.onRoster;
     // A blank rate is the form's empty state. Leave a rate already saved on the employee.
     if (shouldStoreHourlyRate(ratePerHour)) profileUpdate.ratePerHour = ratePerHour;
 
@@ -617,6 +627,49 @@ async function upsertEmployeeProfile(req, res) {
     });
 
     return res.json({ profile: profileDoc });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function addRosterEmployees(req, res) {
+  try {
+    const incoming = Array.isArray(req.body?.names) ? req.body.names : [];
+    const names = [];
+    const seen = new Set();
+    for (const raw of incoming) {
+      const name = cleanRosterName(raw);
+      const key = normalizeEmployeeKey(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      names.push({ key, name });
+      if (names.length >= 200) break;
+    }
+    if (names.length === 0) {
+      return res.status(400).json({ error: 'Add at least one employee name' });
+    }
+
+    const io = req.app.get('io');
+    const profiles = [];
+    for (const { key, name } of names) {
+      const existing = await RfidEmployeeProfile.findOne({ employeeKey: key }).lean();
+      const profile = await RfidEmployeeProfile.findOneAndUpdate(
+        { employeeKey: key },
+        {
+          employeeKey: key,
+          displayName: existing?.displayName || name,
+          onRoster: true,
+        },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
+      );
+      const profileDoc = profile.toObject ? profile.toObject() : profile;
+      publishRfidEmployeeProfileUpdated(io, profileDoc, {
+        sourceSocketId: req.headers['x-socket-id'] || null,
+      });
+      profiles.push(profileDoc);
+    }
+
+    return res.json({ profiles, count: profiles.length });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -723,6 +776,7 @@ module.exports = {
   findActivePhoneByFrom,
   listEmployeeProfiles,
   upsertEmployeeProfile,
+  addRosterEmployees,
   getKioskWeekSummary,
   getTimesheetWeek,
   upsertTimesheetWeek,
