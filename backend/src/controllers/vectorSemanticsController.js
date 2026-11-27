@@ -11,12 +11,15 @@ const {
   describeLine,
   buildVectorDetail,
   answerVectorQuestion,
+  rankJobPopularity,
+  describePopularity,
 } = require('../utils/vectorSemantics');
 const { exactTokens, searchStems, textHasStems, textHasExactTokens, rankExactMatches, recencyYmd } = require('../utils/jobMemoryQuery');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const CACHE_MS = 10 * 60 * 1000;
 const lineCache = new Map();
+const popularityCache = new Map();
 
 function embeddingModel() {
   return (process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small').trim() || 'text-embedding-3-small';
@@ -49,6 +52,60 @@ async function loadJobLabels(ids) {
     jobTitle: job.title || 'Untitled',
     customerName: job.customerId?.name || null,
   }]));
+}
+
+function rankedPopularity(tenantId, lines) {
+  const key = String(tenantId || '');
+  const hit = popularityCache.get(key);
+  if (hit && hit.lines === lines) return hit.ranked;
+  const ranked = rankJobPopularity(lines);
+  popularityCache.set(key, { lines, ranked });
+  return ranked;
+}
+
+function speakablePopularity(report, side) {
+  const picked = side === 'most' || side === 'least' ? side : 'both';
+  const say = picked === 'least'
+    ? report.least.say
+    : picked === 'most'
+      ? report.most.say
+      : [report.most.say, report.least.say].filter(Boolean).join(' ');
+  const jobName = (job) => ({
+    customerName: job.customerName,
+    jobTitle: job.jobTitle,
+    closeJobs: job.neighborCount,
+  });
+  return {
+    jobCount: report.jobCount,
+    say,
+    hint: 'Higher density is more popular: more jobs point the same way. Speak the say line. Name customers, not job ids. A score is how near the nearest other job points, and only say a score if they ask how close.',
+    most: picked === 'least' ? undefined : {
+      count: report.most.count,
+      shared: report.most.shared,
+      say: report.most.say,
+      jobs: (report.most.jobs || []).slice(0, 8).map(jobName),
+    },
+    least: picked === 'most' ? undefined : {
+      say: report.least.say,
+      jobs: (report.least.jobs || []).map((job) => ({
+        customerName: job.customerName,
+        jobTitle: job.jobTitle,
+        nearest: job.nearestTitle,
+        score: job.score,
+      })),
+    },
+  };
+}
+
+async function readJobPopularity(tenantId, side) {
+  const lines = await loadLines(tenantId);
+  const ranked = rankedPopularity(tenantId, lines);
+  const ids = [
+    ...(ranked.mostJobIds || []),
+    ...(ranked.least || []).flatMap((job) => [job.jobId, job.nearestJobId]),
+  ];
+  const labels = await loadJobLabels(ids);
+  return speakablePopularity(describePopularity(ranked, labels), side);
 }
 
 function sanitizeHistory(messages) {
@@ -180,6 +237,7 @@ async function getVectorSemantics(req, res) {
     const example = exampleRow ? describeExample(exampleRow, labels) : null;
     const neighbors = neighborHits.map((hit) => describeLine(hit.row, labels, hit.score));
     const sameJob = sameHits.map((hit) => describeLine(hit.row, labels, hit.score));
+    const popularity = describePopularity(rankedPopularity(req.user?.tenantId, lines), labels);
     return res.json({
       empty: !example,
       model,
@@ -190,6 +248,7 @@ async function getVectorSemantics(req, res) {
       example,
       neighbors,
       sameJob,
+      popularity,
       detail: example
         ? buildVectorDetail(example, neighbors, sameJob, { model, storedLines: lines.length })
         : [termSearch
@@ -241,4 +300,5 @@ async function askVectorSemantics(req, res) {
 module.exports = {
   getVectorSemantics,
   askVectorSemantics,
+  readJobPopularity,
 };

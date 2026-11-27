@@ -3,6 +3,7 @@ const { ROUTES_MARKDOWN, sanitizeNavigatePath } = require('../services/assistant
 const { resolveJobId } = require('../utils/resolveJobId');
 const { shopWeekLabel } = require('../utils/jobMemoryQuery');
 const { isGreeting, greetingReply } = require('../utils/assistantTurn');
+const { readJobPopularity } = require('./vectorSemanticsController');
 const {
   fetchRecentPayments,
   fetchRecentDeposits,
@@ -77,7 +78,7 @@ const TOOLS = [
     function: {
       name: 'search_job_notes',
       description:
-        'Search stored job notes, tasks, and scraped worksheet text. Use for "which jobs needed glass rail", "what did we order last week", "most recent 7084 jobs", "4.25 inch newel posts", or "upcoming jobs that use 6084 and a four and a quarter post". Pass the question in everyday words and keep part numbers and sizes exactly. Set scope to upcoming for "upcoming" or "right now": that is contract out through ready to schedule, still active. Set scope to archived when they ask about archived jobs. A part number or size matches exactly. Do not pass since or until for "most recent". When they name a shop week, pass since and until as YYYY-MM-DD. Stage-change lines are left out. An order question returns only lines that mention an order. Answer from the say lines. Do not read job ids, stage codes, or dates.',
+        'Search stored job notes, tasks, and scraped worksheet text. Use for "which jobs needed glass rail", "what did we order last week", "most recent 7084 jobs", "4.25 inch newel posts", or "upcoming jobs that use 6084 and a four and a quarter post". Do not use this for most popular, least popular, or unusual jobs. Pass the question in everyday words and keep part numbers and sizes exactly. Set scope to upcoming for "upcoming" or "right now": that is contract out through ready to schedule, still active. Set scope to archived when they ask about archived jobs. A part number or size matches exactly. Do not pass since or until for "most recent". When they name a shop week, pass since and until as YYYY-MM-DD. Stage-change lines are left out. An order question returns only lines that mention an order. Answer from the say lines. Do not read job ids, stage codes, or dates.',
       parameters: {
         type: 'object',
         properties: {
@@ -99,6 +100,24 @@ const TOOLS = [
             type: 'string',
             enum: ['all', 'upcoming', 'archived'],
             description: 'upcoming = contract out through ready to schedule, still active. archived = archived jobs only. all = every standing.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'describe_job_popularity',
+      description:
+        'Which kinds of jobs are common and which are unusual, from how tightly the stored vectors sit together. Use for "most popular jobs", "what do we do most", "least popular", or "what is unusual". A higher density means more jobs point the same way. A job with few close neighbors is least popular. Speak the say line. Do not read job ids.',
+      parameters: {
+        type: 'object',
+        properties: {
+          side: {
+            type: 'string',
+            enum: ['most', 'least', 'both'],
+            description: 'most = the densest group. least = the jobs sitting alone. both = answer both.',
           },
         },
       },
@@ -402,6 +421,7 @@ function buildSystemPrompt(voice = false) {
     'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Speak the say lines: customer and stage in plain words. Do not say job ids, stage codes, or dates. Do not invent jobs that the tool did not return. Stage changes are not orders. If an order search comes back empty, say there were no order notes in that week.',
     'For "most recent 7084 jobs" or "4.25 inch newel posts", call search_job_notes and keep the number exact. Do not pass since or until for most recent. List every match, newest worksheet date first. 4.25 does not include 4.5.',
     'For "upcoming jobs" or "right now", call search_job_notes with scope upcoming and keep the part number and the size. Upcoming is contract out through ready to schedule, still active. Speak the say lines: customer and stage in plain words. Do not say job ids, stage codes, standing, or dates. If totalJobs is 0, say there are no upcoming jobs with that.',
+    'For "most popular jobs", "what do we do most", "least popular", or "what is unusual", call describe_job_popularity. Most popular is the densest group of vectors, the kind of work that shows up again and again. Least popular is the jobs with the fewest close neighbors. Speak the say line. Do not say job ids.',
     'For shop words such as solid wood treads, skirting, false treads, or square nose, call search_job_notes and keep those words. The line has to contain them. Skirting matches skirt. Treads matches tread. List every match, newest worksheet date first.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
@@ -744,6 +764,14 @@ async function runAssistantChat(req, res) {
             } else if (fn.name === 'search_job_notes') {
               if (!tenantId) {
                 toolContent = { error: 'No organization context for this account.' };
+              } else if (/\b(?:popular|unusual)\b/i.test(String(args.query || '')) || /\b(?:most|least) common\b/i.test(String(args.query || ''))) {
+                const asked = String(args.query || '');
+                const side = /\bleast\b|\bunusual\b/i.test(asked) && !/\bmost\b/i.test(asked)
+                  ? 'least'
+                  : /\bmost\b/i.test(asked) && !/\bleast\b/i.test(asked)
+                    ? 'most'
+                    : 'both';
+                toolContent = await readJobPopularity(tenantId, side);
               } else {
                 toolContent = await searchJobNotes({
                   query: args.query,
@@ -752,6 +780,12 @@ async function runAssistantChat(req, res) {
                   limit: args.limit,
                   scope: args.scope,
                 });
+              }
+            } else if (fn.name === 'describe_job_popularity') {
+              if (!tenantId) {
+                toolContent = { error: 'No organization context for this account.' };
+              } else {
+                toolContent = await readJobPopularity(tenantId, args.side);
               }
             } else if (fn.name === 'get_job_details') {
               if (!tenantId) {

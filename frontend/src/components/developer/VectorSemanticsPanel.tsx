@@ -48,6 +48,22 @@ type JobRow = {
   noteDate?: string | null;
 };
 
+type PopularJob = {
+  jobId: string;
+  memoryId?: string;
+  jobTitle: string;
+  customerName?: string | null;
+  neighborCount?: number;
+  nearestTitle?: string | null;
+  score?: number | null;
+};
+
+type Popularity = {
+  jobCount?: number;
+  most?: { count?: number; shared?: string[]; say?: string; jobs?: PopularJob[] };
+  least?: { say?: string; jobs?: PopularJob[] };
+};
+
 type VectorPage = {
   empty?: boolean;
   model?: string;
@@ -59,6 +75,7 @@ type VectorPage = {
   neighbors?: Line[];
   sameJob?: Line[];
   detail?: string[];
+  popularity?: Popularity | null;
 };
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
@@ -283,8 +300,66 @@ export default function VectorSemanticsPanel() {
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Every job with a stored vector is in the list. Type words from the worksheet, a part number, or a size. Matching jobs come back newest worksheet date first. Open one to see the numbers for that line.
+        Every job with a stored vector is in the list. The dense group is the kind of work that shows up again and again. A job with few close neighbors is unusual. Type words from the worksheet, a part number, or a size to filter.
       </Typography>
+
+      {page?.popularity?.most?.say ? (
+        <Paper sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Most popular
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            {page.popularity.most.say}
+          </Typography>
+          {page.popularity.most.shared?.length ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {`Shared words: ${page.popularity.most.shared.join(', ')}`}
+            </Typography>
+          ) : null}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+            {(page.popularity.most.jobs || []).map((job) => (
+              <Button
+                key={job.jobId}
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  setMemoryId(job.memoryId || '');
+                  setJobId(job.jobId);
+                }}
+                sx={{ textTransform: 'none' }}
+              >
+                {job.customerName || job.jobTitle}
+              </Button>
+            ))}
+          </Box>
+          {page.popularity.least?.say ? (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Least popular
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                {page.popularity.least.say}
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {(page.popularity.least.jobs || []).map((job) => (
+                  <Button
+                    key={job.jobId}
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setMemoryId(job.memoryId || '');
+                      setJobId(job.jobId);
+                    }}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    {job.customerName || job.jobTitle}
+                  </Button>
+                ))}
+              </Box>
+            </Box>
+          ) : null}
+        </Paper>
+      ) : null}
 
       <TextField
         size="small"

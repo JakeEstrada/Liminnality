@@ -204,6 +204,269 @@ function buildVectorDetail(example, neighbors, sameJob, meta = {}) {
   return paragraphs;
 }
 
+function normalizeVector(embedding) {
+  if (!Array.isArray(embedding) || embedding.length < 2) return null;
+  const values = new Float64Array(embedding.length);
+  let norm = 0;
+  for (let index = 0; index < embedding.length; index += 1) {
+    const number = Number(embedding[index]);
+    const value = Number.isFinite(number) ? number : 0;
+    values[index] = value;
+    norm += value * value;
+  }
+  const scale = Math.sqrt(norm);
+  if (scale === 0) return null;
+  for (let index = 0; index < values.length; index += 1) values[index] /= scale;
+  return values;
+}
+
+function dot(left, right) {
+  let score = 0;
+  for (let index = 0; index < left.length; index += 1) score += left[index] * right[index];
+  return score;
+}
+
+/** One worksheet line per job when there is one. Density is about the job, not every note. */
+function representativePoints(rows) {
+  const byJob = new Map();
+  for (const row of rows || []) {
+    const jobId = String(row?.jobId || '');
+    if (!jobId || !normalizeVector(row?.embedding)) continue;
+    const bucket = byJob.get(jobId);
+    if (bucket) bucket.push(row);
+    else byJob.set(jobId, [row]);
+  }
+  const points = [];
+  for (const [jobId, lines] of byJob) {
+    const sheets = lines.filter((line) => line.kind === 'worksheet');
+    const row = preferLine(sheets.length ? sheets : lines);
+    const vector = normalizeVector(row?.embedding);
+    if (!vector) continue;
+    points.push({
+      jobId,
+      memoryId: String(row._id || ''),
+      text: String(row.text || ''),
+      vector,
+    });
+  }
+  return points;
+}
+
+function scoreMatrix(points) {
+  const size = points.length;
+  const matrix = new Float64Array(size * size);
+  for (let left = 0; left < size; left += 1) {
+    for (let right = left + 1; right < size; right += 1) {
+      const score = dot(points[left].vector, points[right].vector);
+      matrix[left * size + right] = score;
+      matrix[right * size + left] = score;
+    }
+  }
+  return matrix;
+}
+
+function neighborStats(points, matrix, threshold) {
+  const size = points.length;
+  return points.map((point, index) => {
+    let count = 0;
+    let best = 0;
+    let bestIndex = -1;
+    for (let other = 0; other < size; other += 1) {
+      if (other === index) continue;
+      const score = matrix[index * size + other];
+      if (score >= threshold) count += 1;
+      if (score > best) {
+        best = score;
+        bestIndex = other;
+      }
+    }
+    return {
+      index,
+      jobId: point.jobId,
+      memoryId: point.memoryId,
+      count,
+      best,
+      bestIndex,
+    };
+  });
+}
+
+function sharedWords(texts) {
+  const counts = new Map();
+  const docs = (texts || []).filter(Boolean);
+  for (const text of docs) {
+    const stems = new Set(keywordStems(text).filter((stem) => !GENERIC_STEMS.has(stem)));
+    for (const stem of stems) counts.set(stem, (counts.get(stem) || 0) + 1);
+  }
+  const need = Math.max(2, Math.ceil(docs.length * 0.34));
+  return [...counts.entries()]
+    .filter(([, count]) => count >= need)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6)
+    .map(([stem]) => stem);
+}
+
+function densestStat(stats) {
+  return stats.reduce((best, stat) => (
+    stat.count > best.count || (stat.count === best.count && stat.best > best.best) ? stat : best
+  ));
+}
+
+/**
+ * Popular means many jobs point the same way. One vector per job.
+ * The densest group is the most common kind of work. Jobs with few neighbors are unusual.
+ */
+function rankJobPopularity(rows) {
+  const points = representativePoints(rows);
+  if (points.length < 2) {
+    return {
+      jobCount: points.length,
+      threshold: null,
+      mostJobIds: [],
+      shared: [],
+      least: [],
+      closestPair: null,
+    };
+  }
+  const matrix = scoreMatrix(points);
+  const levels = [0.62, 0.55, 0.48];
+  let stats = [];
+  let threshold = levels[levels.length - 1];
+  for (const level of levels) {
+    stats = neighborStats(points, matrix, level);
+    threshold = level;
+    if (densestStat(stats).count >= 2) break;
+  }
+  const seed = densestStat(stats);
+  const size = points.length;
+  const mostJobIds = [];
+  if (seed.count >= 2) {
+    for (const stat of stats) {
+      const score = stat.index === seed.index ? 1 : matrix[seed.index * size + stat.index];
+      if (score >= threshold) mostJobIds.push(stat.jobId);
+    }
+  }
+  const byId = new Map(stats.map((stat) => [stat.jobId, stat]));
+  mostJobIds.sort((a, b) => byId.get(b).count - byId.get(a).count || a.localeCompare(b));
+  const memberSet = new Set(mostJobIds);
+  let leastPool = stats.filter((stat) => !memberSet.has(stat.jobId));
+  if (!leastPool.length) leastPool = stats.filter((stat) => stat.jobId !== seed.jobId);
+  leastPool.sort((a, b) => a.count - b.count || a.best - b.best);
+  const least = leastPool.slice(0, 5).map((stat) => ({
+    jobId: stat.jobId,
+    memoryId: stat.memoryId,
+    neighborCount: stat.count,
+    nearestJobId: stat.bestIndex >= 0 ? points[stat.bestIndex].jobId : '',
+    score: roundScore(stat.best),
+  }));
+  const textById = new Map(points.map((point) => [point.jobId, point.text]));
+  const memoryById = new Map(points.map((point) => [point.jobId, point.memoryId]));
+  let closestPair = null;
+  if (!mostJobIds.length) {
+    let best = 0;
+    let left = 0;
+    let right = 1;
+    for (let i = 0; i < size; i += 1) {
+      for (let j = i + 1; j < size; j += 1) {
+        const score = matrix[i * size + j];
+        if (score > best) {
+          best = score;
+          left = i;
+          right = j;
+        }
+      }
+    }
+    closestPair = {
+      jobIdA: points[left].jobId,
+      jobIdB: points[right].jobId,
+      score: roundScore(best),
+    };
+  }
+  return {
+    jobCount: points.length,
+    threshold,
+    mostJobIds,
+    mostMemoryIds: mostJobIds.map((jobId) => memoryById.get(jobId) || ''),
+    neighborCounts: Object.fromEntries(mostJobIds.map((jobId) => [jobId, byId.get(jobId).count])),
+    shared: sharedWords(mostJobIds.map((jobId) => textById.get(jobId))),
+    least,
+    closestPair,
+  };
+}
+
+function namedJob(labels, jobId) {
+  const label = labels?.get?.(String(jobId));
+  return {
+    jobId: String(jobId || ''),
+    jobTitle: label?.jobTitle || label?.title || 'Untitled',
+    customerName: label?.customerName || null,
+  };
+}
+
+function displayName(job) {
+  return job.customerName || job.jobTitle || 'A job';
+}
+
+function describePopularity(report, labels) {
+  const ranked = report || {};
+  const mostIds = ranked.mostJobIds || [];
+  const mostJobs = mostIds.slice(0, 12).map((jobId, index) => ({
+    ...namedJob(labels, jobId),
+    memoryId: ranked.mostMemoryIds?.[index] || ranked.mostMemoryIds?.[mostIds.indexOf(jobId)] || '',
+    neighborCount: ranked.neighborCounts?.[jobId] || 0,
+  }));
+  const leastJobs = (ranked.least || []).map((job) => {
+    const nearest = namedJob(labels, job.nearestJobId);
+    return {
+      ...namedJob(labels, job.jobId),
+      memoryId: job.memoryId || '',
+      neighborCount: job.neighborCount || 0,
+      nearestTitle: displayName(nearest),
+      score: job.score,
+    };
+  });
+  const shared = ranked.shared || [];
+  const shown = mostJobs.slice(0, 4).map(displayName);
+  const extra = Math.max(0, mostIds.length - shown.length);
+  const nameBit = shown.length
+    ? `${shown.join(', ')}${extra ? `, and ${extra} more` : ''}`
+    : '';
+  let mostSay = 'Not enough jobs have a vector to compare.';
+  if (ranked.jobCount >= 2 && mostIds.length) {
+    const share = shared.length
+      ? `They share ${shared.join(', ')}.`
+      : 'Their lines point the same way.';
+    mostSay = `${mostIds.length} jobs sit in the densest group. ${share}${nameBit ? ` ${nameBit}.` : ''}`;
+  } else if (ranked.closestPair) {
+    const pair = ranked.closestPair;
+    const left = displayName(namedJob(labels, pair.jobIdA));
+    const right = displayName(namedJob(labels, pair.jobIdB));
+    mostSay = `No group of jobs sits together. The closest two are ${left} and ${right} at ${Number(pair.score).toFixed(2)}.`;
+  } else if (ranked.jobCount >= 2) {
+    mostSay = 'No group of jobs sits together.';
+  }
+  const leastBits = leastJobs.map((job) => (
+    `${displayName(job)}, nearest job ${job.nearestTitle} at ${Number(job.score).toFixed(2)}`
+  ));
+  const leastSay = leastBits.length
+    ? `The least crowded ${leastBits.length === 1 ? 'job is' : 'jobs are'} ${leastBits.join('. ')}.`
+    : '';
+  return {
+    jobCount: ranked.jobCount || 0,
+    threshold: ranked.threshold,
+    most: {
+      count: mostIds.length,
+      shared,
+      say: mostSay,
+      jobs: mostJobs,
+    },
+    least: {
+      say: leastSay,
+      jobs: leastJobs,
+    },
+  };
+}
+
 function answerVectorQuestion(question, example, neighbors) {
   const asked = String(question || '').toLowerCase();
   const top = neighbors?.[0];
@@ -242,4 +505,6 @@ module.exports = {
   describeLine,
   buildVectorDetail,
   answerVectorQuestion,
+  rankJobPopularity,
+  describePopularity,
 };

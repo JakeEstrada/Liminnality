@@ -11,6 +11,8 @@ const {
   describeLine,
   buildVectorDetail,
   answerVectorQuestion,
+  rankJobPopularity,
+  describePopularity,
 } = require('../src/utils/vectorSemantics');
 
 const rows = [
@@ -96,4 +98,29 @@ test('a similarity question stays on the stored lines', () => {
   const numbers = answerVectorQuestion('what is one of these numbers?', example, neighbors);
   assert.match(numbers, /not a word/);
   assert.match(numbers, /job-a/);
+});
+
+test('the densest group is the popular kind of job and a lone job is not', () => {
+  const crowd = [
+    { _id: 'a', jobId: 'job-a', kind: 'worksheet', text: 'Scope: white oak rail with iron balusters', embedding: [1, 0] },
+    { _id: 'b', jobId: 'job-b', kind: 'worksheet', text: 'Scope: white oak rail and iron balusters', embedding: [1, 0] },
+    { _id: 'c', jobId: 'job-c', kind: 'worksheet', text: 'Install oak rail, iron balusters', embedding: [0.99, 0.01] },
+    { _id: 'e', jobId: 'job-e', kind: 'worksheet', text: 'Curved handrail and wrought spindles', embedding: [0.98, 0.2] },
+    { _id: 'd', jobId: 'job-d', kind: 'worksheet', text: 'Glass shower panel', embedding: [0, 1] },
+  ];
+  const labels = new Map([
+    ['job-a', { jobTitle: 'North stair', customerName: 'North' }],
+    ['job-b', { jobTitle: 'Scott Lester', customerName: 'Scott Lester' }],
+    ['job-c', { jobTitle: 'Oak rail', customerName: 'Taylor' }],
+    ['job-e', { jobTitle: 'Curved rail', customerName: 'Diaz' }],
+    ['job-d', { jobTitle: 'Glass shower', customerName: 'Glass shower' }],
+  ]);
+  const report = describePopularity(rankJobPopularity(crowd), labels);
+  assert.ok(report.most.count >= 3);
+  assert.equal(report.most.jobs.some((job) => job.jobId === 'job-e'), true);
+  assert.equal(report.most.jobs.some((job) => job.jobId === 'job-d'), false);
+  assert.ok(report.most.shared.includes('oak') || report.most.shared.includes('baluster'));
+  assert.match(report.most.say, /densest group/);
+  assert.equal(report.least.jobs[0].jobId, 'job-d');
+  assert.match(report.least.say, /Glass shower/);
 });
