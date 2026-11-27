@@ -5,6 +5,7 @@ import { DEFAULT_JOB_CARD_MIN_HEIGHT_PX } from '../../utils/pipelineViewSettings
 import { getJobCardAccent } from '../../utils/taskDisplay';
 import { jobMapFixLabel, jobNeedsMapFix } from '../../utils/jobGeo';
 import { paymentSquaresForJob } from '../../utils/paymentSchedule';
+import { savedWorksheetNote } from '../../utils/worksheetNote';
 
 function JobCard(props: Record<string, unknown>) {
   const {
@@ -23,6 +24,13 @@ function JobCard(props: Record<string, unknown>) {
       title?: string;
       customerId?: { name?: string };
       description?: string;
+      notes?: Array<{
+        content?: string;
+        isWorksheet?: boolean;
+        isSms?: boolean;
+        isStageChange?: boolean;
+        isAppointment?: boolean;
+      }>;
       _id?: string;
       isArchived?: boolean;
       isDeadEstimate?: boolean;
@@ -92,6 +100,44 @@ function JobCard(props: Record<string, unknown>) {
   const squareSize = narrow ? 7 : ultraCompact ? 8 : 9;
   const cardMinHeight = narrow ? 32 : minHeightPx;
   const unreadSms = Math.max(0, Number(job.unreadCustomerSmsCount) || 0);
+  const worksheetNote = savedWorksheetNote(job.notes);
+  const nameColor = worksheetNote
+    ? theme.palette.text.primary
+    : theme.palette.mode === 'dark'
+      ? 'rgba(255,255,255,0.42)'
+      : theme.palette.text.disabled;
+
+  const jobName = (
+    <Typography
+      variant="body2"
+      sx={{
+        fontSize: titleFontRem,
+        fontWeight: worksheetNote ? 500 : 300,
+        color: nameColor,
+        lineHeight: 1.35,
+        display: narrow ? 'block' : 'inline',
+        ...(narrow
+          ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+          : null),
+      }}
+      title={worksheetNote ? undefined : job.title}
+    >
+      {narrow ? job.title || 'Untitled Job' : truncateTitle(job.title, ultraCompact ? 36 : 50)}
+      {unreadSms > 0 ? (
+        <Box
+          component="span"
+          sx={{
+            ml: 0.5,
+            fontWeight: 800,
+            color: 'primary.main',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          (+{unreadSms})
+        </Box>
+      ) : null}
+    </Typography>
+  );
 
   return (
     <Card
@@ -139,35 +185,23 @@ function JobCard(props: Record<string, unknown>) {
       >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: titleFontRem,
-              fontWeight: 500,
-              color: theme.palette.text.primary,
-              lineHeight: 1.35,
-              display: narrow ? 'block' : 'inline',
-              ...(narrow
-                ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
-                : null),
-            }}
-            title={job.title}
-          >
-            {narrow ? job.title || 'Untitled Job' : truncateTitle(job.title, ultraCompact ? 36 : 50)}
-            {unreadSms > 0 ? (
-              <Box
-                component="span"
-                sx={{
-                  ml: 0.5,
-                  fontWeight: 800,
-                  color: 'primary.main',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                (+{unreadSms})
-              </Box>
-            ) : null}
-          </Typography>
+          {worksheetNote ? (
+            <Tooltip
+              title={
+                <Box sx={{ whiteSpace: 'pre-wrap', maxWidth: 380, maxHeight: 320, overflow: 'auto' }}>
+                  {worksheetNote}
+                </Box>
+              }
+              placement="bottom-start"
+              enterDelay={300}
+              disableInteractive={false}
+              slotProps={{ tooltip: { sx: { maxWidth: 420 } } }}
+            >
+              {jobName}
+            </Tooltip>
+          ) : (
+            jobName
+          )}
           {job.description && !narrow && (
             <>
               <Typography

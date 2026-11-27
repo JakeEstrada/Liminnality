@@ -21,6 +21,8 @@ const { applyReferralFields } = require('../utils/referralCompany');
 const { resolveJobId } = require('../utils/resolveJobId');
 const { namePattern, pickDuplicateJobs } = require('../utils/duplicateJobs');
 const { syncJobGeo, parseManualGeo, manualGeoPayload } = require('../services/geocodeService');
+const { looksLikeWorksheetNote } = require('../utils/jobSimilarity');
+const { scheduleJobFingerprint, removeJobFingerprint } = require('../services/jobFingerprint');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -194,6 +196,7 @@ async function createJob(req, res) {
             createdBy,
             createdAt: note?.createdAt || new Date(),
             important: Boolean(note?.important),
+            isWorksheet: Boolean(note?.isWorksheet) || looksLikeWorksheetNote(content),
           };
         })
         .filter(Boolean);
@@ -214,6 +217,7 @@ async function createJob(req, res) {
     await job.populate('customerId', CUSTOMER_CONTACT_FIELDS);
     await job.populate('assignedTo', 'name email');
     await emitJobCreated(req, job);
+    scheduleJobFingerprint(job);
     try {
       const geoResult = await syncJobGeo(job);
       if (geoResult?.geo) {
@@ -324,6 +328,7 @@ async function updateJob(req, res) {
               isStageChange: note.isStageChange || false,
               isAppointment: note.isAppointment || false,
               important: Boolean(note.important),
+              isWorksheet: Boolean(note.isWorksheet) || looksLikeWorksheetNote(note.content),
             };
           }
         } else {
@@ -334,6 +339,13 @@ async function updateJob(req, res) {
               oldContent: oldNote.content,
               newContent: note.content
             });
+          }
+          if (
+            oldNote?.isWorksheet ||
+            Boolean(note.isWorksheet) ||
+            looksLikeWorksheetNote(note.content || oldNote?.content)
+          ) {
+            note.isWorksheet = true;
           }
         }
         // Return note (either new or existing)
@@ -626,6 +638,7 @@ async function updateJob(req, res) {
     await job.populate('assignedTo', 'name email');
 
     await emitJobUpdated(req, job);
+    if (Array.isArray(newNotes)) scheduleJobFingerprint(job);
 
     const responseJob = job.toObject();
     responseJob.paymentScheduleResolved = resolvePaymentSchedule(responseJob);
@@ -814,6 +827,9 @@ async function deleteJob(req, res) {
     });
     
     await Job.findByIdAndDelete(req.params.id);
+    await removeJobFingerprint(job._id).catch((error) => {
+      console.error('Job fingerprint delete failed:', error?.message || error);
+    });
 
     await emitJobDeleted(req, job);
 

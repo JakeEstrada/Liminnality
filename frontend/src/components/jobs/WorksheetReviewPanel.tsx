@@ -7,12 +7,14 @@ import {
 } from '@mui/icons-material';
 import type { WorksheetStatus } from '../../hooks/useWorksheetReading';
 import type { WorksheetReading } from '../../utils/worksheetRead';
+import SimilarJobsDialog from './SimilarJobsDialog';
 
 type Props = {
   file: File;
   status: WorksheetStatus;
   previewUrl: string;
   reading: WorksheetReading | null;
+  similarText?: string;
 };
 
 function ReviewRow({ label, children }) {
@@ -42,8 +44,10 @@ export function VerifyChip({ reason, onClick }: { reason: string; onClick?: () =
 }
 
 /** The dropped worksheet beside the Create New Job fields, plus details that have no form field. */
-export default function WorksheetReviewPanel({ file, status, previewUrl, reading }: Props) {
+export default function WorksheetReviewPanel({ file, status, previewUrl, reading, similarText = '' }: Props) {
   const [turn, setTurn] = useState(0);
+  const [similarOpen, setSimilarOpen] = useState(false);
+  const canFindSimilar = similarText.trim().length >= 8;
 
   const openOriginal = () => {
     const url = URL.createObjectURL(file);
@@ -215,6 +219,19 @@ export default function WorksheetReviewPanel({ file, status, previewUrl, reading
             </ReviewRow>
           ) : null}
         </Box>
+      ) : null}
+      {canFindSimilar ? (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setSimilarOpen(true)}
+          sx={{ textTransform: 'none', alignSelf: 'flex-start' }}
+        >
+          Find similar jobs
+        </Button>
+      ) : null}
+      {similarOpen ? (
+        <SimilarJobsDialog open onClose={() => setSimilarOpen(false)} text={similarText} />
       ) : null}
     </Box>
   );

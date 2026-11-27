@@ -70,6 +70,7 @@ import JobChangeOrdersEditor from './JobChangeOrdersEditor';
 import JobCoverPagesDialog from './JobCoverPagesDialog';
 import JobPaymentsSummary from './JobPaymentsSummary';
 import JobSchedulePanel from './JobSchedulePanel';
+import SimilarJobsDialog from './SimilarJobsDialog';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -314,6 +315,7 @@ function JobDetailModal({
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
   const [addNoteOpen, setAddNoteOpen] = useState(false);
+  const [similarOpen, setSimilarOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addAppointmentOpen, setAddAppointmentOpen] = useState(false);
   const [jobTasks, setJobTasks] = useState([]);
@@ -2184,7 +2186,16 @@ function JobDetailModal({
 
         {activeTab === JOB_MODAL_TAB.notes && (
           <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={() => setSimilarOpen(true)}
+                sx={{ borderRadius: '8px', textTransform: 'none', mr: 'auto' }}
+              >
+                Find similar jobs
+              </Button>
               <Button
                 variant="contained"
                 size="small"
@@ -2320,6 +2331,9 @@ function JobDetailModal({
         }}
         job={job}
       />
+      {similarOpen ? (
+        <SimilarJobsDialog open onClose={() => setSimilarOpen(false)} jobId={jobId} />
+      ) : null}
 
       {/* Add Task Modal */}
       <AddJobTaskModal

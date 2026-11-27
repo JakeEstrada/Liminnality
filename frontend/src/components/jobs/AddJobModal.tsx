@@ -653,7 +653,7 @@ function AddJobModal({
         source: formData.source,
         referralCompany: formData.source === 'referral' ? clipReferralCompany(formData.referralCompany) : '',
       };
-      if (worksheetNote) jobData.notes = [{ content: worksheetNote }];
+      if (worksheetNote) jobData.notes = [{ content: worksheetNote, isWorksheet: true }];
       if (pipelineLayoutId) {
         jobData.pipelineLayoutId = pipelineLayoutId;
       }
@@ -774,6 +774,7 @@ function AddJobModal({
             status={worksheet.status}
             previewUrl={worksheet.previewUrl}
             reading={worksheet.reading}
+            similarText={worksheetJobNote(worksheet.reading?.review, formData.gateCode)}
           />
         ) : null}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2, position: 'relative', minWidth: 0 }}>

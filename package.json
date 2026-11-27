@@ -1,7 +1,9 @@
 {
   "scripts": {
     "test:openai": "node scripts/test-openai.mjs",
-    "clone-tenant": "npm --prefix backend run clone-tenant --"
+    "clone-tenant": "npm --prefix backend run clone-tenant --",
+    "backfill-job-fingerprints": "npm --prefix backend run backfill-job-fingerprints",
+    "scrape-saved-worksheets": "npm --prefix backend run scrape-saved-worksheets --"
   },
   "dependencies": {
     "openai": "^6.34.0"

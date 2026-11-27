@@ -319,6 +319,11 @@ const jobSchema = new mongoose.Schema({
     important: {
       type: Boolean,
       default: false
+    },
+    /** The worksheet note used by Find similar jobs. Other notes are left out. */
+    isWorksheet: {
+      type: Boolean,
+      default: false
     }
   }],
 

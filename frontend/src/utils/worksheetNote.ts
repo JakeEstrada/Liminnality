@@ -39,3 +39,27 @@ export function worksheetJobNote(review: Review | null | undefined, gateCode = '
   });
   return lines.join('\n').slice(0, 2000);
 }
+
+const WORKSHEET_LINE =
+  /^(?:Gate code:|Scope:|Options:|Other contact:|Ref:|Worksheet date:|Marked Contractor on the worksheet)/m;
+
+type SavedNote = {
+  content?: string;
+  isWorksheet?: boolean;
+  isSms?: boolean;
+  isStageChange?: boolean;
+  isAppointment?: boolean;
+};
+
+/** The worksheet note already stored on a job, if one has been saved. */
+export function savedWorksheetNote(notes: SavedNote[] | null | undefined) {
+  const parts: string[] = [];
+  for (const note of notes || []) {
+    if (!note || note.isSms || note.isStageChange || note.isAppointment) continue;
+    const content = String(note.content || '').trim();
+    if (!content) continue;
+    if (!note.isWorksheet && !WORKSHEET_LINE.test(content)) continue;
+    parts.push(content);
+  }
+  return parts.join('\n\n');
+}

@@ -35,6 +35,7 @@ const {
   getReferralCompanies,
 } = require('../controllers/jobController');
 const { generateJobSummary } = require('../controllers/activityController');
+const { findSimilarJobs } = require('../controllers/jobSimilarityController');
 const { getJobMapPins, getJobGeoIssues } = require('../controllers/jobMapController');
 
 router.use(requireAuth);
@@ -49,6 +50,7 @@ router.post('/worksheet-preview', (req, res, next) => {
   });
 }, previewWorksheet);
 router.get('/possible-duplicates', getPossibleDuplicates);
+router.post('/similar', findSimilarJobs);
 router.get('/', getJobs);
 router.post('/', createJob);
 router.get('/map-pins', getJobMapPins);

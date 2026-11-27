@@ -114,6 +114,7 @@ describe('AddJobModal worksheet draft', () => {
 
     expect(screen.getByAltText(/Worksheet SCWW_New_era/)).toHaveAttribute('src', 'blob:preview');
     expect(screen.getByText('Also on the worksheet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Find similar jobs' })).toBeInTheDocument();
     expect(screen.getByText('Install 30 Ft white oak rail system w/ Iron balusters As described')).toBeInTheDocument();
     expect(screen.getByText('Joseph · 909-846-8804 · H.', { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByLabelText('Balusters quantity could be 75 or 25')).toHaveTextContent('Verify');
@@ -160,6 +161,7 @@ describe('AddJobModal worksheet draft', () => {
       jobAddress: { street: '4632 E Bradford', city: 'Orange' },
       notes: [
         {
+          isWorksheet: true,
           content: [
             'Scope: Install 30 Ft white oak rail system w/ Iron balusters As described',
             'Options: Post To Post',
