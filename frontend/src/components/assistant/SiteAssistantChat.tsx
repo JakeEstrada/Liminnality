@@ -116,15 +116,15 @@ export default function SiteAssistantChat() {
         <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', p: 0, overflow: 'hidden' }}>
           <Box sx={{ px: 2, py: 1, bgcolor: 'action.hover' }}>
             <Typography variant="body2" color="text.secondary">
-              Answers use your organization&apos;s live data: payments, deposits, job notes, search, and navigation.
+              Answers use your organization&apos;s live data: payments, deposits, notes, tasks, worksheet details, and navigation.
               Not legal or financial advice.
             </Typography>
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto', px: 2, py: 2 }}>
             {messages.length === 0 && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Try: &ldquo;What was the most recent payment?&rdquo;, &ldquo;What materials do I need to order?&rdquo;,
-                &ldquo;Search notes for hardware&rdquo;, or &ldquo;Take me to finance&rdquo;.
+                Try: &ldquo;What jobs did I order balusters for last week?&rdquo;, &ldquo;Which jobs have iron balusters?&rdquo;,
+                or &ldquo;What was the most recent payment?&rdquo;
               </Typography>
             )}
             {messages.map((m, i) => (

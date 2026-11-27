@@ -136,4 +136,25 @@ taskSchema.virtual('isCompleted').get(function() {
 taskSchema.set('toJSON', { virtuals: true });
 taskSchema.set('toObject', { virtuals: true });
 
+taskSchema.post('save', function rememberTask(doc) {
+  try {
+    const { scheduleTaskMemory } = require('../services/jobMemory');
+    scheduleTaskMemory(doc);
+  } catch (error) {
+    console.error('Task memory failed:', error?.message || error);
+  }
+});
+
+taskSchema.post('findOneAndDelete', function forgetTask(doc) {
+  if (!doc) return;
+  try {
+    const { removeTaskMemory } = require('../services/jobMemory');
+    removeTaskMemory(doc).catch((error) => {
+      console.error('Task memory delete failed:', error?.message || error);
+    });
+  } catch (error) {
+    console.error('Task memory delete failed:', error?.message || error);
+  }
+});
+
 module.exports = mongoose.model('Task', taskSchema);

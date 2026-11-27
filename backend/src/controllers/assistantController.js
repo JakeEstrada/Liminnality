@@ -1,6 +1,7 @@
 const { fetchGlobalCustomerSearchResults } = require('./customerController');
 const { ROUTES_MARKDOWN, sanitizeNavigatePath } = require('../services/assistantSiteMap');
 const { resolveJobId } = require('../utils/resolveJobId');
+const { shopWeekLabel } = require('../utils/jobMemoryQuery');
 const {
   fetchRecentPayments,
   fetchRecentDeposits,
@@ -75,16 +76,24 @@ const TOOLS = [
     function: {
       name: 'search_job_notes',
       description:
-        'Search text inside job modal notes and crew notes on active jobs. Use for materials to order, supplies, hardware, follow-ups, or anything written in job updates. Pass keywords like "order material supply hardware cabinet".',
+        'Loose similarity search over stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail" or "what did we order last week". Pass the question in everyday words. When they name a time, also pass since and until as YYYY-MM-DD. A dated search compares notes and tasks from that range only. Results include a score; higher means closer meaning.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description:
-              'Keywords to match in notes (e.g. "order material", "hardware", "cabinet"). Leave empty to list recent note excerpts.',
+              'The question in everyday words, such as "ordered balusters" or "glass rail instead of iron". Leave empty to list recent notes and tasks.',
           },
-          limit: { type: 'integer', description: 'Max note hits (1–30)', default: 12 },
+          since: {
+            type: 'string',
+            description: 'First shop day to include, YYYY-MM-DD. Use with until for last week or this week.',
+          },
+          until: {
+            type: 'string',
+            description: 'Last shop day to include, YYYY-MM-DD.',
+          },
+          limit: { type: 'integer', description: 'Max jobs (1–30)', default: 15 },
         },
       },
     },
@@ -328,6 +337,7 @@ const TOOLS = [
 ];
 
 function buildSystemPrompt(voice = false) {
+  const week = shopWeekLabel();
   const voiceLines = voice
     ? [
         'You are Liminality, a short shop-floor voice. Plain and useful. No banter, no feelings, no “I know you are upset.”',
@@ -358,7 +368,7 @@ function buildSystemPrompt(voice = false) {
     '- get_recent_payments: customer payments marked received (job payment schedule)',
     '- get_recent_deposits: customer/job deposits. Pass customerQuery for "did [name] deposit". Answer from mostRecent / deposits, not unlinkedBankInflows',
     '- open_job_card: open the job overlay here (Files tab). Do not switch to pipeline',
-    '- search_job_notes: job modal notes and crew notes (materials to order, supplies, reminders)',
+    '- search_job_notes: stored notes, tasks, and scraped worksheet text on every job, including completed and archived',
     '- get_job_details: one job\'s notes, payment schedule, and timeline (use jobId from search)',
     '- global_search: find a customer or job by name before get_job_details',
     '- search_jobs: jobs by city, street, customer, or title as a list',
@@ -372,7 +382,9 @@ function buildSystemPrompt(voice = false) {
     '- create_shop_appointment: book a calendar appointment',
     '',
     'For "send [customer] to [employee]", call send_customer_info_text. Do not invent a phone number. Do not send custom message bodies — only the customer card.',
-    'For "materials to order" or similar, call search_job_notes with keywords like order, material, supply, hardware, cabinet, laminate.',
+    `Today is ${week.weekday}, ${week.today}. The shop week runs Friday through Thursday.`,
+    `This shop week is ${week.thisWeek.start} through ${week.thisWeek.end}. Last shop week was ${week.lastWeek.start} through ${week.lastWeek.end}.`,
+    'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Name the closest jobs, their standing, and the matching line. Do not invent jobs that the tool did not return.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
     'For "jobs in [city]", call show_jobs_on_map with city set to that city (exact city only).',
@@ -707,7 +719,12 @@ async function runAssistantChat(req, res) {
               if (!tenantId) {
                 toolContent = { error: 'No organization context for this account.' };
               } else {
-                toolContent = await searchJobNotes({ query: args.query, limit: args.limit });
+                toolContent = await searchJobNotes({
+                  query: args.query,
+                  since: args.since,
+                  until: args.until,
+                  limit: args.limit,
+                });
               }
             } else if (fn.name === 'get_job_details') {
               if (!tenantId) {

@@ -393,4 +393,13 @@ jobSchema.index({ assignedTo: 1 });
 jobSchema.index({ isArchived: 1 });
 jobSchema.index({ isDeadEstimate: 1, 'estimate.sentAt': -1 });
 
+jobSchema.post('save', function rememberJob(doc) {
+  try {
+    const { scheduleJobMemory } = require('../services/jobMemory');
+    scheduleJobMemory(doc);
+  } catch (error) {
+    console.error('Job memory failed:', error?.message || error);
+  }
+});
+
 module.exports = mongoose.model('Job', jobSchema);

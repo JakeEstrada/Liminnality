@@ -3,6 +3,8 @@
     "test:openai": "node scripts/test-openai.mjs",
     "clone-tenant": "npm --prefix backend run clone-tenant --",
     "backfill-job-fingerprints": "npm --prefix backend run backfill-job-fingerprints",
+    "backfill-job-memory": "npm --prefix backend run backfill-job-memory",
+    "embed-job-memory": "npm --prefix backend run embed-job-memory",
     "scrape-saved-worksheets": "npm --prefix backend run scrape-saved-worksheets --"
   },
   "dependencies": {

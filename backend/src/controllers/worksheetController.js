@@ -254,8 +254,14 @@ async function previewWorksheet(req, res) {
     if (error.code === 'TIMEOUT') {
       return res.status(504).json({ error: 'Reading the worksheet took too long' });
     }
-    console.error('worksheet preview failed', error.status || '', error.detail || error.message);
-    return res.status(502).json({ error: 'Could not read that worksheet' });
+    const detail = String(error.detail || error.message || '');
+    console.error('worksheet preview failed', error.status || '', detail.slice(0, 300));
+    const outOfCredits = /insufficient_quota|billing|credits|exceeded your current quota/i.test(detail);
+    return res.status(502).json({
+      error: outOfCredits
+        ? 'The OpenAI account is out of credits, so the worksheet could not be read.'
+        : 'Could not read that worksheet',
+    });
   }
 }
 

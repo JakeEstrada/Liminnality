@@ -272,7 +272,11 @@ async function fetchRecentDeposits({ tenantId, limit: limitArg = 5, customerQuer
 /**
  * Search job modal notes and crew notes across active jobs.
  */
-async function searchJobNotes({ query, limit: limitArg = 12 } = {}) {
+async function searchJobNotes({ query, since, until, limit: limitArg = 12 } = {}) {
+  const { memoryIsReady, searchStoredJobNotes } = require('./jobMemory');
+  if (await memoryIsReady()) {
+    return searchStoredJobNotes({ query, since, until, limit: limitArg });
+  }
   const limit = clampLimit(limitArg, 12, 30);
   const qTrim = String(query || '').trim();
   const keywords = qTrim ? qTrim.split(/\s+/).filter(Boolean) : [];
@@ -393,6 +397,18 @@ async function fetchJobDetails({ jobId }) {
     notes,
     paymentSchedule,
     recentActivities,
+    tasks: (
+      await Task.find({ jobId: job._id })
+        .select('title description completedAt createdAt')
+        .sort({ updatedAt: -1 })
+        .limit(20)
+        .lean()
+    ).map((task) => ({
+      title: task.title || '',
+      description: task.description ? String(task.description).slice(0, 300) : null,
+      created: formatDate(task.createdAt),
+      completed: formatDate(task.completedAt),
+    })),
     path: `/customers?jobId=${job._id}`,
   };
 }

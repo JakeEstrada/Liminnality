@@ -23,7 +23,9 @@ function fail(message, code) {
   return error;
 }
 
-async function embedText(text) {
+async function embedTexts(inputs) {
+  const list = (Array.isArray(inputs) ? inputs : [inputs]).map((text) => String(text || '').slice(0, 8000));
+  if (!list.length) return [];
   const key = openaiKey();
   if (!key) {
     throw fail('Similar search needs an OpenAI key on the server', 'OPENAI_API_KEY_NOT_SET');
@@ -37,17 +39,22 @@ async function embedText(text) {
     },
     body: JSON.stringify({
       model,
-      input: String(text || '').slice(0, 8000),
+      input: list.length === 1 ? list[0] : list,
     }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw fail(data?.error?.message || 'Could not build a job fingerprint', 'EMBED_FAILED');
+    throw fail(data?.error?.message || 'Could not build a vector', 'EMBED_FAILED');
   }
-  const vector = data?.data?.[0]?.embedding;
-  if (!Array.isArray(vector) || vector.length === 0) {
-    throw fail('The fingerprint came back empty', 'EMBED_FAILED');
+  const rows = Array.isArray(data?.data) ? [...data.data].sort((a, b) => (a.index || 0) - (b.index || 0)) : [];
+  if (rows.length !== list.length || rows.some((row) => !Array.isArray(row.embedding) || row.embedding.length === 0)) {
+    throw fail('A vector came back empty', 'EMBED_FAILED');
   }
+  return rows.map((row) => row.embedding);
+}
+
+async function embedText(text) {
+  const [vector] = await embedTexts([text]);
   return vector;
 }
 
@@ -205,6 +212,7 @@ async function searchSimilarJobs({ jobId, text, limit = 5 }) {
 module.exports = {
   embeddingConfigured,
   embedText,
+  embedTexts,
   refreshJobFingerprint,
   scheduleJobFingerprint,
   removeJobFingerprint,

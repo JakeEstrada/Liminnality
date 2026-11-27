@@ -23,6 +23,7 @@ const { namePattern, pickDuplicateJobs } = require('../utils/duplicateJobs');
 const { syncJobGeo, parseManualGeo, manualGeoPayload } = require('../services/geocodeService');
 const { looksLikeWorksheetNote } = require('../utils/jobSimilarity');
 const { scheduleJobFingerprint, removeJobFingerprint } = require('../services/jobFingerprint');
+const { removeJobMemory } = require('../services/jobMemory');
 
 /** Jobs manually restored from archive are exempt from auto-dead-estimate for this many days */
 const RESTORE_FROM_ARCHIVE_GRACE_DAYS = 30;
@@ -829,6 +830,9 @@ async function deleteJob(req, res) {
     await Job.findByIdAndDelete(req.params.id);
     await removeJobFingerprint(job._id).catch((error) => {
       console.error('Job fingerprint delete failed:', error?.message || error);
+    });
+    await removeJobMemory(job._id).catch((error) => {
+      console.error('Job memory delete failed:', error?.message || error);
     });
 
     await emitJobDeleted(req, job);

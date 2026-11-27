@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/plaidRegisterData.test.js test/twilioSignature.test.js test/cloneTenantAnonymize.test.js test/readOnlyRole.test.js test/customerContactSync.test.js test/salesMetrics.test.js test/worksheetDraft.test.js test/duplicateJobs.test.js test/hourlyRate.test.js test/jobSimilarity.test.js test/worksheetNote.test.js",
+    "test": "node --test test/plaidRegisterData.test.js test/twilioSignature.test.js test/cloneTenantAnonymize.test.js test/readOnlyRole.test.js test/customerContactSync.test.js test/salesMetrics.test.js test/worksheetDraft.test.js test/duplicateJobs.test.js test/hourlyRate.test.js test/jobSimilarity.test.js test/worksheetNote.test.js test/jobMemoryQuery.test.js",
     "typecheck": "tsc --noEmit",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
@@ -20,6 +20,8 @@
     "test-activity-logging": "node src/scripts/testActivityLogging.js",
     "geocode-jobs": "node src/scripts/geocodeJobAddresses.js",
     "backfill-job-fingerprints": "node src/scripts/backfillJobFingerprints.js",
+    "backfill-job-memory": "node src/scripts/backfillJobMemory.js",
+    "embed-job-memory": "node src/scripts/embedJobMemory.js",
     "scrape-saved-worksheets": "node src/scripts/scrapeSavedWorksheets.js"
   },
   "keywords": [],

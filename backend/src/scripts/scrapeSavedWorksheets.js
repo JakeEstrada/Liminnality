@@ -8,7 +8,8 @@
  *   npm run scrape-saved-worksheets -- --job "Luci Vees"
  *   npm run scrape-saved-worksheets -- --limit 10
  *
- * Jobs that already have a worksheet note are skipped, so it is safe to run again.
+ * Includes active, completed, and archived jobs. A job that already has a worksheet
+ * note is skipped, so it is safe to run again.
  */
 require('dotenv').config();
 process.env.OPENAI_WORKSHEET_CHECK_MODEL = 'off';
@@ -50,6 +51,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function creditError(error) {
+  const detail = `${error?.detail || ''} ${error?.message || ''}`;
+  return /insufficient_quota|credit_balance_exhausted|no credits remaining|exceeded your current quota/i.test(detail);
+}
+
 async function withRetry(fn) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -57,6 +63,7 @@ async function withRetry(fn) {
       return await fn();
     } catch (error) {
       lastError = error;
+      if (creditError(error)) throw error;
       const retry = error.status === 429 || error.status === 500 || error.status === 503 || error.code === 'TIMEOUT';
       if (!retry || attempt === 3) throw error;
       console.error(`  retry ${attempt}: ${error.message}`);
@@ -245,6 +252,7 @@ function isWorksheetFile(file) {
 
 async function chosenFiles(titleQuery) {
   const files = await File.find({ jobId: { $ne: null } })
+    .setOptions({ bypassTenant: true })
     .select('originalName filename mimetype jobId createdAt')
     .lean();
   const newest = new Map();
@@ -254,7 +262,9 @@ async function chosenFiles(titleQuery) {
     const current = newest.get(key);
     if (!current || new Date(file.createdAt || 0) > new Date(current.createdAt || 0)) newest.set(key, file);
   }
-  const jobs = await Job.find({ _id: { $in: [...newest.keys()] } }).select('title notes customerId createdBy tenantId');
+  const jobs = await Job.find({ _id: { $in: [...newest.keys()] } })
+    .setOptions({ bypassTenant: true })
+    .select('title notes customerId createdBy tenantId isArchived isDeadEstimate isCompletedClosedOut stage');
   const query = titleQuery.trim().toLowerCase();
   return jobs
     .filter((job) => !query || String(job.title || '').toLowerCase().includes(query))
@@ -318,9 +328,16 @@ async function run() {
   rows.sort((a, b) => String(a.job.title || '').localeCompare(String(b.job.title || '')));
   if (limit > 0) rows = rows.slice(0, limit);
 
+  const archived = rows.filter((row) => row.job.isArchived || row.job.isDeadEstimate).length;
+  const closedOut = rows.filter((row) => row.job.isCompletedClosedOut).length;
+  console.log(
+    `Worksheet files on ${rows.length} jobs. ${archived} archived, ${closedOut} closed out. Active jobs are included too.`,
+  );
+
   let saved = 0;
   let skipped = 0;
   let failed = 0;
+  let stoppedForCredits = false;
 
   for (const { job, file } of rows) {
     const title = job.title || 'Untitled job';
@@ -346,6 +363,11 @@ async function run() {
         console.log(`saved ${title}  ${first}`);
       }
     } catch (error) {
+      if (creditError(error)) {
+        stoppedForCredits = true;
+        console.error('Stopped: the OpenAI account is out of credits. Notes already saved stay saved.');
+        break;
+      }
       failed += 1;
       console.error(`fail  ${title}: ${error.message}`);
     }
@@ -355,7 +377,7 @@ async function run() {
   console.log(
     dryRun
       ? `Would read ${rows.length} worksheet file${rows.length === 1 ? '' : 's'}.`
-      : `Worksheet notes: ${saved} saved, ${skipped} skipped, ${failed} failed.`,
+      : `Worksheet notes: ${saved} saved, ${skipped} skipped, ${failed} failed.${stoppedForCredits ? ' Stopped because credits ran out.' : ''}`,
   );
   await mongoose.disconnect();
   if (failed) process.exitCode = 1;
