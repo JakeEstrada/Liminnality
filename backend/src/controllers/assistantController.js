@@ -883,6 +883,14 @@ async function runAssistantChat(req, res) {
         }
         continue;
       }
+
+      const spoken = String(msg.content || '').trim();
+      if (spoken) {
+        return res.json({
+          reply: spoken.slice(0, voice ? 800 : 4000),
+          actions: clientActions.length ? clientActions : undefined,
+        });
+      }
     }
 
     try {

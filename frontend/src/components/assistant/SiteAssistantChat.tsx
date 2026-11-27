@@ -27,7 +27,7 @@ import {
 } from '../../voice/browserSpeech';
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { spokenAssistantReply } from '../../voice/assistantVoice';
-import { isHelpVoiceStop } from '../../voice/helpVoice';
+import { HELP_GREETING_REPLY, isHelpGreeting, isHelpVoiceStop } from '../../voice/helpVoice';
 import { claimMicrophone, releaseMicrophone } from '../../voice/micClaim';
 
 const voiceSupported = typeof window !== 'undefined' && isSpeechRecognitionSupported();
@@ -183,18 +183,25 @@ export default function SiteAssistantChat() {
     setHeard('');
 
     try {
-      const pagePath = `${window.location.pathname}${window.location.search}`;
-      const { data } = await api.post('/assistant/chat', {
-        messages: nextMessages,
-        voice: speak,
-        pagePath,
-      });
-      const raw = typeof data?.reply === 'string' ? data.reply : '';
+      let raw = '';
+      let actions = [];
+      if (isHelpGreeting(trimmed)) {
+        raw = HELP_GREETING_REPLY;
+      } else {
+        const pagePath = `${window.location.pathname}${window.location.search}`;
+        const { data } = await api.post('/assistant/chat', {
+          messages: nextMessages,
+          voice: speak,
+          pagePath,
+        });
+        raw = typeof data?.reply === 'string' ? data.reply : '';
+        actions = data?.actions;
+      }
       const reply = speak ? spokenAssistantReply(raw) : raw;
       const withReply = [...nextMessages, { role: 'assistant', content: reply || '—' }];
       messagesRef.current = withReply;
       setMessages(withReply);
-      applyActions(data?.actions);
+      applyActions(actions);
       if (speak && reply && voiceWantedRef.current) {
         setVoicePhase('speaking');
         try {
@@ -205,19 +212,24 @@ export default function SiteAssistantChat() {
       }
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Assistant failed';
-      toast.error(msg);
-      const failed = [
-        ...nextMessages,
-        {
-          role: 'assistant',
-          content:
-            err.response?.status === 503
-              ? 'The assistant is not set up on the server yet (missing API key). Ask your administrator to configure OPENAI_API_KEY.'
-              : `Something went wrong: ${msg}`,
-        },
-      ];
+      const stopped = /too many tool rounds/i.test(String(msg));
+      if (!stopped) toast.error(msg);
+      const content = err.response?.status === 503
+        ? 'The assistant is not set up on the server yet (missing API key). Ask your administrator to configure OPENAI_API_KEY.'
+        : stopped
+          ? HELP_GREETING_REPLY
+          : `Something went wrong: ${msg}`;
+      const failed = [...nextMessages, { role: 'assistant', content }];
       messagesRef.current = failed;
       setMessages(failed);
+      if (speak && stopped && voiceWantedRef.current) {
+        setVoicePhase('speaking');
+        try {
+          await speakText(content);
+        } catch {
+          /* the reply is already on screen */
+        }
+      }
     } finally {
       busyRef.current = false;
       setSending(false);
