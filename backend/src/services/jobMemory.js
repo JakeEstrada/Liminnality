@@ -5,6 +5,9 @@ const { embeddingConfigured, embedText, embedTexts } = require('./jobFingerprint
 const {
   keywordStems,
   textHasStems,
+  isStageLog,
+  asksAboutOrders,
+  lineMentionsOrder,
   parseShopBound,
   rankMemoryHits,
   jobMemoryRows,
@@ -166,6 +169,7 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
     if (to) filter.at.$lte = to;
   }
   const asked = String(query || '').trim();
+  const orderQuestion = asksAboutOrders(asked);
   let queryVector = null;
   if (asked && embeddingConfigured()) {
     try {
@@ -174,11 +178,13 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
       console.error('Job memory question vector skipped:', error.message);
     }
   }
-  if (!queryVector && stems.length) {
+  if (!queryVector && stems.length && !orderQuestion) {
     filter.$and = stems.map((stem) => ({ text: { $regex: stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }));
   }
 
-  const rows = await JobMemory.find(filter).select('jobId kind text at embedding').sort({ at: -1 }).limit(5000).lean();
+  const rows = (await JobMemory.find(filter).select('jobId kind text at embedding').sort({ at: -1 }).limit(5000).lean())
+    .filter((row) => !isStageLog(row.text))
+    .filter((row) => !orderQuestion || lineMentionsOrder(row.text));
   const ranked = queryVector
     ? rankMemoryHits(queryVector, rows, { limit: cap })
     : rows
@@ -220,11 +226,13 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
     until: until || null,
     matches,
     totalJobs: matches.length,
-    hint: queryVector
-      ? 'Ranked by loose similarity. A higher score means the stored line is closer in meaning, even when the words differ. Dated questions use notes and tasks from that shop week only.'
-      : dated
-        ? 'Word match on notes and tasks written in that shop-week range. Vectors were not available for this question.'
-        : 'Word match across notes, tasks, and scraped worksheet text. Vectors were not available for this question.',
+    hint: orderQuestion
+      ? 'Order notes and tasks only. Stage changes are left out. An empty list means nothing in that range mentions an order.'
+      : queryVector
+        ? 'Ranked by loose similarity. A higher score means the stored line is closer in meaning, even when the words differ. Dated questions use notes and tasks from that shop week only. Stage changes are left out.'
+        : dated
+          ? 'Word match on notes and tasks written in that shop-week range. Vectors were not available for this question. Stage changes are left out.'
+          : 'Word match across notes, tasks, and scraped worksheet text. Vectors were not available for this question. Stage changes are left out.',
   };
 }
 

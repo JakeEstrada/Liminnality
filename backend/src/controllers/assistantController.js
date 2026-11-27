@@ -77,7 +77,7 @@ const TOOLS = [
     function: {
       name: 'search_job_notes',
       description:
-        'Loose similarity search over stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail" or "what did we order last week". Pass the question in everyday words. When they name a time, also pass since and until as YYYY-MM-DD. A dated search compares notes and tasks from that range only. Results include a score; higher means closer meaning.',
+        'Loose similarity search over stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail" or "what did we order last week". Pass the question in everyday words. When they name a time, also pass since and until as YYYY-MM-DD. A dated search compares notes and tasks from that range only. Stage-change lines are left out. An order question returns only lines that mention an order. Results include a score; higher means closer meaning.',
       parameters: {
         type: 'object',
         properties: {
@@ -104,7 +104,7 @@ const TOOLS = [
     function: {
       name: 'get_job_details',
       description:
-        'Get full notes, payment schedule, and recent activity for one job. Use after global_search when the user asks about a specific job. In voice mode this also opens the job card on the Files tab.',
+        'Get notes, payment schedule, tasks, and address for one job. Use this when they ask about a job, relevant data, or to tell them about it. Voice mode also opens the card. Typed chat answers from this data and leaves the card closed.',
       parameters: {
         type: 'object',
         properties: {
@@ -128,7 +128,7 @@ const TOOLS = [
     function: {
       name: 'open_job_card',
       description:
-        'Open the job card as an overlay on the current screen. Do not navigate to pipeline. Opens the Files tab so photos are visible. Use when they ask to open a job or see its photos.',
+        'Open the job card. Use only when they explicitly say open, show the card, or show the photos. If they ask what a job is, for relevant data, or to tell them about it, use get_job_details and answer in the chat instead.',
       parameters: {
         type: 'object',
         properties: {
@@ -347,6 +347,7 @@ function buildSystemPrompt(voice = false) {
         'If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
         'If they ask who they can text or send a number to, call list_sms_employees and speak every name. Include roster contacts that do not have a login.',
         'If they ask which job is on a street, like Dewberry, call search_jobs with that street fragment, then open_job_card when there is one match. Do not use show_jobs_on_map for a street name unless they asked for the map.',
+        'If they ask to hear about a job, call get_job_details and say the useful lines. Do not stop at "opened the job."',
         'If send_customer_info_text sent, confirm who received which customer.',
         'If they ask to be reminded, create_shop_task first. Then ask if they want a text. Then ask what number. Then ask when. Confirm: I will text a reminder to [name] on [date] at [time].',
         'If they ask to create an appointment, create_shop_appointment. Ask for the missing name or time. Then offer a reminder text the same way.',
@@ -356,14 +357,20 @@ function buildSystemPrompt(voice = false) {
         'Do not call show_jobs_on_map again unless they asked again to see the map or jobs in a place.',
         '',
       ]
-    : [];
+    : [
+        'The person is typing in the help window. Answer in the chat.',
+        'Do not call open_job_card. Do not navigate to a job. The card stays closed.',
+        'When they name a job, ask for relevant data, or say tell me about it, call global_search, then get_job_details, and summarize the customer, stage, address, scope or worksheet notes, payments, and tasks. Skip stage-change lines.',
+      ];
   return [
     'You are Paarth Help, an in-app assistant for the Paarth operations web app.',
     'You only help with using this application. Be concise and practical.',
     'Never ask the user for passwords or API keys. Never fabricate customer or financial data.',
     'Use tools when the user needs live shop data or wants to open a page. A greeting is not a search. Do not call tools for hello, hi, or hey.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
-    'To open a job, call open_job_card with jobId (the 24-character id). If search returned id like job-abc..., use jobId or strip the job- prefix. Do not navigate_user to /pipeline?jobId=.',
+    voice
+      ? 'To open a job, call open_job_card with jobId (the 24-character id). If search returned id like job-abc..., use jobId or strip the job- prefix. Do not navigate_user to /pipeline?jobId=.'
+      : 'While they are typing, answer from get_job_details. Do not open the job card.',
     '',
     ...voiceLines,
     'Data tools — use these for operational questions:',
@@ -387,14 +394,18 @@ function buildSystemPrompt(voice = false) {
     'Job memory you may explain: each note, task, and scraped worksheet is stored with its job id and the day it was written. Each line has a vector, 1536 numbers for the meaning of that whole line. A question becomes a vector too, and the closest lines come back with their job and a score. A higher score means closer meaning. The vector is not a serial number and not one number per word. A dated question such as last week compares notes and tasks from that shop week. Worksheet lines are included when the question has no date, because the scrape day is not the day the work was ordered.',
     `Today is ${week.weekday}, ${week.today}. The shop week runs Friday through Thursday.`,
     `This shop week is ${week.thisWeek.start} through ${week.thisWeek.end}. Last shop week was ${week.lastWeek.start} through ${week.lastWeek.end}.`,
-    'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Name the closest jobs, their standing, and the matching line. Do not invent jobs that the tool did not return.',
+    'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Name the closest jobs, their standing, and the matching line. Do not invent jobs that the tool did not return. Stage changes are not orders. If an order search comes back empty, say there were no order notes in that week.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
     'For "jobs in [city]", call show_jobs_on_map with city set to that city (exact city only).',
     'For "jobs near [city]", "around [city]", or "close to [city]", call show_jobs_on_map with near set to that city and radiusMiles 10. Do not use city= for near.',
     'For "show me scheduled jobs on the map", or amount/stage map filters, call show_jobs_on_map. Do not only search_jobs when they asked to see the map or where the jobs are.',
-    'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.',
-    'For "which job is [street]", "where is [street]", or a street fragment like Dewberry, call search_jobs then open_job_card if there is one pipeline match.',
+    voice
+      ? 'For "open [job]" or "show me the [job] photos", call open_job_card after you have the jobId.'
+      : 'For "tell me about [job]" or "relevant data", answer from get_job_details. Do not open the card.',
+    voice
+      ? 'For "which job is [street]", "where is [street]", or a street fragment like Dewberry, call search_jobs then open_job_card if there is one pipeline match.'
+      : 'For "which job is [street]", call search_jobs and answer with the matching title and address. Do not open the card.',
     'For "who can I send a number to" / "what employees can I text", call list_sms_employees and name everyone with a mobile, including rolodex contacts without logins.',
     'For "who is coming up" or calendar questions, call get_upcoming_schedule.',
     'For "remind me to …", call create_shop_task, then ask about a reminder text.',
@@ -741,6 +752,12 @@ async function runAssistantChat(req, res) {
                 const openedId = resolveJobId(toolContent?.jobId || args.jobId);
                 if (voice && openedId && !toolContent?.error) {
                   clientActions.push({ type: 'open_job', jobId: openedId, tab: 'files' });
+                } else if (openedId && !toolContent?.error) {
+                  toolContent = {
+                    ...toolContent,
+                    opened: false,
+                    hint: 'The user is typing. Summarize this job in the chat. The card stays closed.',
+                  };
                 }
               }
             } else if (fn.name === 'get_current_user_context') {
@@ -755,6 +772,13 @@ async function runAssistantChat(req, res) {
               const jobId = resolveJobId(args.jobId);
               if (!jobId) {
                 toolContent = { ok: false, error: 'jobId is required' };
+              } else if (!voice) {
+                const details = tenantId ? await fetchJobDetails({ jobId }) : { jobId };
+                toolContent = {
+                  ...details,
+                  opened: false,
+                  hint: 'The user is typing. Summarize this job in the chat. The card stays closed. Skip stage-change lines.',
+                };
               } else {
                 const tab = args.tab && ['overview', 'schedule', 'payments', 'files', 'notes'].includes(args.tab)
                   ? args.tab
@@ -765,7 +789,14 @@ async function runAssistantChat(req, res) {
             } else if (fn.name === 'navigate_user') {
               const safe = sanitizeNavigatePath(args.path, req.user?.role);
               const jobOpen = parseJobOpenFromPath(safe);
-              if (jobOpen) {
+              if (jobOpen && !voice) {
+                const details = tenantId ? await fetchJobDetails({ jobId: jobOpen.jobId }) : { jobId: jobOpen.jobId };
+                toolContent = {
+                  ...details,
+                  opened: false,
+                  hint: 'The user is typing. Summarize this job in the chat. The card stays closed.',
+                };
+              } else if (jobOpen) {
                 clientActions.push({ type: 'open_job', jobId: jobOpen.jobId, tab: 'files' });
                 toolContent = { ok: true, openedJob: jobOpen.jobId, tab: 'files' };
               } else if (safe) {

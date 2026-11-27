@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import api from '../../utils/axios';
 import { createSpeechRecognition, speakText } from '../../voice/browserSpeech';
+import { applyJobOverlayActions } from '../../voice/jobOverlayBus';
 import SiteAssistantChat from './SiteAssistantChat';
 
 vi.mock('../../utils/axios', () => ({
@@ -40,6 +41,7 @@ describe('Liminality help voice', () => {
     vi.mocked(api.post).mockReset();
     vi.mocked(speakText).mockClear();
     vi.mocked(createSpeechRecognition).mockReset();
+    vi.mocked(applyJobOverlayActions).mockClear();
   });
 
   it('listens, asks in voice, and speaks the answer', async () => {
@@ -81,6 +83,34 @@ describe('Liminality help voice', () => {
         voice: true,
         messages: [expect.objectContaining({ role: 'user', content: 'What is a vector?' })],
       }),
+    );
+  });
+
+  it('answers a typed question without opening the job', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: {
+        reply: 'Hendrickson is a white oak rail with iron balusters.',
+        actions: [{ type: 'open_job', jobId: 'abc123', tab: 'files' }],
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <SiteAssistantChat />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open help assistant' }));
+    fireEvent.change(screen.getByPlaceholderText('Ask about payments, jobs, or how search works'), {
+      target: { value: 'Tell me about the Hendrickson job' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('Hendrickson is a white oak rail with iron balusters.')).toBeInTheDocument();
+    expect(applyJobOverlayActions).toHaveBeenCalledWith([]);
+    expect(api.post).toHaveBeenCalledWith(
+      '/assistant/chat',
+      expect.objectContaining({ voice: false }),
     );
   });
 });

@@ -195,7 +195,9 @@ export default function SiteAssistantChat() {
           pagePath,
         });
         raw = typeof data?.reply === 'string' ? data.reply : '';
-        actions = data?.actions;
+        actions = speak
+          ? data?.actions
+          : (Array.isArray(data?.actions) ? data.actions : []).filter((action) => action?.type !== 'open_job');
       }
       const reply = speak ? spokenAssistantReply(raw) : raw;
       const withReply = [...nextMessages, { role: 'assistant', content: reply || '—' }];

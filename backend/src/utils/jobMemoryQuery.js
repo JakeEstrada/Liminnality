@@ -39,6 +39,22 @@ function textHasStems(text, stems) {
   return stems.every((stem) => hay.includes(stem));
 }
 
+/** Stage moves are shop bookkeeping, not something that was ordered. */
+function isStageLog(text) {
+  const line = String(text || '').trim();
+  return /^(?:stage updated|stage changed)\b/i.test(line)
+    || /^job moved to archive\b/i.test(line)
+    || /^auto-moved\b/i.test(line);
+}
+
+function asksAboutOrders(query) {
+  return keywordStems(query).includes('order');
+}
+
+function lineMentionsOrder(text) {
+  return /\b(?:re)?orders?\b|\border(?:ed|ing)\b|\bpurchased?\b|\bp\.?o\.?\b/i.test(String(text || ''));
+}
+
 function shopYmd(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: SHOP_TIMEZONE,
@@ -119,6 +135,7 @@ function jobMemoryRows(job) {
   for (const note of job?.notes || []) {
     const text = String(note?.content || '').trim().slice(0, 2000);
     if (!text || !note?._id) continue;
+    if (note.isStageChange || note.isSms || note.isAppointment || isStageLog(text)) continue;
     const worksheet = Boolean(note.isWorksheet) || looksLikeWorksheetNote(text);
     rows.push({
       kind: worksheet ? 'worksheet' : 'note',
@@ -182,6 +199,9 @@ function taskMemoryRow(task) {
 module.exports = {
   keywordStems,
   textHasStems,
+  isStageLog,
+  asksAboutOrders,
+  lineMentionsOrder,
   shopYmd,
   shopWeekContaining,
   shopWeekLabel,

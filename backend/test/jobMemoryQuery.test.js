@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const {
   keywordStems,
   textHasStems,
+  isStageLog,
+  asksAboutOrders,
+  lineMentionsOrder,
   shopWeekLabel,
   shopWeekContaining,
   parseShopBound,
@@ -55,12 +58,22 @@ test('worksheet text, notes, and tasks stay tied to the job', () => {
         content: 'Ordered balusters from the vendor',
         createdAt: new Date('2026-11-24T16:00:00Z'),
       },
+      {
+        _id: 'note-3',
+        content: 'Stage updated: Estimate Sent → Job Prep',
+        isStageChange: true,
+        createdAt: new Date('2026-11-24T18:00:00Z'),
+      },
     ],
   });
   assert.deepEqual(
     rows.map((row) => row.kind),
     ['worksheet', 'note', 'crew'],
   );
+  assert.equal(isStageLog('Stage updated: Estimate Sent → Job Prep'), true);
+  assert.equal(asksAboutOrders('orders of the previous week'), true);
+  assert.equal(lineMentionsOrder('Ordered balusters from the vendor'), true);
+  assert.equal(lineMentionsOrder('Stage updated: Estimate Sent → Job Prep'), false);
   assert.equal(rows[1].sourceId, 'note-2');
 
   const task = taskMemoryRow({

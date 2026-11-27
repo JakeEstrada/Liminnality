@@ -7,9 +7,15 @@ const {
   updateDeveloperTask,
   deleteDeveloperTask,
 } = require('../controllers/developerTasksController');
+const {
+  getVectorSemantics,
+  askVectorSemantics,
+} = require('../controllers/vectorSemanticsController');
 
 router.use(requireAuth, requireSuperAdmin);
 
+router.get('/vectors', getVectorSemantics);
+router.post('/vectors/ask', askVectorSemantics);
 router.get('/', getDeveloperTasks);
 router.post('/', createDeveloperTask);
 router.patch('/:id', updateDeveloperTask);

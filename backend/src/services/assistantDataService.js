@@ -360,8 +360,10 @@ async function fetchJobDetails({ jobId }) {
     .lean();
 
   const notes = [...(job.notes || [])]
+    .filter((n) => !n.isStageChange && !n.isSms && !n.isAppointment)
+    .filter((n) => !/^(?:stage updated|stage changed|job moved to archive|auto-moved)\b/i.test(String(n.content || '').trim()))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 25)
+    .slice(0, 12)
     .map((n) => ({
       date: formatDate(n.createdAt),
       content: String(n.content || '').slice(0, 600),
@@ -379,12 +381,15 @@ async function fetchJobDetails({ jobId }) {
     dueNote: item.dueNote ? String(item.dueNote).slice(0, 200) : null,
   }));
 
-  const recentActivities = activities.map((a) => ({
-    type: a.type,
-    date: formatDate(a.createdAt),
-    amount: formatMoney(a.amount),
-    note: a.note ? String(a.note).slice(0, 250) : null,
-  }));
+  const recentActivities = activities
+    .filter((a) => a.type !== 'stage_change')
+    .slice(0, 8)
+    .map((a) => ({
+      type: a.type,
+      date: formatDate(a.createdAt),
+      amount: formatMoney(a.amount),
+      note: a.note ? String(a.note).slice(0, 250) : null,
+    }));
 
   return {
     jobId: String(job._id),
@@ -392,6 +397,7 @@ async function fetchJobDetails({ jobId }) {
     stage: job.stage || null,
     customerName: job.customerId?.name || null,
     customerPhone: job.customerId?.primaryPhone || null,
+    address: formatAddress(job.jobAddress) || null,
     description: job.description ? String(job.description).slice(0, 500) : null,
     crewNotes: job.schedule?.crewNotes ? String(job.schedule.crewNotes).slice(0, 500) : null,
     notes,

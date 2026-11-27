@@ -11,7 +11,7 @@ import {
 import { primeChromiumMicrophone, stopPrimedMicrophone } from '../voice/chromiumSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
-import { microphoneHeldBy, subscribeMicrophone } from '../voice/micClaim';
+import { microphoneOwner, subscribeMicrophone } from '../voice/micClaim';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
 import { abortMapTour, applyMapShow, narrateMapTour, resetMapToPipeline } from '../voice/mapCommandBus';
 import {
@@ -151,7 +151,7 @@ export function useLiminalityVoice({
   }, []);
 
   const startRecognition = useCallback(() => {
-    if (!enabledRef.current || speakingRef.current || microphoneHeldBy('help')) return;
+    if (!enabledRef.current || speakingRef.current || microphoneOwner()) return;
 
     if (recognitionRef.current) {
       try {
@@ -256,7 +256,7 @@ export function useLiminalityVoice({
       if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
       const delay = networkFailsRef.current > 0 ? Math.min(2000 * networkFailsRef.current, 6000) : 80;
       window.setTimeout(() => {
-        if (!enabledRef.current || speakingRef.current || modeRef.current === 'off' || microphoneHeldBy('help')) return;
+        if (!enabledRef.current || speakingRef.current || modeRef.current === 'off' || microphoneOwner()) return;
         try {
           recognition.start();
         } catch {
@@ -869,9 +869,10 @@ export function useLiminalityVoice({
     enabledRef.current = true;
     networkFailsRef.current = 0;
     const unlistenMic = subscribeMicrophone(() => {
-      if (microphoneHeldBy('help')) {
+      const micOwner = microphoneOwner();
+      if (micOwner) {
         destroyRecognition();
-        setStatusLabel('Help is using the microphone');
+        setStatusLabel(micOwner === 'vectors' ? 'Vectors is using the microphone' : 'Help is using the microphone');
         return;
       }
       if (enabledRef.current && modeRef.current !== 'off') startRecognition();

@@ -38,6 +38,7 @@ import toast from 'react-hot-toast';
 import GeocodeIssuePanel from '../components/developer/GeocodeIssuePanel';
 import LiminalityCommandsGuide from '../components/developer/LiminalityCommandsGuide';
 import PrintDocuments from '../components/developer/PrintDocuments';
+import VectorSemanticsPanel from '../components/developer/VectorSemanticsPanel';
 import FinanceHubPage from './FinanceHubPage';
 import CompletedTasksPage from './CompletedTasksPage';
 import WebsitePage from './WebsitePage';
@@ -46,7 +47,7 @@ import RfidPage from './RfidPage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-const DEVELOPER_SECTIONS = ['tasks', 'voice', 'print', 'finance', 'activity', 'website', 'analytics', 'rfid'];
+const DEVELOPER_SECTIONS = ['tasks', 'voice', 'vectors', 'print', 'finance', 'activity', 'website', 'analytics', 'rfid'];
 const FINANCE_TABS = ['deposits', 'register', 'estimates', 'change-orders', 'payment-schedules'];
 
 function resolveDeveloperSection(searchParams) {
@@ -254,6 +255,7 @@ function DeveloperTasksPage() {
   const sectionTitle = {
     tasks: 'Developer',
     voice: 'Voice commands',
+    vectors: 'Vector semantics',
     print: 'Print',
     finance: 'Finance Hub',
     activity: 'Activity log',
@@ -264,6 +266,7 @@ function DeveloperTasksPage() {
   const sectionSubtitle = {
     tasks: 'Shop extras in one place — typical users do not see these tabs',
     voice: 'What you can say to Liminality after the listen cue',
+    vectors: 'A real job line, the list of numbers made from it, and why another job sits nearby',
     print: 'Shop sheets and forms — print them from here',
     finance: 'Bank register, deposits, estimates, and payment tracking',
     activity: 'Completed work, appointments, and stage changes by week',
@@ -312,6 +315,7 @@ function DeveloperTasksPage() {
       >
         <Tab value="tasks" label="Tasks" sx={{ textTransform: 'none' }} />
         <Tab value="voice" label="Voice" sx={{ textTransform: 'none' }} />
+        <Tab value="vectors" label="Vectors" sx={{ textTransform: 'none' }} />
         <Tab value="print" label="Print" sx={{ textTransform: 'none' }} />
         <Tab value="finance" label="Finance Hub" sx={{ textTransform: 'none' }} />
         <Tab value="activity" label="Activity log" sx={{ textTransform: 'none' }} />
@@ -325,6 +329,8 @@ function DeveloperTasksPage() {
         <Box sx={{ px: 0 }}>
           <LiminalityCommandsGuide />
         </Box>
+      ) : section === 'vectors' ? (
+        <VectorSemanticsPanel />
       ) : section === 'print' ? (
         <Box sx={{ px: 0 }}>
           <PrintDocuments />
