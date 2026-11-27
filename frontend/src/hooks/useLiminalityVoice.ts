@@ -11,6 +11,7 @@ import {
 import { primeChromiumMicrophone, stopPrimedMicrophone } from '../voice/chromiumSpeech';
 import { playListeningCue, unlockListeningCue } from '../voice/listeningCue';
 import { askLiminalityAssistant, askMapJobs, spokenAssistantReply } from '../voice/assistantVoice';
+import { microphoneHeldBy, subscribeMicrophone } from '../voice/micClaim';
 import { closeJobOverlay, openJobOverlay } from '../voice/jobOverlayBus';
 import { abortMapTour, applyMapShow, narrateMapTour, resetMapToPipeline } from '../voice/mapCommandBus';
 import {
@@ -150,7 +151,7 @@ export function useLiminalityVoice({
   }, []);
 
   const startRecognition = useCallback(() => {
-    if (!enabledRef.current || speakingRef.current) return;
+    if (!enabledRef.current || speakingRef.current || microphoneHeldBy('help')) return;
 
     if (recognitionRef.current) {
       try {
@@ -255,7 +256,7 @@ export function useLiminalityVoice({
       if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
       const delay = networkFailsRef.current > 0 ? Math.min(2000 * networkFailsRef.current, 6000) : 80;
       window.setTimeout(() => {
-        if (!enabledRef.current || speakingRef.current || modeRef.current === 'off') return;
+        if (!enabledRef.current || speakingRef.current || modeRef.current === 'off' || microphoneHeldBy('help')) return;
         try {
           recognition.start();
         } catch {
@@ -867,6 +868,14 @@ export function useLiminalityVoice({
     }
     enabledRef.current = true;
     networkFailsRef.current = 0;
+    const unlistenMic = subscribeMicrophone(() => {
+      if (microphoneHeldBy('help')) {
+        destroyRecognition();
+        setStatusLabel('Help is using the microphone');
+        return;
+      }
+      if (enabledRef.current && modeRef.current !== 'off') startRecognition();
+    });
     unlockListeningCue();
     prefetchLiminalitySpeech();
     const armMic = () => {
@@ -876,6 +885,7 @@ export function useLiminalityVoice({
     window.addEventListener('pointerdown', armMic);
     goWaiting();
     return () => {
+      unlistenMic();
       window.removeEventListener('pointerdown', armMic);
       enabledRef.current = false;
       speakingRef.current = false;

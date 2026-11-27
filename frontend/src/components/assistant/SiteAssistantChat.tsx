@@ -28,6 +28,7 @@ import {
 import { unlockNeuralAudio } from '../../voice/neuralSpeech';
 import { spokenAssistantReply } from '../../voice/assistantVoice';
 import { isHelpVoiceStop } from '../../voice/helpVoice';
+import { claimMicrophone, releaseMicrophone } from '../../voice/micClaim';
 
 const voiceSupported = typeof window !== 'undefined' && isSpeechRecognitionSupported();
 
@@ -45,11 +46,14 @@ export default function SiteAssistantChat() {
   const voiceWantedRef = useRef(false);
   const busyRef = useRef(false);
   const recognitionRef = useRef(null);
+  const endpointRef = useRef(null);
   const sendRef = useRef<(text: string, speak: boolean) => Promise<void>>(async () => {});
 
   messagesRef.current = messages;
 
   const releaseRecognition = useCallback(() => {
+    if (endpointRef.current) window.clearTimeout(endpointRef.current);
+    endpointRef.current = null;
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
     if (!recognition) return;
@@ -70,6 +74,7 @@ export default function SiteAssistantChat() {
     setHeard('');
     cancelSpeech();
     releaseRecognition();
+    releaseMicrophone('help');
   }, [releaseRecognition]);
 
   const startListening = useCallback(() => {
@@ -88,29 +93,42 @@ export default function SiteAssistantChat() {
     recognition.onresult = (event) => {
       if (!voiceWantedRef.current || busyRef.current) return;
       const { finalText, interimText } = collectTranscript(event);
-      if (interimText) setHeard(interimText);
-      if (!finalText) return;
-      const spoken = finalText.trim();
-      setHeard('');
-      if (isHelpVoiceStop(spoken)) {
+      const spoken = String(finalText || interimText || '').trim();
+      if (spoken) setHeard(spoken);
+      if (!spoken) return;
+      if (endpointRef.current) window.clearTimeout(endpointRef.current);
+      endpointRef.current = window.setTimeout(() => {
+        endpointRef.current = null;
+        if (!voiceWantedRef.current || busyRef.current) return;
+        setHeard('');
+        if (isHelpVoiceStop(spoken)) {
+          endVoice();
+          return;
+        }
+        void sendRef.current(spoken, true);
+      }, finalText ? 250 : 900);
+    };
+    recognition.onerror = (event) => {
+      const error = String(event?.error || '');
+      if (error === 'not-allowed' || error === 'service-not-allowed') {
+        toast.error('The microphone is blocked. Allow it for this site, then press Talk again.');
         endVoice();
         return;
       }
-      void sendRef.current(spoken, true);
-    };
-    recognition.onerror = (event) => {
-      if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
-        toast.error('The microphone is blocked.');
-        endVoice();
+      if (error === 'network') {
+        setHeard('Speech did not come through. Say it once more, or type it.');
       }
     };
     recognition.onend = () => {
       if (!voiceWantedRef.current || busyRef.current || recognitionRef.current !== recognition) return;
-      try {
-        recognition.start();
-      } catch {
-        /* already running */
-      }
+      window.setTimeout(() => {
+        if (!voiceWantedRef.current || busyRef.current || recognitionRef.current !== recognition) return;
+        try {
+          recognition.start();
+        } catch {
+          /* already running */
+        }
+      }, 120);
     };
     try {
       recognition.start();
@@ -128,6 +146,7 @@ export default function SiteAssistantChat() {
     voiceWantedRef.current = false;
     cancelSpeech();
     releaseRecognition();
+    releaseMicrophone('help');
   }, [releaseRecognition]);
 
   const applyActions = useCallback((actions) => {
@@ -181,7 +200,7 @@ export default function SiteAssistantChat() {
         try {
           await speakText(reply);
         } catch {
-          /* the reply is already on screen */
+          toast.error('The answer is in the chat. The voice did not play.');
         }
       }
     } catch (err) {
@@ -225,6 +244,7 @@ export default function SiteAssistantChat() {
       return;
     }
     unlockNeuralAudio();
+    claimMicrophone('help');
     voiceWantedRef.current = true;
     setVoiceOn(true);
     startListening();
