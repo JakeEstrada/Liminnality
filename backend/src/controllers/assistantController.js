@@ -2,6 +2,7 @@ const { fetchGlobalCustomerSearchResults } = require('./customerController');
 const { ROUTES_MARKDOWN, sanitizeNavigatePath } = require('../services/assistantSiteMap');
 const { resolveJobId } = require('../utils/resolveJobId');
 const { shopWeekLabel } = require('../utils/jobMemoryQuery');
+const { isGreeting, greetingReply } = require('../utils/assistantTurn');
 const {
   fetchRecentPayments,
   fetchRecentDeposits,
@@ -341,6 +342,7 @@ function buildSystemPrompt(voice = false) {
   const voiceLines = voice
     ? [
         'You are Liminality, a short shop-floor voice. Plain and useful. No banter, no feelings, no “I know you are upset.”',
+        'If they only say hello, hi, or hey, greet them and ask what they need. Do not call tools for a greeting.',
         'Answer in one short sentence, except when listing people or jobs — then name each match. When they ask how the system, search, notes, or vectors work, use two or three short sentences.',
         'If you used show_jobs_on_map, say only the count and place, like "Eight jobs near San Clemente." Do not name the jobs. The map will highlight and say each one.',
         'If they ask who they can text or send a number to, call list_sms_employees and speak every name. Include roster contacts that do not have a login.',
@@ -359,7 +361,7 @@ function buildSystemPrompt(voice = false) {
     'You are Paarth Help, an in-app assistant for the Paarth operations web app.',
     'You only help with using this application. Be concise and practical.',
     'Never ask the user for passwords or API keys. Never fabricate customer or financial data.',
-    'Use tools when the user needs live data from their organization or when they want to jump to a page.',
+    'Use tools when the user needs live shop data or wants to open a page. A greeting is not a search. Do not call tools for hello, hi, or hey.',
     'After navigate_user succeeds, briefly confirm where you sent them.',
     'To open a job, call open_job_card with jobId (the 24-character id). If search returned id like job-abc..., use jobId or strip the job- prefix. Do not navigate_user to /pipeline?jobId=.',
     '',
@@ -648,6 +650,10 @@ async function runAssistantChat(req, res) {
     return res.status(400).json({ error: 'Last turn must include a user message.' });
   }
 
+  if (isGreeting(lastUser.content)) {
+    return res.json({ reply: greetingReply() });
+  }
+
   const voice = Boolean(req.body?.voice);
   const pagePath = String(req.body?.pagePath || '').trim().slice(0, 300);
   const pageLine = pagePath
@@ -879,7 +885,31 @@ async function runAssistantChat(req, res) {
       }
     }
 
-    return res.status(502).json({ error: 'Assistant stopped after too many tool rounds.' });
+    try {
+      const closing = await openaiChat({
+        messages: [
+          ...messages,
+          {
+            role: 'user',
+            content: 'Answer now in one or two sentences from what you already have. Do not call tools.',
+          },
+        ],
+        temperature: 0.3,
+      });
+      const reply = String(closing.choices?.[0]?.message?.content || '').trim();
+      if (reply) {
+        return res.json({
+          reply: reply.slice(0, 800),
+          actions: clientActions.length ? clientActions : undefined,
+        });
+      }
+    } catch (closingError) {
+      console.error('runAssistantChat closing reply:', closingError.message || closingError);
+    }
+    return res.json({
+      reply: 'I did not get a clear answer. Ask me about a job, a payment, or how search works.',
+      actions: clientActions.length ? clientActions : undefined,
+    });
   } catch (e) {
     if (e.code === 'NO_API_KEY') {
       return res.status(503).json({

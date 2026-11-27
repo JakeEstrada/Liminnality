@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/plaidRegisterData.test.js test/twilioSignature.test.js test/cloneTenantAnonymize.test.js test/readOnlyRole.test.js test/customerContactSync.test.js test/salesMetrics.test.js test/worksheetDraft.test.js test/duplicateJobs.test.js test/hourlyRate.test.js test/jobSimilarity.test.js test/worksheetNote.test.js test/jobMemoryQuery.test.js",
+    "test": "node --test test/plaidRegisterData.test.js test/twilioSignature.test.js test/cloneTenantAnonymize.test.js test/readOnlyRole.test.js test/customerContactSync.test.js test/salesMetrics.test.js test/worksheetDraft.test.js test/duplicateJobs.test.js test/hourlyRate.test.js test/jobSimilarity.test.js test/worksheetNote.test.js test/jobMemoryQuery.test.js test/assistantTurn.test.js",
     "typecheck": "tsc --noEmit",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
