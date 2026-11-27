@@ -71,7 +71,7 @@ import JobCoverPagesDialog from './JobCoverPagesDialog';
 import JobPaymentsSummary from './JobPaymentsSummary';
 import JobSchedulePanel from './JobSchedulePanel';
 import SimilarJobsDialog from './SimilarJobsDialog';
-import WorksheetFileNoteButton from './WorksheetFileNoteButton';
+import WorksheetFileMenu from './WorksheetFileNoteButton';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -311,6 +311,7 @@ function JobDetailModal({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [files, setFiles] = useState([]);
+  const [worksheetFileMenu, setWorksheetFileMenu] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [fileType] = useState('other');
   const [dragActive, setDragActive] = useState(false);
@@ -2017,6 +2018,13 @@ function JobDetailModal({
                         target={isImage ? '_blank' : undefined}
                         rel={isImage ? 'noopener noreferrer' : undefined}
                         onClick={isImage ? undefined : () => handleFileCardClick(file)}
+                        onContextMenu={(e) => {
+                          const name = String(file.originalName || '');
+                          if (!isPdf && !/worksheet/i.test(name)) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setWorksheetFileMenu({ file, top: e.clientY, left: e.clientX });
+                        }}
                         sx={{
                           position: 'relative',
                           aspectRatio: '1',
@@ -2092,16 +2100,6 @@ function JobDetailModal({
                             {file.originalName}
                           </Typography>
                         </Box>
-                        {isPdf || isImage ? (
-                          <WorksheetFileNoteButton
-                            file={file}
-                            jobId={job?._id}
-                            onSaved={(savedJob) => {
-                              applySavedJob(savedJob);
-                              setActiveTab(JOB_MODAL_TAB.notes);
-                            }}
-                          />
-                        ) : null}
                         {isImage ? (
                           <IconButton
                             className="file-tile-open"
@@ -2344,6 +2342,20 @@ function JobDetailModal({
       />
       {similarOpen ? (
         <SimilarJobsDialog open onClose={() => setSimilarOpen(false)} jobId={jobId} />
+      ) : null}
+      {worksheetFileMenu ? (
+        <WorksheetFileMenu
+          file={worksheetFileMenu.file}
+          jobId={job?._id}
+          open
+          top={worksheetFileMenu.top}
+          left={worksheetFileMenu.left}
+          onClose={() => setWorksheetFileMenu(null)}
+          onSaved={(savedJob) => {
+            applySavedJob(savedJob);
+            setActiveTab(JOB_MODAL_TAB.notes);
+          }}
+        />
       ) : null}
 
       {/* Add Task Modal */}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
-import WorksheetFileNoteButton from './WorksheetFileNoteButton';
+import WorksheetFileMenu from './WorksheetFileNoteButton';
 
 vi.mock('axios');
 vi.mock('react-hot-toast', () => ({
@@ -20,7 +20,7 @@ vi.mock('../../utils/worksheetRead', () => ({
   })),
 }));
 
-describe('WorksheetFileNoteButton', () => {
+describe('WorksheetFileMenu', () => {
   beforeEach(() => {
     vi.mocked(axios.get).mockReset();
     vi.mocked(axios.patch).mockReset();
@@ -45,14 +45,18 @@ describe('WorksheetFileNoteButton', () => {
     const onSaved = vi.fn();
 
     render(
-      <WorksheetFileNoteButton
+      <WorksheetFileMenu
         file={{ _id: 'file-1', originalName: 'SCWW Doug ray worksheet.pdf', mimetype: 'application/pdf' }}
         jobId="job-1"
+        open
+        top={10}
+        left={10}
+        onClose={vi.fn()}
         onSaved={onSaved}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save worksheet note' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Scrape worksheet' }));
 
     await waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1));
     const [url, body] = vi.mocked(axios.patch).mock.calls[0];

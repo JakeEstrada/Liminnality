@@ -1,5 +1,5 @@
-import { useState, type MouseEvent } from 'react';
-import { Button, CircularProgress } from '@mui/material';
+import { useState } from 'react';
+import { Menu, MenuItem } from '@mui/material';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -17,17 +17,20 @@ type FileLike = {
 type Props = {
   file: FileLike;
   jobId: string;
+  open: boolean;
+  top: number;
+  left: number;
+  onClose: () => void;
   onSaved: (job: unknown) => void;
 };
 
-/** Read a worksheet already stored on the job and save only the extra note. */
-export default function WorksheetFileNoteButton({ file, jobId, onSaved }: Props) {
+/** Right-click menu: read a worksheet already stored on the job and save only the extra note. */
+export default function WorksheetFileMenu({ file, jobId, open, top, left, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const [reading, setReading] = useState(false);
 
-  const saveNote = async (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const scrape = async () => {
+    onClose();
     if (reading || !file?._id || !jobId) return;
 
     const toastId = toast.loading('Reading the worksheet…');
@@ -71,32 +74,15 @@ export default function WorksheetFileNoteButton({ file, jobId, onSaved }: Props)
   };
 
   return (
-    <Button
-      size="small"
-      variant="contained"
-      onClick={saveNote}
-      disabled={reading}
-      aria-label="Save worksheet note"
-      sx={{
-        position: 'absolute',
-        left: 6,
-        right: 6,
-        bottom: 34,
-        zIndex: 2,
-        textTransform: 'none',
-        fontSize: 12,
-        py: 0.25,
-        minWidth: 0,
-      }}
+    <Menu
+      open={open}
+      onClose={onClose}
+      anchorReference="anchorPosition"
+      anchorPosition={{ top, left }}
     >
-      {reading ? (
-        <>
-          <CircularProgress size={12} sx={{ mr: 0.75, color: 'inherit' }} />
-          Reading…
-        </>
-      ) : (
-        'Save note'
-      )}
-    </Button>
+      <MenuItem onClick={scrape} disabled={reading}>
+        Scrape worksheet
+      </MenuItem>
+    </Menu>
   );
 }
