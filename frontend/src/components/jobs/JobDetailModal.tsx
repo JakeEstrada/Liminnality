@@ -71,6 +71,7 @@ import JobCoverPagesDialog from './JobCoverPagesDialog';
 import JobPaymentsSummary from './JobPaymentsSummary';
 import JobSchedulePanel from './JobSchedulePanel';
 import SimilarJobsDialog from './SimilarJobsDialog';
+import WorksheetFileNoteButton from './WorksheetFileNoteButton';
 import EmployeeSmsRecipientField, {
   parseSmsRecipientSelection,
 } from '../common/EmployeeSmsRecipientField';
@@ -2091,6 +2092,16 @@ function JobDetailModal({
                             {file.originalName}
                           </Typography>
                         </Box>
+                        {isPdf || isImage ? (
+                          <WorksheetFileNoteButton
+                            file={file}
+                            jobId={job?._id}
+                            onSaved={(savedJob) => {
+                              applySavedJob(savedJob);
+                              setActiveTab(JOB_MODAL_TAB.notes);
+                            }}
+                          />
+                        ) : null}
                         {isImage ? (
                           <IconButton
                             className="file-tile-open"

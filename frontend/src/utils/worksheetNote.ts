@@ -63,3 +63,22 @@ export function savedWorksheetNote(notes: SavedNote[] | null | undefined) {
   }
   return parts.join('\n\n');
 }
+
+function isWorksheetNote(note: SavedNote | null | undefined) {
+  if (!note || note.isSms || note.isStageChange || note.isAppointment) return false;
+  const content = String(note.content || '').trim();
+  return Boolean(content) && (Boolean(note.isWorksheet) || WORKSHEET_LINE.test(content));
+}
+
+/** Replace the saved worksheet note, or add one. Other notes stay. */
+export function upsertWorksheetNote<T extends SavedNote>(notes: T[] | null | undefined, content: string) {
+  const text = String(content || '').trim().slice(0, 2000);
+  const list = (notes || []).map((note) => ({ ...note }));
+  if (!text) return list;
+  const index = list.findIndex((note) => isWorksheetNote(note));
+  if (index >= 0) {
+    list[index] = { ...list[index], content: text, isWorksheet: true };
+    return list;
+  }
+  return [...list, { content: text, isWorksheet: true } as T];
+}
