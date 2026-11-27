@@ -5,6 +5,10 @@ const {
   textHasStems,
   exactTokens,
   textHasExactTokens,
+  searchStems,
+  asksForUpcoming,
+  focusForQuery,
+  jobMatchesFocus,
   rankExactMatches,
   isStageLog,
   asksAboutOrders,
@@ -129,4 +133,25 @@ test('worksheet words match even when the ending differs', () => {
   assert.deepEqual(rankExactMatches(rows, 'square nose').map((hit) => hit.row.jobId), ['sheet-job']);
   assert.deepEqual(rankExactMatches(rows, 'solid wood treads').map((hit) => hit.row.jobId), ['sheet-job']);
   assert.deepEqual(rankExactMatches(rows, 'false treads').some((hit) => hit.row.jobId === 'plain-job'), false);
+});
+
+test('a spoken size and an upcoming question stay on the part and the post', () => {
+  const asked = 'do we have any upcoming jobs right now that use 6084 and a four and a quarter post';
+  assert.deepEqual(exactTokens(asked), ['4.25', '6084']);
+  assert.deepEqual(searchStems(asked), ['post']);
+  assert.equal(asksForUpcoming(asked), true);
+  assert.equal(focusForQuery(asked), 'upcoming');
+  assert.equal(focusForQuery('6084 and 4.25 post', 'upcoming'), 'upcoming');
+  const sheet = 'Handrail: White Oak, Curved #6084. Newel: White Oak, 4.25" post.';
+  const other = 'Handrail #6084. Newel 4.5" post.';
+  const rows = [
+    { _id: 'quarter', jobId: 'quarter-job', kind: 'worksheet', text: sheet },
+    { _id: 'half', jobId: 'half-job', kind: 'worksheet', text: other },
+  ];
+  assert.deepEqual(rankExactMatches(rows, asked).map((hit) => hit.row.jobId), ['quarter-job']);
+  assert.equal(jobMatchesFocus({ stage: 'DEPOSIT_PENDING' }, 'upcoming'), true);
+  assert.equal(jobMatchesFocus({ stage: 'READY_TO_SCHEDULE', isArchived: true }, 'upcoming'), false);
+  assert.equal(jobMatchesFocus({ stage: 'ESTIMATE_SENT' }, 'upcoming'), false);
+  assert.equal(jobMatchesFocus({ stage: 'SCHEDULED' }, 'upcoming'), false);
+  assert.equal(jobMatchesFocus({ stage: 'FINAL_PAYMENT_CLOSED', isCompletedClosedOut: true }, 'upcoming'), false);
 });

@@ -272,10 +272,27 @@ async function fetchRecentDeposits({ tenantId, limit: limitArg = 5, customerQuer
 /**
  * Search job modal notes and crew notes across active jobs.
  */
-async function searchJobNotes({ query, since, until, limit: limitArg = 12 } = {}) {
+function speakableNoteSearch(result) {
+  return {
+    query: result.query,
+    focus: result.focus || 'all',
+    totalJobs: result.totalJobs,
+    hint: result.hint,
+    matches: (result.matches || []).map((match) => ({
+      customerName: match.customerName,
+      jobTitle: match.jobTitle,
+      stage: match.stageLabel || match.stage,
+      say: match.say || match.customerName || match.jobTitle,
+      detail: String(match.excerpt || '').slice(0, 180),
+    })),
+  };
+}
+
+async function searchJobNotes({ query, since, until, limit: limitArg = 12, scope } = {}) {
   const { memoryIsReady, searchStoredJobNotes } = require('./jobMemory');
   if (await memoryIsReady()) {
-    return searchStoredJobNotes({ query, since, until, limit: limitArg });
+    const result = await searchStoredJobNotes({ query, since, until, limit: limitArg, scope });
+    return speakableNoteSearch(result);
   }
   const limit = clampLimit(limitArg, 12, 30);
   const qTrim = String(query || '').trim();

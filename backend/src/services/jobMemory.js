@@ -1,12 +1,15 @@
 const Job = require('../models/Job');
 const JobMemory = require('../models/JobMemory');
 require('../models/Customer');
+const { STAGE_LABELS } = require('../utils/stageConfig');
 const { embeddingConfigured, embedText, embedTexts } = require('./jobFingerprint');
 const {
   keywordStems,
   textHasStems,
   exactTokens,
   searchStems,
+  focusForQuery,
+  jobMatchesFocus,
   asksForRecent,
   recencyYmd,
   rankExactMatches,
@@ -153,7 +156,41 @@ function jobStanding(job) {
   return 'active';
 }
 
-async function finishMemoryMatches(asked, ranked, { since, until, hint }) {
+function memoryMatchFields(job, line, score) {
+  const stageLabel = STAGE_LABELS[job.stage] || job.stage || '';
+  const who = job.customerId?.name || job.title || 'A job';
+  return {
+    jobId: String(job._id),
+    jobTitle: job.title || 'Untitled',
+    customerName: job.customerId?.name || null,
+    stage: job.stage || null,
+    stageLabel,
+    standing: jobStanding(job),
+    noteDate: recencyYmd(line) || dayLabel(line.at),
+    excerpt: String(line.text || '').slice(0, 450),
+    kind: line.kind,
+    score: score == null ? null : Math.round(Number(score) * 100) / 100,
+    path: `/pipeline?jobId=${job._id}`,
+    say: stageLabel ? `${who}, ${stageLabel}` : who,
+  };
+}
+
+function searchHint(focus, tokens, wordStems) {
+  const words = [...tokens, ...wordStems];
+  const speak = 'Speak each say line: the customer and the stage in plain words. Do not say job ids, stage codes, standing, or dates.';
+  if (focus === 'upcoming') {
+    return `Upcoming means contract out through ready to schedule, and the job is still active. ${words.length ? `The line has to contain ${words.join(', ')}. ` : ''}A size has to match exactly, so 4.25 does not include 4.5. ${speak} If totalJobs is 0, say there are no upcoming jobs with that.`;
+  }
+  if (focus === 'archived') {
+    return `Archived jobs only. ${words.length ? `The line has to contain ${words.join(', ')}. ` : ''}${speak}`;
+  }
+  if (tokens.length) {
+    return `Exact match on ${tokens.join(', ')}. Newest worksheet date first. A size has to match exactly, so 4.25 does not include 4.5. The other words have to be in the line too. ${speak}`;
+  }
+  return `Jobs whose notes or worksheet lines contain ${words.join(', ')}. Newest worksheet date first. The words have to be in the line. ${speak}`;
+}
+
+async function finishMemoryMatches(asked, ranked, { since, until, hint, focus = 'all' }) {
   const ordered = (ranked || []).map((hit) => ({
     jobId: String(hit.row?.jobId || ''),
     hit,
@@ -166,23 +203,12 @@ async function finishMemoryMatches(asked, ranked, { since, until, hint }) {
   const matches = [];
   for (const item of ordered) {
     const job = jobById.get(item.jobId);
-    if (!job) continue;
-    const line = item.hit.row;
-    matches.push({
-      jobId: item.jobId,
-      jobTitle: job.title || 'Untitled',
-      customerName: job.customerId?.name || null,
-      stage: job.stage || null,
-      standing: jobStanding(job),
-      noteDate: recencyYmd(line) || dayLabel(line.at),
-      excerpt: String(line.text || '').slice(0, 450),
-      kind: line.kind,
-      score: item.hit.score == null ? null : Math.round(item.hit.score * 100) / 100,
-      path: `/pipeline?jobId=${item.jobId}`,
-    });
+    if (!job || !jobMatchesFocus(job, focus)) continue;
+    matches.push(memoryMatchFields(job, item.hit.row, item.hit.score));
   }
   return {
     query: asked,
+    focus,
     since: since || null,
     until: until || null,
     matches,
@@ -198,8 +224,9 @@ function dayLabel(value) {
   return date.toISOString().slice(0, 10);
 }
 
-async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
+async function searchStoredJobNotes({ query, since, until, limit = 15, scope } = {}) {
   const asked = String(query || '').trim();
+  const focus = focusForQuery(asked, scope);
   const tokens = exactTokens(asked);
   const wordStems = searchStems(asked).filter((stem) => !tokens.includes(stem));
   const from = parseShopBound(since, false);
@@ -222,11 +249,12 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
     }) || [];
     const loose = !ranked.length && /\b(?:instead|rather|similar|like)\b/i.test(asked);
     if (!loose) {
-      const words = [...tokens, ...wordStems];
-      const hint = tokens.length
-        ? `Exact match on ${tokens.join(', ')}. Newest worksheet date first. A size has to match exactly, so 4.25 does not include 4.5. The other words have to be in the line too.`
-        : `Jobs whose notes or worksheet lines contain ${words.join(', ')}. Newest worksheet date first. The words have to be in the line.`;
-      return finishMemoryMatches(asked, ranked, { since, until, hint });
+      return finishMemoryMatches(asked, ranked, {
+        since,
+        until,
+        focus,
+        hint: searchHint(focus, tokens, wordStems),
+      });
     }
   }
   const cap = Math.min(Math.max(Number(limit) || 15, 1), 30);
@@ -272,36 +300,34 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
   for (const [jobId, hits] of byJob) {
     const job = jobById.get(jobId);
     if (!job) continue;
+    if (!jobMatchesFocus(job, focus)) continue;
     const closest = hits[0];
     const line = closest.row || closest;
-    matches.push({
-      jobId,
-      jobTitle: job.title || 'Untitled',
-      customerName: job.customerId?.name || null,
-      stage: job.stage || null,
-      standing: jobStanding(job),
-      noteDate: dayLabel(line.at),
-      excerpt: String(line.text || '').slice(0, 450),
-      kind: line.kind,
-      score: closest.score == null ? null : Math.round(closest.score * 100) / 100,
-      path: `/pipeline?jobId=${jobId}`,
-    });
+    matches.push(memoryMatchFields(job, line, closest.score));
     if (matches.length >= cap) break;
   }
 
   return {
     query: asked,
+    focus,
     since: since || null,
     until: until || null,
     matches,
     totalJobs: matches.length,
-    hint: orderQuestion
-      ? 'Order notes and tasks only. Stage changes are left out. An empty list means nothing in that range mentions an order.'
-      : queryVector
-        ? 'Ranked by loose similarity. A higher score means the stored line is closer in meaning, even when the words differ. Dated questions use notes and tasks from that shop week only. Stage changes are left out.'
-        : dated
-          ? 'Word match on notes and tasks written in that shop-week range. Vectors were not available for this question. Stage changes are left out.'
-          : 'Word match across notes, tasks, and scraped worksheet text. Vectors were not available for this question. Stage changes are left out.',
+    hint: [
+      focus === 'upcoming'
+        ? 'Upcoming means contract out through ready to schedule, and the job is still active. Speak each say line. Do not say job ids, stage codes, standing, or dates. If totalJobs is 0, say there are no upcoming jobs with that.'
+        : focus === 'archived'
+          ? 'Archived jobs only. Speak each say line. Do not say job ids or dates.'
+          : '',
+      orderQuestion
+        ? 'Order notes and tasks only. Stage changes are left out. An empty list means nothing in that range mentions an order.'
+        : queryVector
+          ? 'Ranked by loose similarity. A higher score means the stored line is closer in meaning, even when the words differ. Dated questions use notes and tasks from that shop week only. Stage changes are left out.'
+          : dated
+            ? 'Word match on notes and tasks written in that shop-week range. Vectors were not available for this question. Stage changes are left out.'
+            : 'Word match across notes, tasks, and scraped worksheet text. Vectors were not available for this question. Stage changes are left out.',
+    ].filter(Boolean).join(' '),
   };
 }
 

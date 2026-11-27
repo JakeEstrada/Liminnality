@@ -77,7 +77,7 @@ const TOOLS = [
     function: {
       name: 'search_job_notes',
       description:
-        'Search stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail", "what did we order last week", "most recent 7084 jobs", or "4.25 inch newel posts". Pass the question in everyday words and keep part numbers and sizes exactly. A part number or size matches exactly and comes back newest worksheet date first. Do not pass since or until for "most recent". When they name a shop week, pass since and until as YYYY-MM-DD. Stage-change lines are left out. An order question returns only lines that mention an order.',
+        'Search stored job notes, tasks, and scraped worksheet text. Use for "which jobs needed glass rail", "what did we order last week", "most recent 7084 jobs", "4.25 inch newel posts", or "upcoming jobs that use 6084 and a four and a quarter post". Pass the question in everyday words and keep part numbers and sizes exactly. Set scope to upcoming for "upcoming" or "right now": that is contract out through ready to schedule, still active. Set scope to archived when they ask about archived jobs. A part number or size matches exactly. Do not pass since or until for "most recent". When they name a shop week, pass since and until as YYYY-MM-DD. Stage-change lines are left out. An order question returns only lines that mention an order. Answer from the say lines. Do not read job ids, stage codes, or dates.',
       parameters: {
         type: 'object',
         properties: {
@@ -95,6 +95,11 @@ const TOOLS = [
             description: 'Last shop day to include, YYYY-MM-DD.',
           },
           limit: { type: 'integer', description: 'Max jobs (1–30)', default: 15 },
+          scope: {
+            type: 'string',
+            enum: ['all', 'upcoming', 'archived'],
+            description: 'upcoming = contract out through ready to schedule, still active. archived = archived jobs only. all = every standing.',
+          },
         },
       },
     },
@@ -394,8 +399,9 @@ function buildSystemPrompt(voice = false) {
     'Job memory you may explain: each note, task, and scraped worksheet is stored with its job id and the day it was written. Each line has a vector, 1536 numbers for the meaning of that whole line. A question becomes a vector too, and the closest lines come back with their job and a score. A higher score means closer meaning. The vector is not a serial number and not one number per word. A dated question such as last week compares notes and tasks from that shop week. Worksheet lines are included when the question has no date, because the scrape day is not the day the work was ordered.',
     `Today is ${week.weekday}, ${week.today}. The shop week runs Friday through Thursday.`,
     `This shop week is ${week.thisWeek.start} through ${week.thisWeek.end}. Last shop week was ${week.lastWeek.start} through ${week.lastWeek.end}.`,
-    'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Name the closest jobs, their standing, and the matching line. Do not invent jobs that the tool did not return. Stage changes are not orders. If an order search comes back empty, say there were no order notes in that week.',
+    'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Speak the say lines: customer and stage in plain words. Do not say job ids, stage codes, or dates. Do not invent jobs that the tool did not return. Stage changes are not orders. If an order search comes back empty, say there were no order notes in that week.',
     'For "most recent 7084 jobs" or "4.25 inch newel posts", call search_job_notes and keep the number exact. Do not pass since or until for most recent. List every match, newest worksheet date first. 4.25 does not include 4.5.',
+    'For "upcoming jobs" or "right now", call search_job_notes with scope upcoming and keep the part number and the size. Upcoming is contract out through ready to schedule, still active. Speak the say lines: customer and stage in plain words. Do not say job ids, stage codes, standing, or dates. If totalJobs is 0, say there are no upcoming jobs with that.',
     'For shop words such as solid wood treads, skirting, false treads, or square nose, call search_job_notes and keep those words. The line has to contain them. Skirting matches skirt. Treads matches tread. List every match, newest worksheet date first.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
@@ -744,6 +750,7 @@ async function runAssistantChat(req, res) {
                   since: args.since,
                   until: args.until,
                   limit: args.limit,
+                  scope: args.scope,
                 });
               }
             } else if (fn.name === 'get_job_details') {

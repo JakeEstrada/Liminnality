@@ -40,15 +40,84 @@ function textHasStems(text, stems) {
 }
 
 const RECENCY_WORDS = new Set(['recent', 'latest', 'newest', 'list', 'most', 'can']);
+const QUESTION_WORDS = new Set(['upcoming', 'upcom', 'use', 'using', 'currently', 'current', 'today']);
 
-/** Stems for a search, without the words that only ask for newest-first. */
+const NUMBER_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+};
+
+/** Contract out through ready to schedule. Estimates before that, and work already scheduled, stay out. */
+const UPCOMING_STAGES = new Set([
+  'CONTRACT_OUT',
+  'CONTRACT_SIGNED',
+  'DEPOSIT_PENDING',
+  'JOB_PREP',
+  'TAKEOFF_COMPLETE',
+  'READY_TO_SCHEDULE',
+]);
+
+function wordToNumber(word) {
+  const text = String(word || '').toLowerCase();
+  if (NUMBER_WORDS[text]) return NUMBER_WORDS[text];
+  const value = Number(text);
+  return Number.isFinite(value) ? value : text;
+}
+
+/** "four and a quarter" becomes 4.25 so a spoken size matches the worksheet. */
+function normalizeShopQuery(query) {
+  const ones = 'one|two|three|four|five|six|seven|eight|nine|\\d+';
+  let text = String(query || '');
+  text = text.replace(new RegExp(`\\b(${ones})\\s+and\\s+three\\s+quarters\\b`, 'ig'), (_, n) => `${wordToNumber(n)}.75`);
+  text = text.replace(new RegExp(`\\b(${ones})\\s+and\\s+(?:a|an|one)\\s+half\\b`, 'ig'), (_, n) => `${wordToNumber(n)}.5`);
+  text = text.replace(new RegExp(`\\b(${ones})\\s+and\\s+(?:a|an|one)\\s+quarter\\b`, 'ig'), (_, n) => `${wordToNumber(n)}.25`);
+  return text;
+}
+
+function asksForUpcoming(query) {
+  const text = String(query || '');
+  if (/\bupcoming\b/i.test(text) || /\bright now\b/i.test(text)) return true;
+  return /\bcontract out\b/i.test(text) && /\bready to schedule\b/i.test(text);
+}
+
+function focusForQuery(query, scope) {
+  const picked = String(scope || '').toLowerCase();
+  if (picked === 'upcoming' || picked === 'archived' || picked === 'all') return picked;
+  if (asksForUpcoming(query)) return 'upcoming';
+  if (/\barchived\b/i.test(String(query || ''))) return 'archived';
+  return 'all';
+}
+
+function jobMatchesFocus(job, focus) {
+  if (focus === 'upcoming') {
+    if (!job || job.isArchived || job.isDeadEstimate || job.isCompletedClosedOut) return false;
+    return UPCOMING_STAGES.has(job.stage);
+  }
+  if (focus === 'archived') return Boolean(job?.isArchived);
+  return true;
+}
+
+/** Stems for a search, without the words that only ask for newest-first or a stage window. */
 function searchStems(query) {
-  return keywordStems(query).filter((stem) => !RECENCY_WORDS.has(stem));
+  const normalized = normalizeShopQuery(query);
+  const skip = new Set([...RECENCY_WORDS, ...QUESTION_WORDS]);
+  if (/\bright now\b/i.test(normalized)) {
+    skip.add('right');
+    skip.add('now');
+  }
+  if (asksForUpcoming(normalized)) {
+    skip.add('contract');
+    skip.add('ready');
+    skip.add('schedule');
+    skip.add('scheduled');
+    skip.add('schedul');
+  }
+  const tokens = new Set(exactTokens(normalized));
+  return keywordStems(normalized).filter((stem) => !skip.has(stem) && !tokens.has(stem));
 }
 
 /** Sizes and part numbers that must match exactly. "4.25" is not "4.5". "7084" is not "17084". */
 function exactTokens(query) {
-  const raw = String(query || '');
+  const raw = normalizeShopQuery(query);
   const tokens = [];
   const add = (token) => {
     const value = String(token || '').toLowerCase();
@@ -63,7 +132,7 @@ function textHasExactTokens(text, tokens) {
   const hay = String(text || '');
   return (tokens || []).every((token) => {
     const escaped = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?<![\\d.])${escaped}(?![\\d.])`, 'i').test(hay);
+    return new RegExp(`(?<![\\d.])${escaped}(?!\\d)(?!\\.\\d)`, 'i').test(hay);
   });
 }
 
@@ -290,6 +359,11 @@ module.exports = {
   searchStems,
   exactTokens,
   textHasExactTokens,
+  normalizeShopQuery,
+  asksForUpcoming,
+  focusForQuery,
+  jobMatchesFocus,
+  UPCOMING_STAGES,
   asksForRecent,
   worksheetDate,
   recencyYmd,
