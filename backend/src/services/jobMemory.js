@@ -5,6 +5,11 @@ const { embeddingConfigured, embedText, embedTexts } = require('./jobFingerprint
 const {
   keywordStems,
   textHasStems,
+  exactTokens,
+  searchStems,
+  asksForRecent,
+  recencyYmd,
+  rankExactMatches,
   isStageLog,
   asksAboutOrders,
   lineMentionsOrder,
@@ -148,6 +153,44 @@ function jobStanding(job) {
   return 'active';
 }
 
+async function finishMemoryMatches(asked, ranked, { since, until, hint }) {
+  const ordered = (ranked || []).map((hit) => ({
+    jobId: String(hit.row?.jobId || ''),
+    hit,
+  })).filter((item) => item.jobId);
+  const jobs = await Job.find({ _id: { $in: ordered.map((item) => item.jobId) } })
+    .populate('customerId', 'name')
+    .select('title customerId stage isArchived isDeadEstimate isCompletedClosedOut')
+    .lean();
+  const jobById = new Map(jobs.map((job) => [String(job._id), job]));
+  const matches = [];
+  for (const item of ordered) {
+    const job = jobById.get(item.jobId);
+    if (!job) continue;
+    const line = item.hit.row;
+    matches.push({
+      jobId: item.jobId,
+      jobTitle: job.title || 'Untitled',
+      customerName: job.customerId?.name || null,
+      stage: job.stage || null,
+      standing: jobStanding(job),
+      noteDate: recencyYmd(line) || dayLabel(line.at),
+      excerpt: String(line.text || '').slice(0, 450),
+      kind: line.kind,
+      score: item.hit.score == null ? null : Math.round(item.hit.score * 100) / 100,
+      path: `/pipeline?jobId=${item.jobId}`,
+    });
+  }
+  return {
+    query: asked,
+    since: since || null,
+    until: until || null,
+    matches,
+    totalJobs: matches.length,
+    hint,
+  };
+}
+
 function dayLabel(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -156,11 +199,38 @@ function dayLabel(value) {
 }
 
 async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
-  const cap = Math.min(Math.max(Number(limit) || 15, 1), 30);
-  const stems = keywordStems(query);
+  const asked = String(query || '').trim();
+  const tokens = exactTokens(asked);
+  const wordStems = searchStems(asked).filter((stem) => !tokens.includes(stem));
   const from = parseShopBound(since, false);
   const to = parseShopBound(until, true);
   const dated = Boolean(from || to);
+  if (tokens.length || wordStems.length) {
+    const escape = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const clauses = [
+      ...tokens.map((token) => ({ text: { $regex: escape(token), $options: 'i' } })),
+      ...wordStems.map((stem) => ({ text: { $regex: escape(stem), $options: 'i' } })),
+    ];
+    const rows = await JobMemory.find({ $and: clauses })
+      .select('jobId kind text at')
+      .limit(5000)
+      .lean();
+    const ranked = rankExactMatches(rows, asked, {
+      limit: 100,
+      from: asksForRecent(asked) ? null : from,
+      to: asksForRecent(asked) ? null : to,
+    }) || [];
+    const loose = !ranked.length && /\b(?:instead|rather|similar|like)\b/i.test(asked);
+    if (!loose) {
+      const words = [...tokens, ...wordStems];
+      const hint = tokens.length
+        ? `Exact match on ${tokens.join(', ')}. Newest worksheet date first. A size has to match exactly, so 4.25 does not include 4.5. The other words have to be in the line too.`
+        : `Jobs whose notes or worksheet lines contain ${words.join(', ')}. Newest worksheet date first. The words have to be in the line.`;
+      return finishMemoryMatches(asked, ranked, { since, until, hint });
+    }
+  }
+  const cap = Math.min(Math.max(Number(limit) || 15, 1), 30);
+  const stems = keywordStems(query);
   const filter = {};
   if (dated) {
     filter.kind = { $in: DATED_KINDS };
@@ -168,7 +238,6 @@ async function searchStoredJobNotes({ query, since, until, limit = 15 } = {}) {
     if (from) filter.at.$gte = from;
     if (to) filter.at.$lte = to;
   }
-  const asked = String(query || '').trim();
   const orderQuestion = asksAboutOrders(asked);
   let queryVector = null;
   if (asked && embeddingConfigured()) {

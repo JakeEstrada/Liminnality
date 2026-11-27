@@ -45,6 +45,7 @@ type JobRow = {
   jobTitle: string;
   customerName?: string | null;
   lineCount: number;
+  noteDate?: string | null;
 };
 
 type VectorPage = {
@@ -52,6 +53,7 @@ type VectorPage = {
   model?: string;
   storedLines?: number;
   jobCount?: number;
+  order?: string;
   jobs?: JobRow[];
   example?: Example | null;
   neighbors?: Line[];
@@ -73,6 +75,7 @@ export default function VectorSemanticsPanel() {
   const theme = useTheme();
   const outline = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
   const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
   const [jobId, setJobId] = useState('');
   const [memoryId, setMemoryId] = useState('');
   const [page, setPage] = useState<VectorPage | null>(null);
@@ -87,6 +90,7 @@ export default function VectorSemanticsPanel() {
   const phaseRef = useRef<'listen' | 'busy'>('listen');
   const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition> | null>(null);
   const pageRef = useRef<VectorPage | null>(null);
+  const openedRef = useRef('');
 
   const stopRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -119,15 +123,28 @@ export default function VectorSemanticsPanel() {
   }, [stopRecognition]);
 
   useEffect(() => {
+    if (draft.trim().length < 2) {
+      setQuery('');
+      return undefined;
+    }
+    const handle = window.setTimeout(() => setQuery(draft.trim()), 400);
+    return () => window.clearTimeout(handle);
+  }, [draft]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.get('/developer-tasks/vectors', { params: { jobId, memoryId } })
+    api.get('/developer-tasks/vectors', { params: { jobId, memoryId, q: query } })
       .then(({ data }) => {
         if (cancelled) return;
         setPage(data || null);
         pageRef.current = data || null;
-        setMessages([]);
-        messagesRef.current = [];
+        const opened = data?.example?.memoryId || '';
+        if (opened !== openedRef.current) {
+          openedRef.current = opened;
+          setMessages([]);
+          messagesRef.current = [];
+        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -140,7 +157,7 @@ export default function VectorSemanticsPanel() {
     return () => {
       cancelled = true;
     };
-  }, [jobId, memoryId]);
+  }, [jobId, memoryId, query]);
 
   const ask = useCallback(async (text: string, speak: boolean) => {
     const trimmed = String(text || '').trim();
@@ -254,31 +271,36 @@ export default function VectorSemanticsPanel() {
   };
 
   const example = page?.example;
+  const termSearch = page?.order === 'recent' || page?.order === 'terms';
   const needle = draft.trim().toLowerCase();
-  const jobs = (page?.jobs || []).filter((job) => {
-    if (!needle) return true;
-    return `${job.jobTitle} ${job.customerName || ''}`.toLowerCase().includes(needle);
-  });
+  const jobs = termSearch
+    ? (page?.jobs || [])
+    : (page?.jobs || []).filter((job) => {
+      if (!needle) return true;
+      return `${job.jobTitle} ${job.customerName || ''}`.toLowerCase().includes(needle);
+    });
 
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Every job with a stored vector is in the list. Open one to see the numbers for a real line on that job, and the jobs whose lines point a similar way.
+        Every job with a stored vector is in the list. Type words from the worksheet, a part number, or a size. Matching jobs come back newest worksheet date first. Open one to see the numbers for that line.
       </Typography>
 
       <TextField
         size="small"
         label="Filter jobs"
-        placeholder="Job name"
+        placeholder="Name, words, part number, or size"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         sx={{ mb: 1.5, maxWidth: 420 }}
       />
 
       <Typography variant="body2" sx={{ mb: 1 }}>
-        {page?.jobCount
-          ? `${jobs.length} of ${page.jobCount} jobs`
-          : 'Jobs with a stored vector'}
+        {page?.order === 'recent'
+          ? `${jobs.length} ${jobs.length === 1 ? 'job' : 'jobs'}, newest worksheet date first`
+          : page?.jobCount
+            ? `${jobs.length} of ${page.jobCount} jobs`
+            : 'Jobs with a stored vector'}
       </Typography>
 
       {loading ? <LinearProgress sx={{ mb: 2 }} /> : null}
@@ -314,13 +336,13 @@ export default function VectorSemanticsPanel() {
                 {job.jobTitle}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {job.lineCount === 1 ? '1 line' : `${job.lineCount} lines`}
+                {job.noteDate || (job.lineCount === 1 ? '1 line' : `${job.lineCount} lines`)}
               </Typography>
             </Button>
           ))}
           {jobs.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-              No job name matches that filter.
+              {termSearch ? 'No stored line has those words.' : 'No job name matches that filter.'}
             </Typography>
           ) : null}
         </Box>

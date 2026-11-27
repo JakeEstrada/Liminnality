@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const {
   keywordStems,
   textHasStems,
+  exactTokens,
+  textHasExactTokens,
+  rankExactMatches,
   isStageLog,
   asksAboutOrders,
   lineMentionsOrder,
@@ -89,4 +92,41 @@ test('worksheet text, notes, and tasks stay tied to the job', () => {
   assert.match(task.text, /Order balusters/);
   assert.equal(task.at.toISOString(), '2026-11-25T16:00:00.000Z');
   assert.equal(taskMemoryRow({ _id: 'task-2', title: 'Shop todo' }), null);
+});
+
+test('a part number and a size match the worksheet line exactly, newest date first', () => {
+  const newer = 'Scope: Install White Oak rail system w/ Blk Iron wound balusters Upgrade to 4.5" Oak newel post Add Float baluster Shoes Handrail: White Oak, qty 12, Curved #7084 Balusters: P.G., qty 31, Blk Iron w/ Flat shoes Newel: White Oak, 4.5" Post Cap: Channel cut Ref: Armin - James Remodeling Worksheet date: 01-22-26 End Treads, skirt, & Carpet stay';
+  const older = 'Handrail: White Oak, Curved #7084 Worksheet date: 06-02-25';
+  const quarter = 'Upgrade to 4.25" Oak newel post Worksheet date: 03-01-26';
+  const rows = [
+    { _id: 'older', jobId: 'older-job', kind: 'worksheet', text: older, at: new Date('2026-11-27T00:00:00Z') },
+    { _id: 'newer', jobId: 'newer-job', kind: 'worksheet', text: newer, at: new Date('2026-11-27T00:00:00Z') },
+    { _id: 'quarter', jobId: 'quarter-job', kind: 'worksheet', text: quarter, at: new Date('2026-11-27T00:00:00Z') },
+  ];
+  assert.deepEqual(exactTokens('Can you list the most recent 7084 jobs'), ['7084']);
+  assert.deepEqual(exactTokens('4.25" newel posts jobs'), ['4.25']);
+  assert.equal(textHasExactTokens(newer, ['4.25']), false);
+  assert.equal(textHasExactTokens(newer, ['4.5']), true);
+  assert.equal(textHasExactTokens('code 17084', ['7084']), false);
+
+  const codes = rankExactMatches(rows, 'most recent 7084 jobs');
+  assert.deepEqual(codes.map((hit) => hit.row.jobId), ['newer-job', 'older-job']);
+  const sizes = rankExactMatches(rows, '4.25" newel posts jobs');
+  assert.deepEqual(sizes.map((hit) => hit.row.jobId), ['quarter-job']);
+  const half = rankExactMatches(rows, '4.5" newel posts');
+  assert.deepEqual(half.map((hit) => hit.row.jobId), ['newer-job']);
+});
+
+test('worksheet words match even when the ending differs', () => {
+  const sheet = 'Scope: Solid wood treads, skirting, false treads, and square nose. Carpet stay.';
+  const plain = 'Install oak treads only';
+  const rows = [
+    { _id: 'sheet', jobId: 'sheet-job', kind: 'worksheet', text: sheet },
+    { _id: 'plain', jobId: 'plain-job', kind: 'note', text: plain },
+  ];
+  assert.deepEqual(rankExactMatches(rows, 'skirting').map((hit) => hit.row.jobId), ['sheet-job']);
+  assert.deepEqual(rankExactMatches(rows, 'false treads').map((hit) => hit.row.jobId), ['sheet-job']);
+  assert.deepEqual(rankExactMatches(rows, 'square nose').map((hit) => hit.row.jobId), ['sheet-job']);
+  assert.deepEqual(rankExactMatches(rows, 'solid wood treads').map((hit) => hit.row.jobId), ['sheet-job']);
+  assert.deepEqual(rankExactMatches(rows, 'false treads').some((hit) => hit.row.jobId === 'plain-job'), false);
 });

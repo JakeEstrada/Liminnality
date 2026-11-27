@@ -77,14 +77,14 @@ const TOOLS = [
     function: {
       name: 'search_job_notes',
       description:
-        'Loose similarity search over stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail" or "what did we order last week". Pass the question in everyday words. When they name a time, also pass since and until as YYYY-MM-DD. A dated search compares notes and tasks from that range only. Stage-change lines are left out. An order question returns only lines that mention an order. Results include a score; higher means closer meaning.',
+        'Search stored job notes, tasks, and scraped worksheet text, including completed and archived jobs. Use for "which jobs needed glass rail", "what did we order last week", "most recent 7084 jobs", or "4.25 inch newel posts". Pass the question in everyday words and keep part numbers and sizes exactly. A part number or size matches exactly and comes back newest worksheet date first. Do not pass since or until for "most recent". When they name a shop week, pass since and until as YYYY-MM-DD. Stage-change lines are left out. An order question returns only lines that mention an order.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description:
-              'The question in everyday words, such as "ordered balusters" or "glass rail instead of iron". Leave empty to list recent notes and tasks.',
+              'The question in everyday words. Keep sizes and part numbers exact, such as "most recent 7084" or "4.25 inch newel posts".',
           },
           since: {
             type: 'string',
@@ -395,6 +395,8 @@ function buildSystemPrompt(voice = false) {
     `Today is ${week.weekday}, ${week.today}. The shop week runs Friday through Thursday.`,
     `This shop week is ${week.thisWeek.start} through ${week.thisWeek.end}. Last shop week was ${week.lastWeek.start} through ${week.lastWeek.end}.`,
     'For "which jobs have [material]", "jobs like this", or "what did we order last week", call search_job_notes. Pass everyday words, not a keyword list. When they say last week, this week, or a date, pass since and until. The score is how close the meaning is. Name the closest jobs, their standing, and the matching line. Do not invent jobs that the tool did not return. Stage changes are not orders. If an order search comes back empty, say there were no order notes in that week.',
+    'For "most recent 7084 jobs" or "4.25 inch newel posts", call search_job_notes and keep the number exact. Do not pass since or until for most recent. List every match, newest worksheet date first. 4.25 does not include 4.5.',
+    'For shop words such as solid wood treads, skirting, false treads, or square nose, call search_job_notes and keep those words. The line has to contain them. Skirting matches skirt. Treads matches tread. List every match, newest worksheet date first.',
     'For "most recent payment" or "most recent deposit", call the matching recent-* tool and answer with amount, date, customer/job from mostRecent / deposits only.',
     'For "did [name] make a deposit", call get_recent_deposits with customerQuery set to that name.',
     'For "jobs in [city]", call show_jobs_on_map with city set to that city (exact city only).',

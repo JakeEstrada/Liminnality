@@ -12,6 +12,7 @@ const {
   buildVectorDetail,
   answerVectorQuestion,
 } = require('../utils/vectorSemantics');
+const { exactTokens, searchStems, textHasStems, textHasExactTokens, rankExactMatches, recencyYmd } = require('../utils/jobMemoryQuery');
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const CACHE_MS = 10 * 60 * 1000;
@@ -112,11 +113,13 @@ async function explainWithModel({ example, neighbors, sameJob, question, history
 
 async function getVectorSemantics(req, res) {
   try {
+    const query = String(req.query.q || '').trim().slice(0, 120);
     const jobId = String(req.query.jobId || '').trim();
     const memoryId = String(req.query.memoryId || '').trim();
     const lines = await loadLines(req.user?.tenantId);
     const model = embeddingModel();
-    const catalog = listJobsWithVectors(lines);
+    let catalog = listJobsWithVectors(lines);
+    let order = 'name';
     if (!lines.length) {
       return res.json({
         empty: true,
@@ -130,14 +133,50 @@ async function getVectorSemantics(req, res) {
         detail: ['No line has a vector yet. After notes are stored and embedded, a job will show up here as a list of numbers.'],
       });
     }
-    const exampleRow = selectExampleRow(lines, { jobId, memoryId });
+    const termTokens = exactTokens(query);
+    const termStems = searchStems(query).filter((stem) => !termTokens.includes(stem));
+    const termSearch = Boolean(query) && (termTokens.length > 0 || termStems.length > 0);
+    let lineRank = new Map();
+    if (termSearch) {
+      const ranked = rankExactMatches(lines, query, { limit: 100 }) || [];
+      lineRank = new Map(ranked.map((hit, index) => [String(hit.row.jobId), {
+        index,
+        memoryId: String(hit.row._id),
+        noteDate: recencyYmd(hit.row),
+      }]));
+    }
+    const selectedJob = jobId;
+    const selectedMemory = memoryId;
+    const labels = await loadJobLabels(catalog.map((entry) => entry.jobId));
+    let jobs = describeJobList(catalog, labels);
+    if (termSearch) {
+      const lineJobs = [];
+      const titleJobs = [];
+      for (const job of jobs) {
+        const hit = lineRank.get(job.jobId);
+        const title = `${job.jobTitle || ''} ${job.customerName || ''}`;
+        const titleHit = (!termTokens.length || textHasExactTokens(title, termTokens))
+          && (!termStems.length || textHasStems(title, termStems));
+        if (hit) lineJobs.push({ ...job, memoryId: hit.memoryId, noteDate: hit.noteDate });
+        else if (titleHit) titleJobs.push(job);
+      }
+      lineJobs.sort((a, b) => lineRank.get(a.jobId).index - lineRank.get(b.jobId).index);
+      jobs = [...lineJobs, ...titleJobs];
+      order = lineJobs.length ? 'recent' : 'terms';
+    }
+    const picked = (order === 'recent' || order === 'terms')
+      ? (jobs.some((job) => job.jobId === selectedJob) ? selectedJob : (jobs[0]?.jobId || ''))
+      : selectedJob;
+    const pickedMemory = (order === 'recent' || order === 'terms')
+      ? (jobs.find((job) => job.jobId === picked)?.memoryId || '')
+      : selectedMemory;
+    const exampleRow = (order === 'recent' || order === 'terms')
+      ? (picked ? selectExampleRow(lines, { jobId: picked, memoryId: pickedMemory }) : null)
+      : selectExampleRow(lines, { jobId: selectedJob, memoryId: selectedMemory });
     const neighborHits = exampleRow ? nearestOtherJobs(exampleRow, lines, 5) : [];
     const sameHits = exampleRow ? otherLinesOnJob(exampleRow, lines, 4) : [];
-    const labels = await loadJobLabels([
-      ...catalog.map((entry) => entry.jobId),
-      ...neighborHits.map((hit) => hit.row.jobId),
-    ]);
-    const jobs = describeJobList(catalog, labels);
+    const extraLabels = await loadJobLabels(neighborHits.map((hit) => hit.row.jobId));
+    for (const [id, value] of extraLabels) labels.set(id, value);
     const example = exampleRow ? describeExample(exampleRow, labels) : null;
     const neighbors = neighborHits.map((hit) => describeLine(hit.row, labels, hit.score));
     const sameJob = sameHits.map((hit) => describeLine(hit.row, labels, hit.score));
@@ -146,13 +185,16 @@ async function getVectorSemantics(req, res) {
       model,
       storedLines: lines.length,
       jobCount: jobs.length,
+      order,
       jobs,
       example,
       neighbors,
       sameJob,
       detail: example
         ? buildVectorDetail(example, neighbors, sameJob, { model, storedLines: lines.length })
-        : ['No stored line matched that job.'],
+        : [termSearch
+          ? 'No stored line has those words.'
+          : 'No stored line matched that job.'],
     });
   } catch (error) {
     console.error('getVectorSemantics:', error.message || error);

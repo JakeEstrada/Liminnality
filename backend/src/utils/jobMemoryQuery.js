@@ -39,6 +39,94 @@ function textHasStems(text, stems) {
   return stems.every((stem) => hay.includes(stem));
 }
 
+const RECENCY_WORDS = new Set(['recent', 'latest', 'newest', 'list', 'most', 'can']);
+
+/** Stems for a search, without the words that only ask for newest-first. */
+function searchStems(query) {
+  return keywordStems(query).filter((stem) => !RECENCY_WORDS.has(stem));
+}
+
+/** Sizes and part numbers that must match exactly. "4.25" is not "4.5". "7084" is not "17084". */
+function exactTokens(query) {
+  const raw = String(query || '');
+  const tokens = [];
+  const add = (token) => {
+    const value = String(token || '').toLowerCase();
+    if (value && !tokens.includes(value)) tokens.push(value);
+  };
+  for (const match of raw.matchAll(/\d+\.\d+/g)) add(match[0]);
+  for (const match of raw.matchAll(/(?<![\d.])\d{3,}(?![\d.])/g)) add(match[0]);
+  return tokens;
+}
+
+function textHasExactTokens(text, tokens) {
+  const hay = String(text || '');
+  return (tokens || []).every((token) => {
+    const escaped = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?<![\\d.])${escaped}(?![\\d.])`, 'i').test(hay);
+  });
+}
+
+function asksForRecent(query) {
+  return /\b(?:most recent|latest|newest)\b/i.test(String(query || ''));
+}
+
+/** The date written on the worksheet, not the day the file was scraped. */
+function worksheetDate(text) {
+  const match = String(text || '').match(/worksheet date:\s*(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/i);
+  if (!match) return null;
+  let year = Number(match[3]);
+  if (year < 100) year += 2000;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
+function recencyTime(row) {
+  const dated = worksheetDate(row?.text);
+  if (dated) return dated.getTime();
+  const at = row?.at ? new Date(row.at).getTime() : 0;
+  return Number.isNaN(at) ? 0 : at;
+}
+
+function recencyYmd(row) {
+  const dated = worksheetDate(row?.text);
+  if (dated) return dated.toISOString().slice(0, 10);
+  if (!row?.at) return null;
+  const at = new Date(row.at);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Jobs whose stored lines contain every keyword, size, and part number.
+ * "skirting" matches skirt. "treads" matches tread. "4.25" does not match "4.5".
+ * Newest worksheet date first. Returns null when the question has nothing to match.
+ */
+function rankExactMatches(rows, query, options = {}) {
+  const tokens = exactTokens(query);
+  const stems = searchStems(query).filter((stem) => !tokens.includes(stem));
+  if (!tokens.length && !stems.length) return null;
+  const cap = Math.min(Math.max(Number(options.limit) || 50, 1), 100);
+  const from = options.from instanceof Date ? options.from.getTime() : null;
+  const to = options.to instanceof Date ? options.to.getTime() : null;
+  const best = new Map();
+  for (const row of rows || []) {
+    if (!row || isStageLog(row.text)) continue;
+    if (!textHasExactTokens(row.text, tokens)) continue;
+    if (stems.length && !textHasStems(row.text, stems)) continue;
+    const when = recencyTime(row);
+    if (from != null && when < from) continue;
+    if (to != null && when > to) continue;
+    const id = String(row.jobId || '');
+    if (!id) continue;
+    const current = best.get(id);
+    if (!current || when > current.when) best.set(id, { row, when });
+  }
+  return [...best.values()].sort((a, b) => b.when - a.when).slice(0, cap);
+}
+
 /** Stage moves are shop bookkeeping, not something that was ordered. */
 function isStageLog(text) {
   const line = String(text || '').trim();
@@ -199,6 +287,13 @@ function taskMemoryRow(task) {
 module.exports = {
   keywordStems,
   textHasStems,
+  searchStems,
+  exactTokens,
+  textHasExactTokens,
+  asksForRecent,
+  worksheetDate,
+  recencyYmd,
+  rankExactMatches,
   isStageLog,
   asksAboutOrders,
   lineMentionsOrder,
