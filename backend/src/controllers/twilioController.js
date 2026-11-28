@@ -13,6 +13,8 @@ const { ensureDefaultTenant, ensureTenantBySlug } = require('../utils/tenantServ
 const { runWithTenantContext } = require('../middleware/tenantContext');
 const { publishSmsInboundCreated } = require('../services/eventBus');
 const { tryRecordSmsPunch, findActivePhoneByFrom } = require('./rfidController');
+const RfidPhone = require('../models/RfidPhone');
+const { preferredShopTenantId, pickPreferredTenantId } = require('../utils/shopTenant');
 const { openStoredSmsMedia, storeSmsMediaBuffer } = require('../utils/smsMediaStore');
 
 /**
@@ -237,11 +239,13 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
   const envId = String(process.env.TWILIO_INBOUND_TENANT_ID || '').trim();
   if (/^[a-fA-F0-9]{24}$/.test(envId)) return envId;
 
+  const preferred = await preferredShopTenantId();
+  const candidates = [];
   const fromVariants = phoneMatchVariants(from);
   if (fromVariants.length) {
     const clockPhone = await findActivePhoneByFrom(from);
-    if (clockPhone?.tenantId) return String(clockPhone.tenantId);
-    const customer = await Customer.findOne({
+    if (clockPhone?.tenantId) candidates.push(clockPhone.tenantId);
+    const customers = await Customer.find({
       $or: [
         { primaryPhone: { $in: fromVariants } },
         { phones: { $in: fromVariants } },
@@ -250,10 +254,11 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
     })
       .setOptions({ bypassTenant: true })
       .select('tenantId')
+      .limit(8)
       .lean();
-    if (customer?.tenantId) return String(customer.tenantId);
+    customers.forEach((customer) => candidates.push(customer.tenantId));
 
-    const prior = await SmsMessage.findOne({
+    const prior = await SmsMessage.find({
       direction: 'outbound',
       to: { $in: fromVariants },
       tenantId: { $exists: true, $ne: null },
@@ -261,14 +266,14 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
       .setOptions({ bypassTenant: true })
       .sort({ createdAt: -1 })
       .select('tenantId')
+      .limit(8)
       .lean();
-    if (prior?.tenantId) return String(prior.tenantId);
+    prior.forEach((row) => candidates.push(row.tenantId));
   }
 
-  // Prefer matching our Twilio "To" against recent outbound from that number's tenant.
   const toVariants = phoneMatchVariants(to);
   if (toVariants.length) {
-    const priorFromUs = await SmsMessage.findOne({
+    const priorFromUs = await SmsMessage.find({
       direction: 'outbound',
       from: { $in: toVariants },
       tenantId: { $exists: true, $ne: null },
@@ -276,9 +281,13 @@ async function resolveInboundTenantId({ from, to, preferredTenantId } = {}) {
       .setOptions({ bypassTenant: true })
       .sort({ createdAt: -1 })
       .select('tenantId')
+      .limit(8)
       .lean();
-    if (priorFromUs?.tenantId) return String(priorFromUs.tenantId);
+    priorFromUs.forEach((row) => candidates.push(row.tenantId));
   }
+
+  const picked = pickPreferredTenantId(candidates, preferred);
+  if (picked) return picked;
 
   const tenants = await Tenant.find({ slug: { $ne: 'default' } })
     .select('_id slug')
@@ -428,6 +437,79 @@ async function upsertInboundSms({ from, to, body, twilioSid, preferredTenantId, 
   });
 }
 
+async function siblingTenantIdsForInbound(from, exceptTenantId) {
+  const variants = phoneMatchVariants(from);
+  if (!variants.length) return [];
+  const [customers, phones] = await Promise.all([
+    Customer.find({
+      $or: [
+        { primaryPhone: { $in: variants } },
+        { phones: { $in: variants } },
+        { 'contactPhones.value': { $in: variants } },
+      ],
+    })
+      .setOptions({ bypassTenant: true })
+      .select('tenantId')
+      .limit(8)
+      .lean(),
+    RfidPhone.find({
+      isActive: { $ne: false },
+      $or: [{ phone: { $in: variants } }, { phoneDigits: { $in: variants.map((value) => String(value).replace(/\D/g, '').slice(-10)).filter(Boolean) } }],
+    })
+      .setOptions({ bypassTenant: true })
+      .select('tenantId')
+      .limit(8)
+      .lean(),
+  ]);
+  const skip = String(exceptTenantId || '');
+  return [...new Set(
+    [...customers, ...phones]
+      .map((row) => String(row.tenantId || ''))
+      .filter((id) => id && id !== skip),
+  )];
+}
+
+/** A second shop with the same numbers gets its own copy of the text. Clock punches stay on the original shop. */
+async function mirrorInboundSms(doc, io) {
+  if (!doc) return;
+  const siblings = await siblingTenantIdsForInbound(doc.from, doc.tenantId);
+  for (const tenantId of siblings) {
+    const twilioSid = doc.twilioSid ? `${doc.twilioSid}~${tenantId}` : '';
+    if (twilioSid) {
+      const existing = await SmsMessage.findOne({ twilioSid }).setOptions({ bypassTenant: true }).select('_id').lean();
+      if (existing) continue;
+    }
+    await runWithTenantContext({ tenantId }, async () => {
+      const links = await resolveSmsJobLinks({
+        from: doc.from,
+        to: doc.to,
+        direction: 'inbound',
+      });
+      const saved = await SmsMessage.create({
+        direction: 'inbound',
+        from: doc.from,
+        to: doc.to,
+        body: doc.body,
+        twilioSid: twilioSid || undefined,
+        source: 'inbound',
+        tenantId,
+        jobId: links.jobId,
+        customerId: links.customerId,
+        media: doc.media,
+      });
+      if (links.jobId) {
+        await recordJobSmsTimeline({
+          jobId: links.jobId,
+          customerId: links.customerId,
+          direction: 'inbound',
+          body: saved.body || '',
+          io,
+        });
+      }
+    });
+  }
+}
+
 async function logInboundSms({ from, to, body, twilioSid, io, mediaItems }) {
   const { doc, created } = await upsertInboundSms({ from, to, body, twilioSid });
   if (doc && mediaItems?.length) {
@@ -435,6 +517,13 @@ async function logInboundSms({ from, to, body, twilioSid, io, mediaItems }) {
       await attachInboundPhotos(doc, mediaItems);
     } catch (error) {
       console.error('Failed to attach inbound photos:', error?.message || error);
+    }
+  }
+  if (doc && created) {
+    try {
+      await mirrorInboundSms(doc, io);
+    } catch (error) {
+      console.error('Failed to copy inbound SMS to the other shop:', error?.message || error);
     }
   }
   if (io && created && doc?.tenantId) {
@@ -852,9 +941,14 @@ function deliveryPatchFromTwilioStatus(status, errorCode, errorMessage) {
 
 async function applyDeliveryUpdateBySid(twilioSid, status, errorCode, errorMessage) {
   if (!twilioSid) return;
+  const sid = String(twilioSid).trim();
+  const escaped = sid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patch = deliveryPatchFromTwilioStatus(status, errorCode, errorMessage);
-  await SmsMessage.updateMany({ twilioSid }, { $set: patch }).setOptions({ bypassTenant: true });
-  await ScheduledSms.updateMany({ twilioSid }, { $set: patch }).setOptions({ bypassTenant: true });
+  await SmsMessage.updateMany(
+    { $or: [{ twilioSid: sid }, { twilioSid: { $regex: `^${escaped}~` } }] },
+    { $set: patch },
+  ).setOptions({ bypassTenant: true });
+  await ScheduledSms.updateMany({ twilioSid: sid }, { $set: patch }).setOptions({ bypassTenant: true });
 }
 
 async function fetchTwilioMessageBySid(sid) {

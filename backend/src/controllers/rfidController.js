@@ -18,6 +18,7 @@ const {
 const { getTenantContext, runWithTenantContext } = require('../middleware/tenantContext');
 const { computeWeekTotalHours, sanitizeManualByDay } = require('../services/rfidWeekHours');
 const { shouldStoreHourlyRate } = require('../utils/hourlyRate');
+const { preferredShopTenantId, pickPreferredTenantId } = require('../utils/shopTenant');
 
 function normalizeUid(raw) {
   const s = String(raw || '').trim();
@@ -447,7 +448,11 @@ async function findActivePhoneByFrom(from) {
   } else {
     query.phone = { $in: values };
   }
-  return RfidPhone.findOne(query).setOptions({ bypassTenant: true });
+  const matches = await RfidPhone.find(query).setOptions({ bypassTenant: true }).limit(8);
+  if (!matches.length) return null;
+  const preferred = await preferredShopTenantId();
+  const picked = pickPreferredTenantId(matches.map((entry) => entry.tenantId), preferred);
+  return matches.find((entry) => String(entry.tenantId || '') === picked) || matches[0];
 }
 
 async function recordSmsPunch({ phoneEntry, body, scannedAt, io }) {
